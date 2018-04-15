@@ -1,0 +1,15 @@
+[submodule "ext/GSL"]
+	path = subprojects/GSL
+	url = https://github.com/Microsoft/GSL.git
+[submodule "ext/doctest"]
+	path = subprojects/doctest
+	url = https://github.com/onqtam/doctest.git
+[submodule "ext/fmt"]
+	path = subprojects/fmt
+	url = https://github.com/fmtlib/fmt.git
+[submodule "ext/crc32c"]
+	path = subprojects/crc32c
+	url = https://github.com/google/crc32c.git
+[submodule "subprojects/platform_folders"]
+	path = subprojects/platform_folders
+	url = https://github.com/sago007/PlatformFolders.git

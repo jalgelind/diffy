@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+import argparse
+import io
+import os
+import sys
+
+from contextlib import contextmanager
+from subprocess import Popen, PIPE, STDOUT
+from os.path import dirname, basename, abspath, join, exists
+
+class Process:
+    def __init__(self, cmdline, workdir="."):
+        self._done, self._stdout, self._return_code = (False, None, None)
+        self._process_handle = Popen(
+            cmdline, shell=True, cwd=workdir, stdout=PIPE, stderr=STDOUT)
+
+    def wait(self):
+        if not self._done:
+            stdout, _ = self._process_handle.communicate()
+            self._stdout = stdout.decode('utf-8', 'ignore') \
+                                 .encode('utf-8', 'ignore')
+            self._return_code = self._process_handle.returncode
+            self._done = True
+        return self
+
+    @property
+    def stdout(self):
+        return self.wait()._stdout
+
+    @property
+    def return_code(self):
+        return self.wait()._return_code
+
+    @staticmethod
+    def shell(command, workdir='./'):
+        return Process(command, workdir).wait()
+
+    @staticmethod
+    def shell_iter(command, workdir="./"):
+        p = Process(command, workdir)
+        fd2 = os.dup(p._process_handle.stdout.fileno())
+        p._process_handle.stdout.close()
+        for line in io.open(fd2, "r"):
+            yield line.rstrip()
+        p._process_handle.wait()
+
+def mkdirs(output_directory):
+    try:
+        os.makedirs(output_directory)
+    except OSError as e:
+        if e.errno == 17: # File exists.
+            return
+        raise e
+
+@contextmanager
+def chdir(target):
+    saved = os.getcwd()
+    try:
+        os.chdir(target)
+        yield
+    finally:
+        os.chdir(saved)
+
+def git(cmd):
+    return Process.shell('git' + " " + cmd).wait().stdout
+
+def git_lines(cmd):
+    return Process.shell_iter('git' + " " + cmd)
+
+def main():
+    parser = argparse.ArgumentParser(description="Build test cases from git repository")
+    parser.add_argument('name', help="Name of the generated test")
+    parser.add_argument('file_path', help="Path to file in git repository")
+    parser.add_argument('--stride', type=int, default=1, help="Number of commits to skip between file revisions")
+    parser.add_argument('--num', type=int, default=None, help="Number of test cases to make (max)")
+    args = parser.parse_args()
+
+    filename = basename(args.file_path)         # [file.xx]
+    script_dir = dirname(abspath(sys.argv[0]))  # [/abs/path]/file.xx
+    result_dir = abspath(join(script_dir, "..", "tests", "test_cases", args.name))
+    
+    print("Output directory: {}".format(result_dir))
+
+    if exists(result_dir):
+        print("Output directory already exists.")
+        sys.exit(1)
+
+    mkdirs(result_dir)
+
+    # Collect all commit revisions affecting the file
+    commits = []
+    with chdir(dirname(args.file_path)):
+        for line in git_lines("log --oneline {}".format(filename)):
+            commit_hash = line.split(" ", 1)[0]
+            commits.append(commit_hash.strip())
+
+        if args.num is not None:
+            args.num *= args.stride
+
+        # Export the file commits with the requested slice parameters to generate smaller or larger changesets.
+        for counter, (commit_a, commit_b) in enumerate(zip(commits[slice(0, args.num)], commits[slice(1, args.num, args.stride)])):
+            file_contents_a = git("show {}:./{}".format(commit_a, basename(args.file_path)))
+            file_contents_b = git("show {}:./{}".format(commit_b, basename(args.file_path)))
+            test_id = "{}_{}-{}".format(counter, commit_a, commit_b)
+            with chdir(script_dir):
+                with open(join(result_dir, "{}_{}_a".format(filename, test_id)), "wb") as f:
+                    f.write(file_contents_a)
+                with open(join(result_dir, "{}_{}_b".format(filename, test_id)), "wb") as f:
+                    f.write(file_contents_b)
+
+if __name__ == '__main__':
+    main()

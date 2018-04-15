@@ -1,0 +1,4 @@
+out/
+tests/_test_runner
+.ccls-cache/
+ext/

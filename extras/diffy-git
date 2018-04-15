@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+OLD_PATH="$1"    # may be deleted
+OLD_PATH_TMP="$2"  # temp-file with old content
+OLD_SHA1="$3"
+OLD_MODE="$4"
+
+NEW_PATH="$5"
+NEW_SHA1="$6"
+NEW_MODE="$7"
+
+OLD_NAME="${OLD_PATH} (mode: ${OLD_MODE})"
+NEW_NAME="${NEW_PATH} (mode: ${NEW_MODE})"
+
+if [[ ${NEW_PATH} == "/tmp"* ]]; then
+  NEW_NAME="${OLD_PATH} (mode: ${NEW_MODE})"
+fi
+
+# Submodules?
+if [[ `git config --file .gitmodules --list 2>/dev/null` == *"path=${OLD_PATH}"* ]]; then
+  NEW_NAME="${OLD_PATH} (mode: ${NEW_MODE})"
+fi
+
+# Ignore directories
+if [ -d "%5" ] 
+then
+    exit 0;
+fi
+
+# Ignore directories
+if [ -d "%2" ] 
+then
+    exit 0;
+fi
+
+# Ignore renames
+if [[ "$*" == *"similarity index"* ]]; then
+  exit 0;
+fi
+
+# Deleted files (TODO: fixme!)
+if [[ "$5" == "/dev/null" ]]; then
+  exit 0;
+fi
+
+# New files (TODO: fixme!)
+if [[ "$2" == "/dev/null" ]]; then
+  exit 0;
+fi
+
+diffy -i -w -o "${OLD_NAME}" -n "${NEW_NAME}" "$2" "$5"

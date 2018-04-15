@@ -1,0 +1,56 @@
+#pragma once
+
+/*
+    Diff hunk re-formatter. Take a closer look at what differs within a hunk, and split the
+    lines into segments with annotation information.
+
+    We look at repeated whitespace (to highlight indentation changes and trailing spaces), and repeated
+    sequences of any other character.
+*/
+
+#include "algorithms/algorithm.hpp"
+#include "processing/diff_hunk.hpp"
+#include "processing/tokenizer.hpp"
+#include "util/readlines.hpp"  // TODO: rename, file_reader is ugly.
+
+#include <string>
+#include <vector>
+
+namespace diffy {
+
+struct LineSegment {
+    std::size_t start;
+    std::size_t length;
+    TokenFlag flags;
+    EditType type;
+};
+
+struct EditLine {
+    EditType type;
+    EditIndex line_index;
+    std::vector<LineSegment> segments;
+};
+
+struct AnnotatedHunk {
+    int64_t from_start = 0;
+    int64_t from_count = 0;
+    int64_t to_start = 0;
+    int64_t to_count = 0;
+
+    // TODO: Do it like this for Hunk's too?
+    std::vector<EditLine> a_lines;
+    std::vector<EditLine> b_lines;
+};
+
+enum class EditGranularity {
+    Line,   // Whole line insert/delete
+    Token,  // Words and operators separated by whitespace
+};
+
+std::vector<AnnotatedHunk>
+annotate_hunks(const DiffInput<Line>& diff_input,
+               const std::vector<Hunk>& hunks,
+               const EditGranularity granularity,
+               bool ignore_whitespace);
+
+}  // namespace diffy
