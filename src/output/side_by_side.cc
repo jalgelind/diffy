@@ -308,6 +308,7 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
 
     for (const auto& hunk : hunks) {
         DisplayColumns columns{
+            // TODO: replace ColumnSide with diff_input.A/B
             make_rows(ColumnSide::Left, hunk.a_lines),
             make_rows(ColumnSide::Right, hunk.b_lines),
         };

@@ -7,6 +7,7 @@
 #include <fstream>
 #include <functional>
 #include <sstream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>

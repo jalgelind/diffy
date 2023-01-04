@@ -7,6 +7,7 @@
 
 #include <gsl/span>
 #include <memory>
+#include <limits>
 
 namespace diffy {
 

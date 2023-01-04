@@ -3,6 +3,7 @@
 #include "config_parser.hpp"
 
 #include <deque>
+#include <optional>
 #include <string>
 #include <vector>
 

@@ -3,10 +3,16 @@ project('diffy', 'cpp', version : '1.0',
   'cpp_std=c++20',
 ])
 
+
+  #add_global_arguments(['--stdlib=libc++'], language : 'cpp')
+
 defines = []
 
 if get_option('buildtype') == 'debug'
-  defines += ['-DDIFFY_DEBUG=1', '-fstandalone-debug']
+  defines += [
+    '-DDIFFY_DEBUG=1',
+    # '-fstandalone-debug'
+  ]
 endif
 
 if host_machine.system() == 'windows'
@@ -21,7 +27,7 @@ add_global_arguments(defines, language : 'cpp')
 # Do we only need to do this on Windows? We don't seem to get vectorization without
 # enabling it ourselves...
 
-add_global_arguments(['-std=c++20', '-ferror-limit=2'], language : 'cpp')
+add_global_arguments(['-std=c++20'], language : 'cpp')
 
 cmake = import('cmake')
 
