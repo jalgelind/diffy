@@ -4,19 +4,12 @@
 
 #include <fmt/format.h>
 
+#include <iostream>
 #include <string>
 #include <vector>
 
 using namespace diffy;
 using namespace diffy::tok2;
-
-#ifndef DOCTEST_CONFIG_DISABLE
-
-// HACK: Without this, we'll get link errors on Darwin.
-// See: https://github.com/onqtam/doctest/issues/126
-#include <iostream>
-
-#endif
 
 TEST_CASE("tokenizer") {
     SUBCASE("empty") {

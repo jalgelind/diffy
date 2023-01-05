@@ -259,15 +259,3 @@ diffy::annotate_hunks(const DiffInput<diffy::Line>& diff_input,
     }
     return hunks_annotated;
 }
-
-#ifndef DOCTEST_CONFIG_DISABLE
-
-// HACK: Without this, we'll get link errors on Darwin.
-// See: https://github.com/onqtam/doctest/issues/126
-#include <iostream>
-#endif
-
-TEST_CASE("diff_hunk_annotate") {
-    SUBCASE("empty") {
-    }
-}
