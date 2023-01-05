@@ -97,6 +97,7 @@ src_test = [
   'src/config/parser/config_parser_serialization_tests.cc',
   'src/config/parser/config_tokenizer_tests.cc',
   'src/processing/tokenizer_tests.cc',
+  'src/util/bipolar_array_tests.cc',
   'src/util/utf8decode_tests.cc',
 ]
 
