@@ -51,31 +51,31 @@ diffy::config_apply(diffy::ColumnViewConfig& sbs_ui_opts) {
     // clang-format off
     const std::vector<std::tuple<std::string, ConfigVariableType, void*>> options = {
         // side-by-side settings
-        { "general.show_line_numbers",            C::Bool, &sbs_ui_opts.show_line_numbers},
-        { "general.context_colored_line_numbers", C::Bool, &sbs_ui_opts.context_colored_line_numbers},
-        { "general.word_wrap",                    C::Bool, &sbs_ui_opts.word_wrap},
-        { "general.line_number_align_right",      C::Bool, &sbs_ui_opts.line_number_align_right},
+        { "general.show_line_numbers",            C::Bool, &sbs_ui_opts.settings.show_line_numbers},
+        { "general.context_colored_line_numbers", C::Bool, &sbs_ui_opts.settings.context_colored_line_numbers},
+        { "general.word_wrap",                    C::Bool, &sbs_ui_opts.settings.word_wrap},
+        { "general.line_number_align_right",      C::Bool, &sbs_ui_opts.settings.line_number_align_right},
 
         // side-by-side theme
         // TODO: improve names
-        { "theme.column_separator",         C::String, &sbs_ui_opts.column_separator },
-        { "theme.edge_separator",           C::String, &sbs_ui_opts.edge_separator },
-        { "theme.tab_replacement",          C::String, &sbs_ui_opts.tab_replacement },
-        { "theme.cr_replacement",           C::String, &sbs_ui_opts.cr_replacement },
-        { "theme.lf_replacement",           C::String, &sbs_ui_opts.lf_replacement },
-        { "theme.crlf_replacement",         C::String, &sbs_ui_opts.crlf_replacement },
-        { "theme.space_replacement",        C::String, &sbs_ui_opts.space_replacement },
-        { "theme.header",                   C::Color,  &sbs_ui_opts.theme_header },
-        { "theme.delete_line",              C::Color,  &sbs_ui_opts.theme_delete_line },
-        { "theme.delete_token",             C::Color,  &sbs_ui_opts.theme_delete_token },
-        { "theme.delete_line_number",       C::Color,  &sbs_ui_opts.theme_delete_line_number },
-        { "theme.insert_line",              C::Color,  &sbs_ui_opts.theme_insert_line },
-        { "theme.insert_token",             C::Color,  &sbs_ui_opts.theme_insert_token },
-        { "theme.insert_line_number",       C::Color,  &sbs_ui_opts.theme_insert_line_number },
-        { "theme.common_line",              C::Color,  &sbs_ui_opts.theme_common_line },
-        { "theme.empty_line",               C::Color,  &sbs_ui_opts.theme_empty_line },
-        { "theme.common_line_number",       C::Color,  &sbs_ui_opts.theme_common_line_number },
-        { "theme.frame",                    C::Color,  &sbs_ui_opts.theme_frame },
+        { "theme.column_separator",         C::String, &sbs_ui_opts.chars.column_separator },
+        { "theme.edge_separator",           C::String, &sbs_ui_opts.chars.edge_separator },
+        { "theme.tab_replacement",          C::String, &sbs_ui_opts.chars.tab_replacement },
+        { "theme.cr_replacement",           C::String, &sbs_ui_opts.chars.cr_replacement },
+        { "theme.lf_replacement",           C::String, &sbs_ui_opts.chars.lf_replacement },
+        { "theme.crlf_replacement",         C::String, &sbs_ui_opts.chars.crlf_replacement },
+        { "theme.space_replacement",        C::String, &sbs_ui_opts.chars.space_replacement },
+        { "theme.header",                   C::Color,  &sbs_ui_opts.style.header },
+        { "theme.delete_line",              C::Color,  &sbs_ui_opts.style.delete_line },
+        { "theme.delete_token",             C::Color,  &sbs_ui_opts.style.delete_token },
+        { "theme.delete_line_number",       C::Color,  &sbs_ui_opts.style.delete_line_number },
+        { "theme.insert_line",              C::Color,  &sbs_ui_opts.style.insert_line },
+        { "theme.insert_token",             C::Color,  &sbs_ui_opts.style.insert_token },
+        { "theme.insert_line_number",       C::Color,  &sbs_ui_opts.style.insert_line_number },
+        { "theme.common_line",              C::Color,  &sbs_ui_opts.style.common_line },
+        { "theme.empty_line",               C::Color,  &sbs_ui_opts.style.empty_line },
+        { "theme.common_line_number",       C::Color,  &sbs_ui_opts.style.common_line_number },
+        { "theme.frame",                    C::Color,  &sbs_ui_opts.style.frame },
     };
     // clang-format on
 

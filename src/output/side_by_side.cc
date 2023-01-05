@@ -167,19 +167,19 @@ transform_edit_line(const gsl::span<diffy::Line>& content_strings,
         if (segment.type != EditType::Common) {
             if (segment.flags & TokenFlagTab) {
                 for (size_t i = 0; i < segment.length; i++)
-                    text += config.tab_replacement;
+                    text += config.chars.tab_replacement;
             } else if (segment.flags & TokenFlagCR) {
                 for (size_t i = 0; i < segment.length; i++)
-                    text += config.cr_replacement;
+                    text += config.chars.cr_replacement;
             } else if (segment.flags & TokenFlagSpace) {
                 for (size_t i = 0; i < segment.length; i++)
-                    text += config.space_replacement;
+                    text += config.chars.space_replacement;
             } else if (segment.flags & TokenFlagLF) {
                 for (size_t i = 0; i < segment.length; i++)
-                    text += config.lf_replacement;
+                    text += config.chars.lf_replacement;
             } else if (segment.flags & TokenFlagCRLF) {
                 for (size_t i = 0; i < segment.length / 2; i++)
-                    text += config.crlf_replacement;
+                    text += config.chars.crlf_replacement;
             } else {
                 auto idx = static_cast<long>(edit_line.line_index);
                 text = content_strings[idx].line.substr(segment.start, segment.length);
@@ -187,7 +187,7 @@ transform_edit_line(const gsl::span<diffy::Line>& content_strings,
         } else {
             if (segment.flags & TokenFlagTab) {
                 for (size_t i = 0; i < segment.length; i++)
-                    text += std::string(utf8_len(config.tab_replacement), ' ');
+                    text += std::string(utf8_len(config.chars.tab_replacement), ' ');
             } else if (segment.flags & TokenFlagSpace) {
                 for (size_t i = 0; i < segment.length; i++)
                     text += " ";
@@ -224,7 +224,7 @@ make_display_lines(const gsl::span<diffy::Line>& content_strings,
                    const ColumnViewConfig& config) {
     DisplayLine display_line = transform_edit_line(content_strings, line, config);
 
-    if (!config.word_wrap) {
+    if (!config.settings.word_wrap) {
         return make_display_line_chopped(display_line, config.max_row_length);
     }
 
@@ -278,10 +278,9 @@ make_header_columns(const std::string& left, const std::string right, const Colu
     auto alen = utf8_len(a);
     auto blen = utf8_len(b);
 
-    // colors
     return {
-        {DisplayLine{{{config.theme_header + a, alen, 0, EditType::Meta}}, alen}},  // 4=underline
-        {DisplayLine{{{config.theme_header + b, blen, 0, EditType::Meta}}, blen}},  // 4=underline
+        {DisplayLine{{{config.style.header + a, alen, 0, EditType::Meta}}, alen}},
+        {DisplayLine{{{config.style.header + b, blen, 0, EditType::Meta}}, blen}},
         false,
     };
 }
@@ -345,17 +344,17 @@ render_display_line(const ColumnViewConfig& config,
         std::string style = "";
         switch (segment.type) {
             case EditType::Insert:
-                style = config.theme_insert_token;
+                style = config.style.insert_token;
                 break;
             case EditType::Delete:
-                style = config.theme_delete_token;
+                style = config.style.delete_token;
                 break;
             case EditType::Common:
-                style = config.theme_common_line;
+                style = config.style.common_line;
                 break;
             case EditType::Meta:
                 // TODO: We need DisplayType or something, "Meta" is a hack that doesn't scale
-                // style = config.theme_header;
+                // style = config.style.header;
                 break;
             default:
                 break;
@@ -374,19 +373,19 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
         // push header_background or content_background?
 
         // Left side
-        display_commands.push_back(DisplayCommand::unstyled(config.edge_separator));
-        if (config.show_line_numbers) {
+        display_commands.push_back(DisplayCommand::unstyled(config.chars.edge_separator));
+        if (config.settings.show_line_numbers) {
             std::string style = "";
-            if (config.context_colored_line_numbers) {
+            if (config.settings.word_wrap) {
                 switch (left.type) {
                     case EditType::Insert:
-                        style = config.theme_insert_line_number;
+                        style = config.style.insert_line_number;
                         break;
                     case EditType::Delete:
-                        style = config.theme_delete_line_number;
+                        style = config.style.delete_line_number;
                         break;
                     case EditType::Common:
-                        style = config.theme_common_line_number;
+                        style = config.style.common_line_number;
                         break;
                     case EditType::Meta:
                         // ??
@@ -397,7 +396,7 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
             }
             display_commands.push_back(DisplayCommand::with_style(
                 style, format_line_number(left.line_number, config.line_number_digits_count,
-                                          config.line_number_align_right)));
+                                          config.settings.line_number_align_right)));
             display_commands.push_back(DisplayCommand::unstyled(" "));
         }
 
@@ -405,30 +404,30 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
         assert(config.max_row_length >= left.line_length);
 
         display_commands.push_back(DisplayCommand::with_style(
-            config.theme_common_line, std::string(config.max_row_length - left.line_length, ' ')));
+            config.style.common_line, std::string(config.max_row_length - left.line_length, ' ')));
 
         // Middle
-        if (config.context_colored_line_numbers) {
+        if (config.settings.context_colored_line_numbers) {
             display_commands.push_back(
-                DisplayCommand::with_style(config.theme_frame, config.column_separator));
+                DisplayCommand::with_style(config.style.frame, config.chars.column_separator));
         } else {
-            display_commands.push_back(DisplayCommand::unstyled(config.column_separator));
+            display_commands.push_back(DisplayCommand::unstyled(config.chars.column_separator));
         }
 
         // Right side
 
-        if (config.show_line_numbers) {
+        if (config.settings.show_line_numbers) {
             std::string style = "";
-            if (config.context_colored_line_numbers) {
+            if (config.settings.context_colored_line_numbers) {
                 switch (right.type) {
                     case EditType::Insert:
-                        style = config.theme_insert_line_number;
+                        style = config.style.insert_line_number;
                         break;
                     case EditType::Delete:
-                        style = config.theme_delete_line_number;
+                        style = config.style.delete_line_number;
                         break;
                     case EditType::Common:
-                        style = config.theme_common_line_number;
+                        style = config.style.common_line_number;
                         break;
                     case EditType::Meta:
                         // ??
@@ -439,7 +438,7 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
             }
             display_commands.push_back(DisplayCommand::with_style(
                 style, format_line_number(right.line_number, config.line_number_digits_count,
-                                          config.line_number_align_right)));
+                                          config.settings.line_number_align_right)));
             display_commands.push_back(DisplayCommand::unstyled(" "));
         }
 
@@ -447,9 +446,9 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
         assert(config.max_row_length >= right.line_length);
 
         display_commands.push_back(DisplayCommand::with_style(
-            config.theme_common_line, std::string(config.max_row_length - right.line_length, ' ')));
+            config.style.common_line, std::string(config.max_row_length - right.line_length, ' ')));
 
-        display_commands.push_back(DisplayCommand::unstyled(config.edge_separator));
+        display_commands.push_back(DisplayCommand::unstyled(config.chars.edge_separator));
 
         std::string full;
         for (auto& command : display_commands) {
@@ -502,16 +501,16 @@ diffy::side_by_side_diff(const DiffInput<diffy::Line>& diff_input,
     }
 
     int64_t frame_characters = 0;
-    if (!config.column_separator.empty()) {
-        frame_characters += utf8_len(config.column_separator);
+    if (!config.chars.column_separator.empty()) {
+        frame_characters += utf8_len(config.chars.column_separator);
     }
-    if (!config.edge_separator.empty()) {
-        frame_characters += 2 * utf8_len(config.edge_separator);
+    if (!config.chars.edge_separator.empty()) {
+        frame_characters += 2 * utf8_len(config.chars.edge_separator);
     }
 
     int64_t line_number_digits = 4;
     int64_t line_number_digits_padding = 0;
-    if (config.show_line_numbers) {
+    if (config.settings.show_line_numbers) {
         auto& last_hunk = *(hunks.end() - 1);
         int64_t line_number_max =
             std::max(last_hunk.from_start + last_hunk.from_count, last_hunk.to_start + last_hunk.to_count);

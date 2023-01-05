@@ -30,7 +30,23 @@ struct ProgramOptions {
     std::string right_file_name;
 };
 
-struct ColumnViewConfig {
+struct ColumnViewTextStyle {
+    // clang-format off
+    std::string header             = "{fg='white', bg='default', attr=['underline']}";
+    std::string delete_line        = "{fg='default', bg='default', attr=[]}";
+    std::string delete_token       = "{fg='light_red', bg='default', attr=['bold']}";
+    std::string delete_line_number = "{fg='red', bg='dark_red', attr=[]}";
+    std::string insert_line        = "{fg='default', bg='default', attr=[]}";
+    std::string insert_token       = "{fg='light_green', bg='default', attr=['bold']}";
+    std::string insert_line_number = "{fg='green', bg='darg_green', attr=['bold']}";
+    std::string common_line        = "{fg='default', bg='default', attr=[]}";
+    std::string common_line_number = "{fg='default', bg='default', attr=[]}";
+    std::string frame              = "{fg='dark_grey', bg='light_grey', attr=[]}";
+    std::string empty_line         = "{fg='white', bg='default', attr=[]}";
+    // clang-format on
+};
+
+struct ColumnViewCharacters {
     std::string column_separator = " │";
     std::string edge_separator = "";
 
@@ -39,27 +55,19 @@ struct ColumnViewConfig {
     std::string lf_replacement = "↓";
     std::string crlf_replacement = "↵";  // ␤
     std::string space_replacement = "·";
+};
 
+struct ColumnViewSettings {
     bool show_line_numbers = true;
     bool context_colored_line_numbers = true;
     bool word_wrap = true;
     bool line_number_align_right = false;
+};
 
-    // clang-format off
-    std::string theme_header             = "{fg='white', bg='default', attr=['underline']}";
-    std::string theme_delete_line        = "{fg='default', bg='default', attr=[]}";
-    std::string theme_delete_token       = "{fg='light_red', bg='default', attr=['bold']}";
-    std::string theme_delete_line_number = "{fg='red', bg='dark_red', attr=[]}";
-    std::string theme_insert_line        = "{fg='default', bg='default', attr=[]}";
-    std::string theme_insert_token       = "{fg='light_green', bg='default', attr=['bold']}";
-    std::string theme_insert_line_number = "{fg='green', bg='darg_green', attr=['bold']}";
-    std::string theme_common_line        = "{fg='default', bg='default', attr=[]}";
-    std::string theme_common_line_number = "{fg='default', bg='default', attr=[]}";
-    std::string theme_frame              = "{fg='dark_grey', bg='light_grey', attr=[]}";
-    std::string theme_empty_line         = "{fg='white', bg='default', attr=[]}";
-    // clang-format on
-
-    // -- @cleanup below, state not configuration
+struct ColumnViewConfig {
+    ColumnViewCharacters chars;
+    ColumnViewSettings settings;
+    ColumnViewTextStyle style;
 
     // automatically calculated based on terminal width?
     int64_t max_row_length = 0;
