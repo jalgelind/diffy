@@ -103,13 +103,11 @@ src_test = [
 
 executable('diffy',
             ['src/diffy_main.cc'] + src,
-            cpp_args: ['-DDOCTEST_CONFIG_DISABLE'],
             include_directories: include_directories([
                 'src',
               ]),
             dependencies: [crc32c_dep,
                            GSL_dep,
-                           doctest_dep, 
                            fmt_dep,
                            getopt_dep,
                            platform_folders_dep]

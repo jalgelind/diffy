@@ -2,8 +2,6 @@
 
 #include "util/hash.hpp"
 
-#include <doctest.h>
-
 #include <fmt/format.h>
 
 #include <algorithm>

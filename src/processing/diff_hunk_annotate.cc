@@ -2,7 +2,6 @@
 
 #include "algorithms/myers_linear.hpp"
 #include "algorithms/patience.hpp"
-#include "doctest.h"
 #include "processing/tokenizer.hpp"
 
 #include <fmt/format.h>

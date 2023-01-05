@@ -1,7 +1,5 @@
 #pragma once
 
-#include <doctest.h>
-
 #include <cstring>
 #include <memory>
 
