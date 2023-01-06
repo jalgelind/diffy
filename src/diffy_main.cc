@@ -158,7 +158,7 @@ Side by side options:
                0) {
             switch (c) {
                 case 'v':
-                    fmt::print("version: 0.90\n");
+                    fmt::print("version: {}\n", DIFFY_VERSION);
                     exit(0);
 #ifdef DIFFY_DEBUG
                 case 'd':

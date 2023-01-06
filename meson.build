@@ -1,4 +1,4 @@
-project('diffy', 'cpp', version : '1.0',
+project('diffy', 'cpp', version : '0.9',
   default_options : [
   'cpp_std=c++20',
 ])
@@ -11,7 +11,6 @@ defines = []
 if get_option('buildtype') == 'debug'
   defines += [
     '-DDIFFY_DEBUG=1',
-    # '-fstandalone-debug'
   ]
 endif
 
@@ -103,6 +102,7 @@ src_test = [
 
 executable('diffy',
             ['src/diffy_main.cc'] + src,
+            cpp_args : '-DDIFFY_VERSION=@0@'.format(meson.project_version()),
             include_directories: include_directories([
                 'src',
               ]),
