@@ -6,8 +6,8 @@
 #include "util/bipolar_array.hpp"
 
 #include <gsl/span>
-#include <memory>
 #include <limits>
+#include <memory>
 
 namespace diffy {
 

@@ -138,11 +138,11 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
                     if (cfg_parse_value_tree(data, parse_result, parsed_value)) {
                         cfg_set_value_at(path, config_file_table_value, parsed_value);
 
-                    // We need to replace the value stored in the settings struct as it's used
-                    // by the display layer :-/
-                    std::string parsed_color = translate_color(parsed_value.as_table());
-                    auto* str_ptr = (std::string*) ptr;
-                    str_ptr->assign(parsed_color);
+                        // We need to replace the value stored in the settings struct as it's used
+                        // by the display layer :-/
+                        std::string parsed_color = translate_color(parsed_value.as_table());
+                        auto* str_ptr = (std::string*) ptr;
+                        str_ptr->assign(parsed_color);
 
                     } else {
                         assert(0 && "invalid input data; check source");

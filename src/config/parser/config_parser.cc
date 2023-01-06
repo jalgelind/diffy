@@ -121,7 +121,7 @@ diffy::cfg_parse(const std::string& input_data,
 
     std::size_t cursor = 0;
 
-// clang-format off
+    // clang-format off
     #define PARSER_NEXT_STATE() {                   \
         continue;                                   \
     }

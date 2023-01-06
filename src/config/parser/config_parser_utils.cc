@@ -6,8 +6,8 @@
 
 #include <fstream>
 #include <functional>
-#include <sstream>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -182,8 +182,6 @@ diffy::cfg_load_file(const std::string& file_path, ParseResult& result, Value& r
     }
 
     std::stringstream buffer;
-
-    // Ugh..
     buffer << ifs.rdbuf();
 
     return cfg_parse_value_tree(buffer.str(), result, result_obj);
@@ -202,8 +200,6 @@ cfg_load_file(const std::string& file_path,
     }
 
     std::stringstream buffer;
-
-    // Ugh..
     buffer << ifs.rdbuf();
 
     return cfg_parse(buffer.str(), result, consume_instruction);

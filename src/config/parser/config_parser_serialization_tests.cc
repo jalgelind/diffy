@@ -10,8 +10,6 @@
 
 using namespace diffy;
 
-
-
 #if 0
 void
 dump_test_case(std::vector<TbInstruction> instructions) {
