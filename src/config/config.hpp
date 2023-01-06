@@ -64,18 +64,9 @@ struct ColumnViewSettings {
     bool line_number_align_right = false;
 };
 
-struct ColumnViewConfig {
-    ColumnViewCharacters chars;
-    ColumnViewSettings settings;
-    ColumnViewTextStyle style;
-
-    // automatically calculated based on terminal width?
-    int64_t max_row_length = 0;
-    // This is automatically adjusted depending on how many lines we show.
-    int64_t line_number_digits_count = 4;
-};
-
 void
-config_apply(diffy::ColumnViewConfig& sbs_ui_opts);
+config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
+             diffy::ColumnViewSettings& sbs_view_opts,
+             diffy::ColumnViewTextStyle& sbs_style_opts);
 
 }  // namespace diffy

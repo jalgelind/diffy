@@ -25,7 +25,9 @@ enum class ConfigVariableType {
 };
 
 void
-diffy::config_apply(diffy::ColumnViewConfig& sbs_ui_opts) {
+diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
+                    diffy::ColumnViewSettings& sbs_view_opts,
+                    diffy::ColumnViewTextStyle& sbs_style_opts) {
     const std::string config_root = fmt::format("{}/diffy", sago::getConfigHome());
     const std::string config_path = fmt::format("{}/config.conf", config_root);
     bool flush_config_to_disk = false;
@@ -51,31 +53,32 @@ diffy::config_apply(diffy::ColumnViewConfig& sbs_ui_opts) {
     // clang-format off
     const std::vector<std::tuple<std::string, ConfigVariableType, void*>> options = {
         // side-by-side settings
-        { "general.show_line_numbers",            C::Bool, &sbs_ui_opts.settings.show_line_numbers},
-        { "general.context_colored_line_numbers", C::Bool, &sbs_ui_opts.settings.context_colored_line_numbers},
-        { "general.word_wrap",                    C::Bool, &sbs_ui_opts.settings.word_wrap},
-        { "general.line_number_align_right",      C::Bool, &sbs_ui_opts.settings.line_number_align_right},
+        { "general.show_line_numbers",            C::Bool, &sbs_view_opts.show_line_numbers},
+        { "general.context_colored_line_numbers", C::Bool, &sbs_view_opts.context_colored_line_numbers},
+        { "general.word_wrap",                    C::Bool, &sbs_view_opts.word_wrap},
+        { "general.line_number_align_right",      C::Bool, &sbs_view_opts.line_number_align_right},
 
         // side-by-side theme
-        // TODO: improve names
-        { "theme.column_separator",         C::String, &sbs_ui_opts.chars.column_separator },
-        { "theme.edge_separator",           C::String, &sbs_ui_opts.chars.edge_separator },
-        { "theme.tab_replacement",          C::String, &sbs_ui_opts.chars.tab_replacement },
-        { "theme.cr_replacement",           C::String, &sbs_ui_opts.chars.cr_replacement },
-        { "theme.lf_replacement",           C::String, &sbs_ui_opts.chars.lf_replacement },
-        { "theme.crlf_replacement",         C::String, &sbs_ui_opts.chars.crlf_replacement },
-        { "theme.space_replacement",        C::String, &sbs_ui_opts.chars.space_replacement },
-        { "theme.header",                   C::Color,  &sbs_ui_opts.style.header },
-        { "theme.delete_line",              C::Color,  &sbs_ui_opts.style.delete_line },
-        { "theme.delete_token",             C::Color,  &sbs_ui_opts.style.delete_token },
-        { "theme.delete_line_number",       C::Color,  &sbs_ui_opts.style.delete_line_number },
-        { "theme.insert_line",              C::Color,  &sbs_ui_opts.style.insert_line },
-        { "theme.insert_token",             C::Color,  &sbs_ui_opts.style.insert_token },
-        { "theme.insert_line_number",       C::Color,  &sbs_ui_opts.style.insert_line_number },
-        { "theme.common_line",              C::Color,  &sbs_ui_opts.style.common_line },
-        { "theme.empty_line",               C::Color,  &sbs_ui_opts.style.empty_line },
-        { "theme.common_line_number",       C::Color,  &sbs_ui_opts.style.common_line_number },
-        { "theme.frame",                    C::Color,  &sbs_ui_opts.style.frame },
+        { "theme.column_separator",         C::String, &sbs_char_opts.column_separator },
+        { "theme.edge_separator",           C::String, &sbs_char_opts.edge_separator },
+        { "theme.tab_replacement",          C::String, &sbs_char_opts.tab_replacement },
+        { "theme.cr_replacement",           C::String, &sbs_char_opts.cr_replacement },
+        { "theme.lf_replacement",           C::String, &sbs_char_opts.lf_replacement },
+        { "theme.crlf_replacement",         C::String, &sbs_char_opts.crlf_replacement },
+        { "theme.space_replacement",        C::String, &sbs_char_opts.space_replacement },
+
+        // side-by-side color style
+        { "theme.header",                   C::Color,  &sbs_style_opts.header },
+        { "theme.delete_line",              C::Color,  &sbs_style_opts.delete_line },
+        { "theme.delete_token",             C::Color,  &sbs_style_opts.delete_token },
+        { "theme.delete_line_number",       C::Color,  &sbs_style_opts.delete_line_number },
+        { "theme.insert_line",              C::Color,  &sbs_style_opts.insert_line },
+        { "theme.insert_token",             C::Color,  &sbs_style_opts.insert_token },
+        { "theme.insert_line_number",       C::Color,  &sbs_style_opts.insert_line_number },
+        { "theme.common_line",              C::Color,  &sbs_style_opts.common_line },
+        { "theme.empty_line",               C::Color,  &sbs_style_opts.empty_line },
+        { "theme.common_line_number",       C::Color,  &sbs_style_opts.common_line_number },
+        { "theme.frame",                    C::Color,  &sbs_style_opts.frame },
     };
     // clang-format on
 

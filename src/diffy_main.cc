@@ -87,12 +87,14 @@ compute_diff(diffy::Algo algorithm,
 
 }  // namespace
 
+
 int
 main(int argc, char* argv[]) {
     diffy::ProgramOptions opts;
-    diffy::ColumnViewConfig sbs_ui_opts;
+    diffy::ColumnViewState sbs_ui_opts;
+    
 
-    diffy::config_apply(sbs_ui_opts);
+    diffy::config_apply(sbs_ui_opts.chars, sbs_ui_opts.settings, sbs_ui_opts.style);
 
     auto show_help = [&](const std::string& optional_error_message) {
         std::string help = fmt::format((R"(

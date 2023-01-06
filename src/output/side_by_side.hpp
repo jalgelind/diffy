@@ -10,10 +10,22 @@
 
 namespace diffy {
 
+struct ColumnViewState {
+    ColumnViewCharacters chars;
+    ColumnViewSettings settings;
+    ColumnViewTextStyle style;
+
+    // automatically calculated based on terminal width?
+    int64_t max_row_length = 0;
+    // This is automatically adjusted depending on how many lines we show.
+    // TODO: configurable setting where -1 is auto?
+    int64_t line_number_digits_count = 4;
+};
+
 void
 side_by_side_diff(const DiffInput<diffy::Line>& diff_input,
                   const std::vector<AnnotatedHunk>& hunks,
-                  ColumnViewConfig& config,  // TODO: make const
+                  ColumnViewState& config,  // TODO: make const
                   int64_t width);
 
 }  // namespace diffy

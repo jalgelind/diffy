@@ -157,7 +157,7 @@ make_display_line_wrapped(const DisplayLine& input_line, int64_t limit) {
 DisplayLine
 transform_edit_line(const gsl::span<diffy::Line>& content_strings,
                     const EditLine& edit_line,
-                    const ColumnViewConfig config) {
+                    const ColumnViewState config) {
     DisplayLine display_line;
     display_line.line_number = static_cast<int>(edit_line.line_index + 1);
     display_line.type = edit_line.type;
@@ -221,7 +221,7 @@ transform_edit_line(const gsl::span<diffy::Line>& content_strings,
 std::vector<DisplayLine>
 make_display_lines(const gsl::span<diffy::Line>& content_strings,
                    const EditLine& line,
-                   const ColumnViewConfig& config) {
+                   const ColumnViewState& config) {
     DisplayLine display_line = transform_edit_line(content_strings, line, config);
 
     if (!config.settings.word_wrap) {
@@ -264,7 +264,7 @@ insert_alignment_rows(DisplayColumns& columns) {
 }
 
 DisplayColumns
-make_header_columns(const std::string& left, const std::string right, const ColumnViewConfig& config) {
+make_header_columns(const std::string& left, const std::string right, const ColumnViewState& config) {
     auto shorten = [&config](const std::string& s) {
         if (static_cast<int64_t>(s.size()) > config.max_row_length) {
             return "..." + s.substr(s.size() - config.max_row_length + 3);
@@ -288,7 +288,7 @@ make_header_columns(const std::string& left, const std::string right, const Colu
 std::vector<DisplayColumns>
 make_display_columns(const DiffInput<diffy::Line>& diff_input,
                      const std::vector<AnnotatedHunk>& hunks,
-                     const ColumnViewConfig& config) {
+                     const ColumnViewState& config) {
     std::vector<DisplayColumns> hunk_columns;
 
     hunk_columns.push_back(make_header_columns(diff_input.A_name, diff_input.B_name, config));
@@ -337,7 +337,7 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
 
 // Transform the segments into a list of display commands, i.e "set color", "write text"
 void
-render_display_line(const ColumnViewConfig& config,
+render_display_line(const ColumnViewState& config,
                     std::vector<DisplayCommand>* output,
                     const DisplayLine& line) {
     for (const auto& segment : line.segments) {
@@ -364,9 +364,9 @@ render_display_line(const ColumnViewConfig& config,
 }
 
 void
-print_display_columns_tty(const std::vector<DisplayColumns>& columns, const ColumnViewConfig& config) {
+print_display_columns_tty(const std::vector<DisplayColumns>& columns, const ColumnViewState& config) {
     auto print_display_lines = [](const DisplayLine& left, const DisplayLine& right,
-                                  const ColumnViewConfig& config) {
+                                  const ColumnViewState& config) {
         std::vector<DisplayCommand> display_commands;
 
         // color stack? do we have the line meta data somewhere here to decide if we should
@@ -480,7 +480,7 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
 void
 diffy::side_by_side_diff(const DiffInput<diffy::Line>& diff_input,
                          const std::vector<AnnotatedHunk>& hunks,
-                         ColumnViewConfig& config,
+                         ColumnViewState& config,
                          int64_t width) {
     if (hunks.size() == 0) {
         // TODO: Should return some sort of failure?
