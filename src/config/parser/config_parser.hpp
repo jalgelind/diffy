@@ -143,41 +143,6 @@ struct Value {
     // clang-format on
 };
 
-// TODO: maybe all these should be members for consistency.
-
-bool
-cfg_value_contains(Value& v, const std::string& key);
-
-bool
-cfg_value_is_array(Value& v);
-
-bool
-cfg_value_is_table(Value& v);
-
-bool
-cfg_value_is_int(Value& v);
-
-bool
-cfg_value_is_bool(Value& v);
-
-bool
-cfg_value_is_string(Value& v);
-
-Value::Array&
-cfg_value_as_array(Value& v);
-
-Value::Table&
-cfg_value_as_table(Value& v);
-
-Value::Int&
-cfg_value_as_int(Value& v);
-
-Value::Bool&
-cfg_value_as_bool(Value& v);
-
-Value::String&
-cfg_value_as_string(Value& v);
-
 std::string
 repr(Value& v);
 

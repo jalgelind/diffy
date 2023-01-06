@@ -657,60 +657,7 @@ diffy::cfg_parse_collect(const std::string& input_data,
     return cfg_parse(input_data, result, [&](auto x) { instructions.push_back(x); });
 }
 
-// ---
-
-bool
-cfg_value_contains(Value& v, const std::string& key) {
-    if (v.is_table()) {
-        return v.as_table().contains(key);
-    }
-    return false;
-}
-
-bool
-cfg_value_is_array(Value& v) {
-    return std::holds_alternative<Value::Array>(v.v);
-}
-bool
-cfg_value_is_table(Value& v) {
-    return std::holds_alternative<Value::Table>(v.v);
-}
-bool
-cfg_value_is_int(Value& v) {
-    return std::holds_alternative<Value::Int>(v.v);
-}
-bool
-cfg_value_is_bool(Value& v) {
-    return std::holds_alternative<Value::Bool>(v.v);
-}
-bool
-cfg_value_is_string(Value& v) {
-    return std::holds_alternative<Value::String>(v.v);
-}
-
-Value::Array&
-cfg_value_as_array(Value& v) {
-    return std::get<Value::Array>(v.v);
-}
-Value::Table&
-cfg_value_as_table(Value& v) {
-    return std::get<Value::Table>(v.v);
-}
-Value::Int&
-cfg_value_as_int(Value& v) {
-    return std::get<Value::Int>(v.v);
-}
-Value::Bool&
-cfg_value_as_bool(Value& v) {
-    return std::get<Value::Bool>(v.v);
-}
-Value::String&
-cfg_value_as_string(Value& v) {
-    return std::get<Value::String>(v.v);
-}
-
 // -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
-// -- -- --
 
 std::string
 repr(State s) {
