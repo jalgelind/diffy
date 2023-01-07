@@ -92,7 +92,7 @@ main(int argc, char* argv[]) {
     diffy::ProgramOptions opts;
     diffy::ColumnViewState sbs_ui_opts;
 
-    diffy::config_apply(sbs_ui_opts.chars, sbs_ui_opts.settings, sbs_ui_opts.style);
+    diffy::config_apply(sbs_ui_opts.chars, sbs_ui_opts.settings, sbs_ui_opts.style_config, sbs_ui_opts.style);
 
     auto show_help = [&](const std::string& optional_error_message) {
         std::string help = fmt::format((R"(

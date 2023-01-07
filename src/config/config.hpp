@@ -1,5 +1,7 @@
 #pragma once
 
+#include "parser/config_parser.hpp"
+
 #include <string>
 
 namespace diffy {
@@ -30,22 +32,100 @@ struct ProgramOptions {
     std::string right_file_name;
 };
 
-// TODO: store these as Values; translation of those will need to be done before presentation
-//       in the side by side viewer.
+// TODO: Hmm... but this should be a Color type?
+// Color.to_value()
 struct ColumnViewTextStyle {
     // clang-format off
-    std::string header             = "{fg='white', bg='default', attr=['underline']}";
-    std::string delete_line        = "{fg='default', bg='default', attr=[]}";
-    std::string delete_token       = "{fg='light_red', bg='default', attr=['bold']}";
-    std::string delete_line_number = "{fg='red', bg='dark_red', attr=[]}";
-    std::string insert_line        = "{fg='default', bg='default', attr=[]}";
-    std::string insert_token       = "{fg='light_green', bg='default', attr=['bold']}";
-    std::string insert_line_number = "{fg='green', bg='darg_green', attr=['bold']}";
-    std::string common_line        = "{fg='default', bg='default', attr=[]}";
-    std::string common_line_number = "{fg='default', bg='default', attr=[]}";
-    std::string frame              = "{fg='dark_grey', bg='light_grey', attr=[]}";
-    std::string empty_line         = "{fg='white', bg='default', attr=[]}";
+    Value header = { Value::Table {
+        { "fg", Value {"white"} },
+        { "bg", Value {"default"} },
+        { "attr", { Value::Array {
+            {"underline"}
+        }},
+    }}};
+
+    Value delete_line = { Value::Table {
+        { "fg", Value {"default"} },
+        { "bg", Value {"default"} },
+        { "attr", { Value::Array {}},
+    }}};
+
+    Value delete_token = { Value::Table {
+        { "fg", Value {"light_red"} },
+        { "bg", Value {"default"} },
+        { "attr", { Value::Array {
+            {"bold"}
+        }},
+    }}};
+
+    Value delete_line_number = { Value::Table {
+        { "fg", Value {"red"} },
+        { "bg", Value {"dark_red"} },
+        { "attr", { Value::Array {
+            {"bold"}
+        }},
+    }}};
+
+    Value insert_line = { Value::Table {
+        { "fg", Value {"default"} },
+        { "bg", Value {"default"} },
+        { "attr", { Value::Array {}},
+    }}};
+
+    Value insert_token = { Value::Table {
+        { "fg", Value {"light_green"} },
+        { "bg", Value {"default"} },
+        { "attr", { Value::Array {
+            {"bold"}
+        }},
+    }}};
+
+    Value insert_line_number = { Value::Table {
+        { "fg", Value {"green"} },
+        { "bg", Value {"dark_green"} },
+        { "attr", { Value::Array {
+            {"bold"}
+        }},
+    }}};
+
+    Value common_line = { Value::Table {
+        { "fg", Value {"default"} },
+        { "bg", Value {"default"} },
+        { "attr", { Value::Array {}},
+    }}};
+
+    Value common_line_number = { Value::Table {
+        { "fg", Value {"default"} },
+        { "bg", Value {"default"} },
+        { "attr", { Value::Array {}},
+    }}};
+
+    Value frame = { Value::Table {
+        { "fg", Value {"dark_grey"} },
+        { "bg", Value {"light_grey"} },
+        { "attr", { Value::Array {}},
+    }}};
+
+    Value empty_line = { Value::Table {
+        { "fg", Value {"white"} },
+        { "bg", Value {"default"} },
+        { "attr", { Value::Array {}},
+    }}};
     // clang-format on
+};
+
+struct ColumnViewTextStyleEscapeCodes {
+    std::string header;
+    std::string delete_line;
+    std::string delete_token;
+    std::string delete_line_number;
+    std::string insert_line;
+    std::string insert_token;
+    std::string insert_line_number;
+    std::string common_line;
+    std::string common_line_number;
+    std::string frame;
+    std::string empty_line;
 };
 
 struct ColumnViewCharacters {
@@ -69,6 +149,7 @@ struct ColumnViewSettings {
 void
 config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
              diffy::ColumnViewSettings& sbs_view_opts,
-             diffy::ColumnViewTextStyle& sbs_style_opts);
+             diffy::ColumnViewTextStyle& sbs_style_opts,
+             diffy::ColumnViewTextStyleEscapeCodes& sbs_style_escape_codes);
 
 }  // namespace diffy

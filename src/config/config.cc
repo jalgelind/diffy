@@ -27,7 +27,8 @@ enum class ConfigVariableType {
 void
 diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
                     diffy::ColumnViewSettings& sbs_view_opts,
-                    diffy::ColumnViewTextStyle& sbs_style_opts) {
+                    diffy::ColumnViewTextStyle& sbs_style_opts,
+                    diffy::ColumnViewTextStyleEscapeCodes& sbs_style_escape_codes) {
     const std::string config_root = fmt::format("{}/diffy", sago::getConfigHome());
     const std::string config_path = fmt::format("{}/config.conf", config_root);
     bool flush_config_to_disk = false;
@@ -82,6 +83,22 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
     };
     // clang-format on
 
+    // -- -- -- --
+
+    const std::vector<std::tuple<Value*, std::string*>> colors = {
+            {&sbs_style_opts.header, &sbs_style_escape_codes.header},
+            {&sbs_style_opts.delete_line, &sbs_style_escape_codes.delete_line},
+            {&sbs_style_opts.delete_token, &sbs_style_escape_codes.delete_token},
+            {&sbs_style_opts.delete_line_number, &sbs_style_escape_codes.delete_line_number},
+            {&sbs_style_opts.insert_line, &sbs_style_escape_codes.insert_line},
+            {&sbs_style_opts.insert_token, &sbs_style_escape_codes.insert_token},
+            {&sbs_style_opts.insert_line_number, &sbs_style_escape_codes.insert_line_number},
+            {&sbs_style_opts.common_line, &sbs_style_escape_codes.common_line},
+            {&sbs_style_opts.common_line_number, &sbs_style_escape_codes.common_line_number},
+            {&sbs_style_opts.frame, &sbs_style_escape_codes.frame},
+            {&sbs_style_opts.empty_line, &sbs_style_escape_codes.empty_line},
+    };
+
     auto translate_color = [](Value::Table& stored_table) {
         std::string parsed_color;
         {
@@ -101,6 +118,12 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
         return parsed_color;
     };
 
+    for (const auto &[source_value, dest_string] : colors) {
+        dest_string->assign(translate_color(source_value->as_table()));
+    }
+
+    // -- -- -- --
+
     for (const auto& [path, type, ptr] : options) {
         // Do we have a value for this option in the config we loaded?
         if (auto stored_value = config_file_table_value.lookup_value_by_path(path); stored_value) {
@@ -113,9 +136,7 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
                     *((std::string*) ptr) = stored_value->get().as_string();
                 } break;
                 case C::Color: {
-                    std::string parsed_color = translate_color(stored_value->get().as_table());
-                    auto* str_ptr = (std::string*) ptr;
-                    str_ptr->assign(parsed_color);
+                    *((Value*) ptr) = stored_value->get();
                 } break;
             }
         } else {
@@ -131,22 +152,7 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
                     config_file_table_value.set_value_at(path, v);
                 } break;
                 case C::Color: {
-                    std::string data = *(std::string*) ptr;
-
-                    ParseResult parse_result;
-                    Value parsed_value;
-                    if (cfg_parse_value_tree(data, parse_result, parsed_value)) {
-                        config_file_table_value.set_value_at(path, parsed_value);
-
-                        // We need to replace the value stored in the settings struct as it's used
-                        // by the display layer :-/
-                        std::string parsed_color = translate_color(parsed_value.as_table());
-                        auto* str_ptr = (std::string*) ptr;
-                        str_ptr->assign(parsed_color);
-
-                    } else {
-                        assert(0 && "invalid input data; check source");
-                    }
+                    config_file_table_value.set_value_at(path, *(Value*) ptr);
                 }
             }
         }

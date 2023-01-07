@@ -8,30 +8,35 @@
 #include <unordered_map>
 #include <vector>
 
+using namespace diffy;
+
 // https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
 
 const std::string kESC = "\033";
 
 // clang-format off
-const std::unordered_map<std::string, std::tuple<std::string, std::string>> k16Colors = {
-        { "reset",         {  "0",  "0" }},
-        { "black",         { "30", "40" }},
-        { "red",           { "31", "41" }},
-        { "green",         { "32", "42" }},
-        { "yellow",        { "33", "43" }},
-        { "blue",          { "34", "44" }},
-        { "magenta",       { "35", "45" }},
-        { "cyan",          { "36", "46" }},
-        { "light_gray",    { "37", "47" }},
-        { "default",       { "39", "49" }},
-        { "dark_gray",     { "90", "100" }},
-        { "light_red",     { "91", "101" }},
-        { "light_green",   { "92", "102" }},
-        { "light_yellow",  { "93", "103" }},
-        { "light_blue",    { "94", "104" }},
-        { "light_magenta", { "95", "104" }},
-        { "light_cyan",    { "96", "106" }},
-        { "white",         { "97", "107" }}
+const std::unordered_map<std::string,
+                         std::tuple<std::string,
+                                    std::string,
+                                    Color>> k16Colors = {
+        { "reset",         {  "0",  "0"  }, Color {} },
+        { "black",         { "30", "40"  }, Color {} },
+        { "red",           { "31", "41"  }, Color {} },
+        { "green",         { "32", "42"  }, Color {} },
+        { "yellow",        { "33", "43"  }, Color {} },
+        { "blue",          { "34", "44"  }, Color {} },
+        { "magenta",       { "35", "45"  }, Color {} },
+        { "cyan",          { "36", "46"  }, Color {} },
+        { "light_gray",    { "37", "47"  }, Color {} },
+        { "default",       { "39", "49"  }, Color {} },
+        { "dark_gray",     { "90", "100" }, Color {} },
+        { "light_red",     { "91", "101" }, Color {} },
+        { "light_green",   { "92", "102" }, Color {} },
+        { "light_yellow",  { "93", "103" }, Color {} },
+        { "light_blue",    { "94", "104" }, Color {} },
+        { "light_magenta", { "95", "104" }, Color {} },
+        { "light_cyan",    { "96", "106" }, Color {} },
+        { "white",         { "97", "107" }, Color {} }
 };
 
 const std::array<std::tuple<const int32_t, const std::string, const std::string>, 8> kAttributes{

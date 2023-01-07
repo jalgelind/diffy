@@ -13,7 +13,8 @@ namespace diffy {
 struct ColumnViewState {
     ColumnViewCharacters chars;
     ColumnViewSettings settings;
-    ColumnViewTextStyle style;
+    ColumnViewTextStyle style_config;
+    ColumnViewTextStyleEscapeCodes style;
 
     // Internal state below
 

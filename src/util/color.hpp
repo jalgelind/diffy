@@ -1,10 +1,59 @@
 #pragma once
 
+#include "config/config.hpp"
+
 #include <cstdint>
 #include <string>
 #include <vector>
 
 namespace diffy {
+
+// TODO: rename to Style; or AnsiStyle or something...
+struct Color {
+    uint8_t r;
+    uint8_t g;
+    uint8_t b;
+    uint16_t attr;
+
+    // Configuration style
+    static Color from_value(Value::Table table) {
+        Color c;
+
+        // Translate color object to ansi code
+        auto fg = table["fg"].as_string();
+        auto bg = table["bg"].as_string();
+        auto attr = table["attr"];
+
+        std::vector<std::string> attributes;
+        for (auto& attr_node : attr.as_array()) {
+            attributes.push_back(attr_node.as_string());
+        }
+        //diffy::translate_color_name_to_16pal_escape_sequence(
+        //    fg, bg, diffy::color_lookup_attributes(attributes), parsed_color);
+
+        return c;
+    }
+
+    const static Color kReset;
+    const static Color kBlack;
+    const static Color kRed;
+    const static Color kGreen;
+    const static Color kYellow;
+    const static Color kBlue;
+    const static Color kMagenta;
+    const static Color kCyan;
+    const static Color kLightGray;
+    const static Color kDefault;
+    const static Color kDarkGray;
+    const static Color kLightRed;
+    const static Color kLightGreen;
+    const static Color kLightYellow;
+    const static Color kLightBlue;
+    const static Color kLightMagenta;
+    const static Color kLightCyan;
+    const static Color kWhite;
+
+};
 
 const uint32_t kStyleFlag_BOLD = 1 << 1;
 const uint32_t kStyleFlag_DIM = 1 << 2;
