@@ -119,7 +119,6 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
     result.ok = false;
     result.error = "";
 
-    // Nothing to do.
     if (input_text.size() == 0) {
         result.ok = true;
         return result.ok;
@@ -168,8 +167,6 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
 
     bool reject_token = false;
 
-    // TODO: Re-write this as a state machine
-
     do {
         // start where we previously left off
         auto start_idx = cursor;
@@ -206,7 +203,6 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
                 }
             }
 
-            // TODO: why isn't this a separate state?
             if (terminated_string_capture) {
                 // we terminated at a valid token, so record the current string
                 // and proceed processing the next token.

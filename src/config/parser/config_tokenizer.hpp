@@ -55,7 +55,6 @@ struct Token {
 
     std::string::size_type line = 0;
     std::string::size_type column = 0;
-    // bool first_token_on_line = false;
 
     std::size_t sequence_index;
 
@@ -71,7 +70,6 @@ struct Token {
 };
 
 struct ParseOptions {
-    // std::vector<TokenId> collapse_repeated_tokens;
     bool strip_spaces = true;
     bool strip_newlines = false;
     bool strip_quotes = false;

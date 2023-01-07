@@ -139,7 +139,7 @@ struct Value {
     bool is_int() { return std::holds_alternative<Value::Int>(v); }
     bool is_bool() { return std::holds_alternative<Value::Bool>(v); }
     bool is_string() { return std::holds_alternative<Value::String>(v); }
-    
+
     Array& as_array() { return std::get<Value::Array>(v); }
     Table& as_table() { return std::get<Value::Table>(v); }
     Int& as_int() { return std::get<Value::Int>(v); }
