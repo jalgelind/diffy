@@ -172,7 +172,7 @@ struct ParseResult {
     }
 
     void
-    set_error(tok2::Token& token, std::string error_message);
+    set_error(config_tokenizer::Token& token, std::string error_message);
 };
 
 bool

@@ -16,7 +16,7 @@
 #include <vector>
 
 namespace diffy {
-namespace tok2 {
+namespace config_tokenizer {
 
 using TokenId = std::uint32_t;
 // clang-format off
@@ -98,5 +98,5 @@ is_whitespace(char c);
 std::string
 repr(TokenId id);
 
-}  // namespace tok2
+}  // namespace config_tokenizer
 }  // namespace diffy

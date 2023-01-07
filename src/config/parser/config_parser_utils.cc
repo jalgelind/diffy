@@ -34,7 +34,7 @@ serialize_obj(Value& value, int depth, std::string& output, bool is_last_element
             return false;
         }
         for (auto i = line_start; i < s.size(); i++) {
-            if (!tok2::is_whitespace(s[i])) {
+            if (!config_tokenizer::is_whitespace(s[i])) {
                 return false;
             }
         }

@@ -12,7 +12,7 @@
 #include <vector>
 
 using namespace diffy;
-using namespace diffy::tok2;
+using namespace diffy::config_tokenizer;
 
 namespace {
 
@@ -81,7 +81,7 @@ token_display(Token token, const std::string& input_text) {
 }  // namespace
 
 bool
-diffy::tok2::is_whitespace(char c) {
+diffy::config_tokenizer::is_whitespace(char c) {
     const char whitespaces[] = " \t\r\n\f\v";
     for (const auto whitespace : whitespaces) {
         if (whitespace == c) {
@@ -92,7 +92,7 @@ diffy::tok2::is_whitespace(char c) {
 }
 
 std::string
-diffy::tok2::repr(TokenId id) {
+diffy::config_tokenizer::repr(TokenId id) {
     std::string s = "\033[1;34m";
     for (const auto& token : kTokens) {
         if (id & token.id) {
@@ -104,7 +104,7 @@ diffy::tok2::repr(TokenId id) {
 }
 
 void
-diffy::tok2::token_dump(std::vector<Token> tokens, const std::string& source_text) {
+diffy::config_tokenizer::token_dump(std::vector<Token> tokens, const std::string& source_text) {
     fmt::print("input text:\n{}\n---\ntokens:\n", source_text);
     int j = 1;
     for (auto& r : tokens) {
@@ -115,7 +115,7 @@ diffy::tok2::token_dump(std::vector<Token> tokens, const std::string& source_tex
 }
 
 bool
-diffy::tok2::tokenize(const std::string& input_text, ParseOptions& options, ParseResult& result) {
+diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& options, ParseResult& result) {
     result.ok = false;
     result.error = "";
 

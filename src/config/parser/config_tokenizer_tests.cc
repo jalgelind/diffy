@@ -9,22 +9,22 @@
 #include <vector>
 
 using namespace diffy;
-using namespace diffy::tok2;
+using namespace diffy::config_tokenizer;
 
 TEST_CASE("tokenizer") {
     SUBCASE("empty") {
-        diffy::tok2::ParseResult result;
-        diffy::tok2::ParseOptions options;
-        diffy::tok2::tokenize("", options, result);
+        diffy::config_tokenizer::ParseResult result;
+        diffy::config_tokenizer::ParseOptions options;
+        diffy::config_tokenizer::tokenize("", options, result);
         auto a = result.tokens;
         REQUIRE(a.size() == 0);
     }
 
     SUBCASE("just_newline") {
         auto line = "\n";
-        diffy::tok2::ParseResult result;
-        diffy::tok2::ParseOptions options;
-        diffy::tok2::tokenize(line, options, result);
+        diffy::config_tokenizer::ParseResult result;
+        diffy::config_tokenizer::ParseOptions options;
+        diffy::config_tokenizer::tokenize(line, options, result);
         auto a = result.tokens;
         REQUIRE(a.size() == 1);
         REQUIRE(a[0].str_from(line) == "\n");
@@ -32,10 +32,10 @@ TEST_CASE("tokenizer") {
 
     SUBCASE("strip spaces") {
         auto line = "   \n   ";
-        diffy::tok2::ParseResult result;
-        diffy::tok2::ParseOptions options;
+        diffy::config_tokenizer::ParseResult result;
+        diffy::config_tokenizer::ParseOptions options;
         options.strip_spaces = true;
-        diffy::tok2::tokenize(line, options, result);
+        diffy::config_tokenizer::tokenize(line, options, result);
         auto a = result.tokens;
         REQUIRE(a.size() == 1);
         REQUIRE(a[0].str_from(line) == "\n");
@@ -43,18 +43,18 @@ TEST_CASE("tokenizer") {
 
     SUBCASE("unterminated string") {
         auto line = "   '   ";
-        diffy::tok2::ParseResult result;
-        diffy::tok2::ParseOptions options;
-        diffy::tok2::tokenize(line, options, result);
+        diffy::config_tokenizer::ParseResult result;
+        diffy::config_tokenizer::ParseOptions options;
+        diffy::config_tokenizer::tokenize(line, options, result);
         REQUIRE(result.ok == false);
     }
 
     SUBCASE("tokens") {
         auto line = "{}[]= \n";
-        diffy::tok2::ParseResult result;
-        diffy::tok2::ParseOptions options;
+        diffy::config_tokenizer::ParseResult result;
+        diffy::config_tokenizer::ParseOptions options;
         options.strip_spaces = false;
-        diffy::tok2::tokenize(line, options, result);
+        diffy::config_tokenizer::tokenize(line, options, result);
         auto a = result.tokens;
         REQUIRE(a.size() == 7);
         REQUIRE(a[0].str_from(line) == "{");
@@ -68,9 +68,9 @@ TEST_CASE("tokenizer") {
 
     SUBCASE("section") {
         auto line = "[test]";
-        diffy::tok2::ParseResult result;
-        diffy::tok2::ParseOptions options;
-        diffy::tok2::tokenize(line, options, result);
+        diffy::config_tokenizer::ParseResult result;
+        diffy::config_tokenizer::ParseOptions options;
+        diffy::config_tokenizer::tokenize(line, options, result);
         auto a = result.tokens;
         REQUIRE(a.size() == 3);
         REQUIRE(a[0].str_from(line) == "[");
@@ -80,9 +80,9 @@ TEST_CASE("tokenizer") {
 
     SUBCASE("section quoted name") {
         auto line = "[\"space test\"]";
-        diffy::tok2::ParseResult result;
-        diffy::tok2::ParseOptions options;
-        diffy::tok2::tokenize(line, options, result);
+        diffy::config_tokenizer::ParseResult result;
+        diffy::config_tokenizer::ParseOptions options;
+        diffy::config_tokenizer::tokenize(line, options, result);
         auto a = result.tokens;
         REQUIRE(a.size() == 5);
         REQUIRE(a[0].str_from(line) == "[");
@@ -94,10 +94,10 @@ TEST_CASE("tokenizer") {
 
     SUBCASE("section with key") {
         auto line = "[test]\n key=\"value str\"";
-        diffy::tok2::ParseResult result;
-        diffy::tok2::ParseOptions options;
+        diffy::config_tokenizer::ParseResult result;
+        diffy::config_tokenizer::ParseOptions options;
         options.strip_spaces = false;
-        diffy::tok2::tokenize(line, options, result);
+        diffy::config_tokenizer::tokenize(line, options, result);
         auto a = result.tokens;
         REQUIRE(a.size() == 10);
         REQUIRE(a[0].str_from(line) == "[");
@@ -124,12 +124,12 @@ TEST_CASE("tokenizer") {
 
     SUBCASE("section with integer key") {
         auto line = "[test]\n key=123";
-        diffy::tok2::ParseResult result;
-        diffy::tok2::ParseOptions options;
+        diffy::config_tokenizer::ParseResult result;
+        diffy::config_tokenizer::ParseOptions options;
         options.strip_spaces = false;
-        diffy::tok2::tokenize(line, options, result);
+        diffy::config_tokenizer::tokenize(line, options, result);
         auto a = result.tokens;
-        // diffy::tok2::token_dump(a, line, true);
+        // diffy::config_tokenizer::token_dump(a, line, true);
         REQUIRE(a.size() == 8);
         REQUIRE(a[0].str_from(line) == "[");
         REQUIRE(a[1].str_from(line) == "test");
@@ -152,13 +152,13 @@ TEST_CASE("tokenizer") {
 
     SUBCASE("section with table key") {
         auto line = "[test]\n key = { apa = 123, bepa = 456 }";
-        diffy::tok2::ParseResult result;
-        diffy::tok2::ParseOptions options;
+        diffy::config_tokenizer::ParseResult result;
+        diffy::config_tokenizer::ParseOptions options;
         options.strip_spaces = false;
-        diffy::tok2::tokenize(line, options, result);
+        diffy::config_tokenizer::tokenize(line, options, result);
         auto a = result.tokens;
 
-        // diffy::tok2::token_dump(a, line, true);
+        // diffy::config_tokenizer::token_dump(a, line, true);
 
         REQUIRE(a.size() == 25);
         REQUIRE(a[0].str_from(line) == "[");
@@ -215,12 +215,12 @@ TEST_CASE("tokenizer") {
 
     SUBCASE("sections") {
         auto line = "[test]  \"\"  \n [other_section] ";
-        diffy::tok2::ParseResult result;
-        diffy::tok2::ParseOptions options;
-        diffy::tok2::tokenize(line, options, result);
+        diffy::config_tokenizer::ParseResult result;
+        diffy::config_tokenizer::ParseOptions options;
+        diffy::config_tokenizer::tokenize(line, options, result);
         auto a = result.tokens;
 
-        // diffy::tok2::token_dump(a, line, true);
+        // diffy::config_tokenizer::token_dump(a, line, true);
 
         REQUIRE(a.size() == 10);
         REQUIRE(a[0].str_from(line) == "[");
@@ -247,11 +247,11 @@ TEST_CASE("tokenizer") {
 
     SUBCASE("sections_with_keys") {
         auto line = "[test]\nkey=\"value\"    \n[other_section] key=1234 otherk=\"value\"";
-        diffy::tok2::ParseResult result;
-        diffy::tok2::ParseOptions options;
-        diffy::tok2::tokenize(line, options, result);
+        diffy::config_tokenizer::ParseResult result;
+        diffy::config_tokenizer::ParseOptions options;
+        diffy::config_tokenizer::tokenize(line, options, result);
         auto a = result.tokens;
-        // diffy::tok2::token_dump(a, line, true);
+        // diffy::config_tokenizer::token_dump(a, line, true);
 
         REQUIRE(a.size() == 21);
         REQUIRE(a[0].str_from(line) == "[");

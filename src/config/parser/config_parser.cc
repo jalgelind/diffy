@@ -19,7 +19,7 @@
     }
 
 using namespace diffy;
-using namespace tok2;
+using namespace config_tokenizer;
 
 namespace internal {
 std::tuple<std::string_view, std::string_view>
@@ -142,30 +142,30 @@ std::string
 repr(Scope s);
 
 void
-diffy::ParseResult::set_error(tok2::Token& token, std::string error_message) {
+diffy::ParseResult::set_error(config_tokenizer::Token& token, std::string error_message) {
     this->kind = ParseErrorKind::Parsing;
     this->error = fmt::format("'{}' at line {} column {}", error_message, token.line, token.column);
 }
 
 bool
-prepare_tokens(const std::string& input_data, std::vector<tok2::Token>& tokens, diffy::ParseResult& result) {
-    diffy::tok2::ParseOptions tok2_options;
-    tok2_options.strip_newlines = true;
-    tok2_options.strip_spaces = true;
-    tok2_options.strip_quotes = true;                   // drop "'" and '"'
-    tok2_options.strip_annotated_string_tokens = true;  // drop '#' and '//' from comments
-    tok2_options.strip_comments = false;
-    tok2_options.append_terminator = true;  // Append termination token to avoid some bounds checking
+prepare_tokens(const std::string& input_data, std::vector<config_tokenizer::Token>& tokens, diffy::ParseResult& result) {
+    diffy::config_tokenizer::ParseOptions config_tokenizer_options;
+    config_tokenizer_options.strip_newlines = true;
+    config_tokenizer_options.strip_spaces = true;
+    config_tokenizer_options.strip_quotes = true;                   // drop "'" and '"'
+    config_tokenizer_options.strip_annotated_string_tokens = true;  // drop '#' and '//' from comments
+    config_tokenizer_options.strip_comments = false;
+    config_tokenizer_options.append_terminator = true;  // Append termination token to avoid some bounds checking
 
-    diffy::tok2::ParseResult tok2_result;
-    if (!diffy::tok2::tokenize(input_data, tok2_options, tok2_result)) {
+    diffy::config_tokenizer::ParseResult config_tokenizer_result;
+    if (!diffy::config_tokenizer::tokenize(input_data, config_tokenizer_options, config_tokenizer_result)) {
         result.kind = ParseErrorKind::Tokenization;
-        result.error = tok2_result.error;
+        result.error = config_tokenizer_result.error;
         return false;
     }
 
     // All good!
-    tokens = tok2_result.tokens;
+    tokens = config_tokenizer_result.tokens;
     result.kind = ParseErrorKind::None;
     return true;
 }
@@ -174,11 +174,11 @@ bool
 diffy::cfg_parse(const std::string& input_data,
                  diffy::ParseResult& result,
                  std::function<void(TbInstruction)> emit_cb) {
-    std::vector<tok2::Token> input_tokens;
+    std::vector<config_tokenizer::Token> input_tokens;
     if (!prepare_tokens(input_data, input_tokens, result)) {
         return false;
     }
-    // tok2::token_dump(input_tokens, input_data);
+    // config_tokenizer::token_dump(input_tokens, input_data);
 
     //
     // State machine "DSL"
@@ -208,7 +208,7 @@ diffy::cfg_parse(const std::string& input_data,
     #define PARSER_NEXT_TOKEN() {                   \
         cursor++;                                   \
         token = input_tokens[cursor];               \
-        if (token.id & tok2::TokenId_Terminator && !in_critical_section) {  \
+        if (token.id & config_tokenizer::TokenId_Terminator && !in_critical_section) {  \
             state = State::Finish;                  \
             PARSER_NEXT_STATE();                    \
         }                                           \
@@ -217,7 +217,7 @@ diffy::cfg_parse(const std::string& input_data,
     #define PARSER_EXPECT(expected_id) {                                                                   \
         if (!((expected_id) & token.id)) {                                                                 \
             result.set_error(token, fmt::format("Expected {}, found {} [src:{}]",                          \
-                diffy::tok2::repr(expected_id), diffy::tok2::repr(token.id), __LINE__));                   \
+                diffy::config_tokenizer::repr(expected_id), diffy::config_tokenizer::repr(token.id), __LINE__));                   \
             return false;                                                                                  \
         }                                                                                                  \
     }
@@ -225,7 +225,7 @@ diffy::cfg_parse(const std::string& input_data,
     #define PARSER_EXPECT_AND_ADVANCE(expected_id) {                                                       \
         if (!((expected_id) & token.id)) {                                                                 \
             result.set_error(token, fmt::format("Expected {}, found {} [src:{}]",                          \
-                diffy::tok2::repr(expected_id), diffy::tok2::repr(token.id), __LINE__));                   \
+                diffy::config_tokenizer::repr(expected_id), diffy::config_tokenizer::repr(token.id), __LINE__));                   \
             return false;                                                                                  \
         } else {                                                                                           \
             PARSER_NEXT_TOKEN();                                                                           \
@@ -233,10 +233,10 @@ diffy::cfg_parse(const std::string& input_data,
     }
 
     #define PARSER_GIVE_UP(message) {                                                                  \
-        if (token.id & tok2::TokenId_Terminator)                                                       \
+        if (token.id & config_tokenizer::TokenId_Terminator)                                                       \
             PARSER_NEXT_STATE();                                                                       \
         result.set_error(token, fmt::format("error: \033[1m'{}'\033[0m while processing {} [src: {}]", \
-                message, diffy::tok2::repr(token.id), __LINE__));                                      \
+                message, diffy::config_tokenizer::repr(token.id), __LINE__));                                      \
         return false;                                                                                  \
     }
 
@@ -267,9 +267,9 @@ diffy::cfg_parse(const std::string& input_data,
     }
 
     #define PARSER_EAT_COMMENTS() {                                                     \
-        while (token.id & tok2::TokenId_Comment) {                                      \
+        while (token.id & config_tokenizer::TokenId_Comment) {                                      \
             emit_ins({TbOperator::Comment, token.str_from(input_data)},                 \
-                         token.id & tok2::TokenId_FirstOnLine);                         \
+                         token.id & config_tokenizer::TokenId_FirstOnLine);                         \
             PARSER_NEXT_TOKEN();                                                        \
         }                                                                               \
     }
@@ -345,9 +345,9 @@ diffy::cfg_parse(const std::string& input_data,
         static int cnt = 0;
         cnt++;
         TRACE("\033[1m({: 2}\033[0m:[#{}]:{:10}\033[1m)\033[0m Token {} '{}'\n", cnt, scope_stack.size(),
-              repr(state), tok2::repr(token.id), token.str_from(input_data));
+              repr(state), config_tokenizer::repr(token.id), token.str_from(input_data));
 
-        using namespace tok2;
+        using namespace config_tokenizer;
         switch (state) {
             case State::ParseSection: {
                 PARSER_EAT_COMMENTS();
