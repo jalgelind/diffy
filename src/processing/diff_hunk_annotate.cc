@@ -23,9 +23,8 @@ struct TokenEdit {
 
     bool
     operator==(const TokenEdit& other) const {
-        // guard against collisions in debug..?
-        // TODO: also check token.length?
-        return token.hash == other.token.hash;
+        return token.length == other.token.length &&
+            token.hash == other.token.hash;
     }
 
     uint32_t
