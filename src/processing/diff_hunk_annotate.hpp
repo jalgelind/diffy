@@ -11,7 +11,7 @@
 #include "algorithms/algorithm.hpp"
 #include "processing/diff_hunk.hpp"
 #include "processing/tokenizer.hpp"
-#include "util/readlines.hpp"  // TODO: rename, file_reader is ugly.
+#include "util/readlines.hpp"
 
 #include <string>
 #include <vector>
