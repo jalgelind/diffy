@@ -16,16 +16,6 @@
 using namespace diffy;
 
 namespace internal {
-// TODO: Oooohhh... we should use string_views more
-std::tuple<std::string_view, std::string_view>
-str_split2(const std::string_view s, char delimiter) {
-    auto pos = s.find(delimiter);
-    if (pos == std::string::npos) {
-        return std::make_tuple(s, "");
-    }
-
-    return std::make_tuple(s.substr(0, pos), s.substr(pos + 1, std::string::npos));
-}
 
 static std::string
 indent(int count) {
@@ -217,73 +207,6 @@ diffy::cfg_serialize(Value& value, int depth) {
     std::string output;
     internal::serialize_section(value, depth, output);
     return output;
-}
-
-std::optional<std::reference_wrapper<Value>>
-diffy::cfg_lookup_value_by_path(std::initializer_list<std::string> path_components, Value& value) {
-    std::deque<std::string> components{path_components};
-    std::string key;
-    Value* result_value = &value;
-    while (!components.empty()) {
-        key = components.front();
-        if (result_value->contains(key)) {
-            result_value = &(*result_value)[key];
-            components.pop_front();
-        } else {
-            break;
-        }
-    }
-    if (components.empty()) {
-        return std::reference_wrapper(*result_value);
-    }
-    return std::nullopt;
-}
-
-std::optional<std::reference_wrapper<Value>>
-diffy::cfg_lookup_value_by_path(const std::string_view path, Value& value) {
-    Value* result_value = &value;
-    bool done = false;
-    std::string_view remaining{path};
-    while (!done) {
-        auto [head, rest] = internal::str_split2(remaining, '.');
-        std::string key{head};
-        if (result_value->contains(key)) {
-            result_value = &(*result_value)[key];
-            remaining = rest;
-        } else {
-            break;
-        }
-    }
-    if (remaining.empty()) {
-        return std::reference_wrapper(*result_value);
-    }
-    return std::nullopt;
-}
-
-bool
-diffy::cfg_set_value_at(const std::string_view path, Value& root, Value& value) {
-    Value* iter = &root;
-    bool done = false;
-    std::string_view remaining{path};
-    while (!done) {
-        auto [head, rest] = internal::str_split2(remaining, '.');
-
-        std::string key{head};
-        if (!iter->contains(std::string{key})) {
-            iter->as_table().insert(key, {Value::Table{}});
-        }
-
-        iter = &(*iter)[key];
-
-        bool is_last = rest.find(".") == std::string_view::npos;
-        if (is_last && iter->is_table()) {
-            (*iter)[std::string(rest)] = value;
-            return true;
-        }
-
-        remaining = rest;
-    }
-    return false;
 }
 
 //

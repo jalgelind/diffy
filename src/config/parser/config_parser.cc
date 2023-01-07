@@ -21,6 +21,85 @@
 using namespace diffy;
 using namespace tok2;
 
+namespace internal {
+std::tuple<std::string_view, std::string_view>
+str_split2(const std::string_view s, char delimiter) {
+    auto pos = s.find(delimiter);
+    if (pos == std::string::npos) {
+        return std::make_tuple(s, "");
+    }
+
+    return std::make_tuple(s.substr(0, pos), s.substr(pos + 1, std::string::npos));
+}
+}  // namespace internal
+
+std::optional<std::reference_wrapper<Value>>
+Value::lookup_value_by_path(std::initializer_list<std::string> path_components) {
+    std::deque<std::string> components{path_components};
+    std::string key;
+    Value* result_value = this;
+    while (!components.empty()) {
+        key = components.front();
+        if (result_value->contains(key)) {
+            result_value = &(*result_value)[key];
+            components.pop_front();
+        } else {
+            break;
+        }
+    }
+    if (components.empty()) {
+        return std::reference_wrapper(*result_value);
+    }
+    return std::nullopt;
+}
+
+std::optional<std::reference_wrapper<Value>>
+Value::lookup_value_by_path(const std::string_view dotted_path) {
+    Value* result_value = this;
+    bool done = false;
+    std::string_view remaining{dotted_path};
+    while (!done) {
+        auto [head, rest] = internal::str_split2(remaining, '.');
+        std::string key{head};
+        if (result_value->contains(key)) {
+            result_value = &(*result_value)[key];
+            remaining = rest;
+        } else {
+            break;
+        }
+    }
+    if (remaining.empty()) {
+        return std::reference_wrapper(*result_value);
+    }
+    return std::nullopt;
+}
+
+bool
+Value::set_value_at(const std::string_view dotted_path, Value value) {
+    Value* iter = this;
+    bool done = false;
+    std::string_view remaining{dotted_path};
+    while (!done) {
+        auto [head, rest] = internal::str_split2(remaining, '.');
+
+        std::string key{head};
+        if (!iter->contains(std::string{key})) {
+            iter->as_table().insert(key, {Value::Table{}});
+        }
+
+        iter = &(*iter)[key];
+
+        bool is_last = rest.find(".") == std::string_view::npos;
+        if (is_last && iter->is_table()) {
+            (*iter)[std::string(rest)] = value;
+            return true;
+        }
+
+        remaining = rest;
+    }
+    return false;
+}
+
 // Our state machine states.
 // Note that we have a few entry points. If we want to parse a complete
 // file with sections; we start at `ParseSection`. For parsing values, we
@@ -121,7 +200,7 @@ diffy::cfg_parse(const std::string& input_data,
 
     std::size_t cursor = 0;
 
-    // clang-format off
+// clang-format off
     #define PARSER_NEXT_STATE() {                   \
         continue;                                   \
     }

@@ -526,17 +526,17 @@ TEST_CASE("value-lookup") {
         Value root;
 
         // TODO: try fewer keys and see if constructor with string is conflicting
-        REQUIRE(cfg_lookup_value_by_path({"does"}, root) == std::nullopt);
-        REQUIRE(cfg_lookup_value_by_path({"does", "exist"}, root) == std::nullopt);
-        REQUIRE(cfg_lookup_value_by_path({"does", "not", "exist"}, root) == std::nullopt);
+        REQUIRE(root.lookup_value_by_path({"does"}) == std::nullopt);
+        REQUIRE(root.lookup_value_by_path({"does", "exist"}) == std::nullopt);
+        REQUIRE(root.lookup_value_by_path({"does", "not", "exist"}) == std::nullopt);
 
-        REQUIRE(cfg_lookup_value_by_path("does.not.exist", root) == std::nullopt);
+        REQUIRE(root.lookup_value_by_path("does.not.exist") == std::nullopt);
     }
 
     SUBCASE("simple") {
         Value root{Value::Table{{{"apa", Value{1}}}}};
 
-        auto result = cfg_lookup_value_by_path("apa", root);
+        auto result = root.lookup_value_by_path("apa");
         REQUIRE(result != std::nullopt);
         REQUIRE(result->get().is_int());
         REQUIRE(result->get().as_int() == 1);
@@ -546,14 +546,14 @@ TEST_CASE("value-lookup") {
         Value root{Value::Table{{{"apa", Value{Value::Table{{"bepa", Value{1}}}}}}}};
 
         {
-            auto result = cfg_lookup_value_by_path("apa.bepa", root);
+            auto result = root.lookup_value_by_path("apa.bepa");
             REQUIRE(result != std::nullopt);
             REQUIRE(result->get().is_int());
             REQUIRE(result->get().as_int() == 1);
         }
 
         {
-            auto result = cfg_lookup_value_by_path({"apa", "bepa"}, root);
+            auto result = root.lookup_value_by_path({"apa", "bepa"});
             REQUIRE(result != std::nullopt);
             REQUIRE(result->get().is_int());
             REQUIRE(result->get().as_int() == 1);
@@ -565,17 +565,17 @@ TEST_CASE("value-lookup") {
 
         {
             auto v = Value{2};
-            cfg_set_value_at("apa.bepa", root, v);
+            root.set_value_at("apa.bepa", v);
 
-            auto result = cfg_lookup_value_by_path("apa.bepa", root);
+            auto result = root.lookup_value_by_path("apa.bepa");
             REQUIRE(result->get().as_int() == 2);
         }
 
         {
             auto v = Value{2};
-            cfg_set_value_at("cepa.depa", root, v);
+            root.set_value_at("cepa.depa", v);
 
-            auto result = cfg_lookup_value_by_path("cepa.depa", root);
+            auto result = root.lookup_value_by_path("cepa.depa");
             REQUIRE(result->get().as_int() == 2);
         }
     }

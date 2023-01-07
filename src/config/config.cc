@@ -103,7 +103,7 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
 
     for (const auto& [path, type, ptr] : options) {
         // Do we have a value for this option in the config we loaded?
-        if (auto stored_value = cfg_lookup_value_by_path(path, config_file_table_value); stored_value) {
+        if (auto stored_value = config_file_table_value.lookup_value_by_path(path); stored_value) {
             // Yes. So we take the value and write it into our settings struct.
             switch (type) {
                 case C::Bool: {
@@ -124,11 +124,11 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
             switch (type) {
                 case C::Bool: {
                     Value v{Value::Bool{*(bool*) ptr}};
-                    cfg_set_value_at(path, config_file_table_value, v);
+                    config_file_table_value.set_value_at(path, v);
                 } break;
                 case C::String: {
                     Value v{Value::String{*(std::string*) ptr}};
-                    cfg_set_value_at(path, config_file_table_value, v);
+                    config_file_table_value.set_value_at(path, v);
                 } break;
                 case C::Color: {
                     std::string data = *(std::string*) ptr;
@@ -136,7 +136,7 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
                     ParseResult parse_result;
                     Value parsed_value;
                     if (cfg_parse_value_tree(data, parse_result, parsed_value)) {
-                        cfg_set_value_at(path, config_file_table_value, parsed_value);
+                        config_file_table_value.set_value_at(path, parsed_value);
 
                         // We need to replace the value stored in the settings struct as it's used
                         // by the display layer :-/

@@ -121,12 +121,17 @@ struct Value {
         return false;
     }
 
-    // TODO: can we utilize this? We often just replace the whole value.
-    //       but with this we can retain comments
-    void
-    swap_inner_value(Value&& other) {
-        v.swap(other.v);
-    }
+    // Find a nested value using e.g. {"general", "font_size"}
+    std::optional<std::reference_wrapper<Value>>
+    lookup_value_by_path(std::initializer_list<std::string> path_components);
+
+    // Find a nested value using e.g. "general.font_size"
+    std::optional<std::reference_wrapper<Value>>
+    lookup_value_by_path(const std::string_view dotted_path);
+
+    // Sets a nested value using e.g. set("general.font_size", 16)
+    bool
+    set_value_at(const std::string_view dotted_path, Value value);
 
     // clang-format off
     bool is_array() { return std::holds_alternative<Value::Array>(v); }
