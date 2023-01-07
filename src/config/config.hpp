@@ -12,7 +12,7 @@ algo_from_string(std::string s);
 struct ProgramOptions {
     bool debug = false;
     bool help = false;
-    bool side_by_side = false;
+    bool column_view = false;
     bool line_granularity = false;
     bool unified = false;
     bool test_case = false;
@@ -30,6 +30,8 @@ struct ProgramOptions {
     std::string right_file_name;
 };
 
+// TODO: store these as Values; translation of those will need to be done before presentation
+//       in the side by side viewer.
 struct ColumnViewTextStyle {
     // clang-format off
     std::string header             = "{fg='white', bg='default', attr=['underline']}";

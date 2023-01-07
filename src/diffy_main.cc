@@ -3,7 +3,7 @@
 #include "algorithms/patience.hpp"
 #include "config/config.hpp"
 #include "output/edit_dump.hpp"
-#include "output/side_by_side.hpp"
+#include "output/column_view.hpp"
 #include "output/unified.hpp"
 #include "processing/diff_hunk.hpp"
 #include "processing/diff_hunk_annotate.hpp"
@@ -215,7 +215,7 @@ Side by side options:
                 case 'U':
                 case 'S': {
                     if (c == 'S' || c == 's') {
-                        opts.side_by_side = true;
+                        opts.column_view = true;
                     } else if (c == 'U' || c == 'u') {
                         opts.unified = true;
                     }
@@ -254,11 +254,11 @@ Side by side options:
             }
         }
 
-        if (opts.unified && opts.side_by_side) {
+        if (opts.unified && opts.column_view) {
             show_help("error: -s -S[context] -s -S[context] are mutually exclusive");
             return false;
-        } else if (!opts.unified && !opts.side_by_side) {
-            opts.side_by_side = true;
+        } else if (!opts.unified && !opts.column_view) {
+            opts.column_view = true;
         }
 
         int positional_count = argc - optind;
@@ -350,12 +350,12 @@ Side by side options:
         fmt::print("input (N/M: {}/{})\n", diff_input.A.size(), diff_input.B.size());
         fmt::print("edit_sequence (size: {})\n", result.edit_sequence.size());
         diffy::dump_diff_edits(diff_input, result);
-    } else if (opts.side_by_side) {
+    } else if (opts.column_view) {
         const auto& annotated_hunks = annotate_hunks(
             diff_input, hunks,
             opts.line_granularity ? diffy::EditGranularity::Line : diffy::EditGranularity::Token,
             opts.ignore_whitespace);
-        diffy::side_by_side_diff(diff_input, annotated_hunks, sbs_ui_opts, opts.width);
+        diffy::column_view_diff(diff_input, annotated_hunks, sbs_ui_opts, opts.width);
     } else if (opts.unified) {
         auto unified_lines = diffy::get_unified_diff(diff_input, hunks);
         for (const auto& line : unified_lines) {

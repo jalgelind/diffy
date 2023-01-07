@@ -1,4 +1,4 @@
-#include "side_by_side.hpp"
+#include "column_view.hpp"
 
 #include "processing/diff_hunk.hpp"
 #include "processing/diff_hunk_annotate.hpp"
@@ -478,7 +478,7 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
 }  // namespace
 
 void
-diffy::side_by_side_diff(const DiffInput<diffy::Line>& diff_input,
+diffy::column_view_diff(const DiffInput<diffy::Line>& diff_input,
                          const std::vector<AnnotatedHunk>& hunks,
                          ColumnViewState& config,
                          int64_t width) {

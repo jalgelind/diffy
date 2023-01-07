@@ -23,7 +23,7 @@ struct ColumnViewState {
 };
 
 void
-side_by_side_diff(const DiffInput<diffy::Line>& diff_input,
+column_view_diff(const DiffInput<diffy::Line>& diff_input,
                   const std::vector<AnnotatedHunk>& hunks,
                   ColumnViewState& config,  // TODO: make const
                   int64_t width);
