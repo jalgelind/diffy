@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cstdio>
 #include <functional>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>

@@ -172,20 +172,18 @@ Side by side options:
                     opts.help = true;
                     return true;
                 case '1': {
-                    puts("Checking color capabilities...");
-                    puts("");
                     switch (diffy::get_terminal_color_capability()) {
                         case diffy::TerminalColorCapability::Ansi4bit: {
-                            puts("\tYour terminal supports a 16 colors palette");
+                            puts("Found support for 16 color palette");
                         } break;
                         case diffy::TerminalColorCapability::Ansi8bit: {
-                            puts("\tYour terminal supports a 256 color palette");
+                            puts("Found support for 256 color palette");
                         } break;
                         case diffy::TerminalColorCapability::Ansi24bit: {
-                            puts("\tYour terminal supports true color");
+                            puts("Found support for true color");
                         } break;
                         case diffy::TerminalColorCapability::None: {
-                            puts("\tYour have a terrible terminal.");
+                            puts("Found nothing. You have a terrible terminal, or the detection code is bad.");
                         } break;
                     }
                     puts("");

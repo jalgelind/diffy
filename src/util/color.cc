@@ -14,136 +14,243 @@ using namespace diffy;
 
 const std::string kESC = "\033";
 
-// clang-format off
-const std::unordered_map<std::string,
-                         std::tuple<std::string,
-                                    std::string,
-                                    Color>> k16Colors = {
-        { "reset",         {  "0",  "0"  }, Color {} },
-        { "black",         { "30", "40"  }, Color {} },
-        { "red",           { "31", "41"  }, Color {} },
-        { "green",         { "32", "42"  }, Color {} },
-        { "yellow",        { "33", "43"  }, Color {} },
-        { "blue",          { "34", "44"  }, Color {} },
-        { "magenta",       { "35", "45"  }, Color {} },
-        { "cyan",          { "36", "46"  }, Color {} },
-        { "light_gray",    { "37", "47"  }, Color {} },
-        { "default",       { "39", "49"  }, Color {} },
-        { "dark_gray",     { "90", "100" }, Color {} },
-        { "light_red",     { "91", "101" }, Color {} },
-        { "light_green",   { "92", "102" }, Color {} },
-        { "light_yellow",  { "93", "103" }, Color {} },
-        { "light_blue",    { "94", "104" }, Color {} },
-        { "light_magenta", { "95", "104" }, Color {} },
-        { "light_cyan",    { "96", "106" }, Color {} },
-        { "white",         { "97", "107" }, Color {} }
-};
+const std::array<std::tuple<const TermStyle::Attribute, const std::string, const std::string>, 8> kAttributes {{
+    { TermStyle::Attribute::Bold,          "bold",          "1" },
+    { TermStyle::Attribute::Dim,           "dim",           "2" },
+    { TermStyle::Attribute::Italic,        "italic",        "3" },
+    { TermStyle::Attribute::Underline,     "underline",     "4" },
+    { TermStyle::Attribute::Blink,         "blink",         "5" },
+    { TermStyle::Attribute::Inverse,       "inverse",       "7" },
+    { TermStyle::Attribute::Hidden,        "hidden",        "8" },
+    { TermStyle::Attribute::Strikethrough, "strikethrough", "9" }
+}};
 
-const std::array<std::tuple<const int32_t, const std::string, const std::string>, 8> kAttributes{
-    {   {diffy::kStyleFlag_BOLD,          "bold",          "1"},
-        {diffy::kStyleFlag_DIM,           "dim",           "2"},
-        {diffy::kStyleFlag_ITALIC,        "italic",        "3"},
-        {diffy::kStyleFlag_UNDERLINE,     "underline",     "4"},
-        {diffy::kStyleFlag_BLINK,         "blink",         "5"},
-        {diffy::kStyleFlag_INVERSE,       "inverse",       "7"},
-        {diffy::kStyleFlag_HIDDEN,        "hidden",        "8"},
-        {diffy::kStyleFlag_STRIKETHROUGH, "strikethrough", "9"}}
-};
+// Color identifiers for 4 bit terminals.
+TermColor TermColor::kReset   = TermColor {TermColor::Kind::Reset, 0, 0, 0};
+TermColor TermColor::kDefault = TermColor {TermColor::Kind::DefaultColor, 39, 49, 0};
+
+TermColor TermColor::kBlack        = TermColor {30,  40};
+TermColor TermColor::kRed          = TermColor {31,  41};
+TermColor TermColor::kGreen        = TermColor {32,  42};
+TermColor TermColor::kYellow       = TermColor {33,  43};
+TermColor TermColor::kBlue         = TermColor {34,  44};
+TermColor TermColor::kMagenta      = TermColor {35,  45};
+TermColor TermColor::kCyan         = TermColor {36,  46};
+TermColor TermColor::kLightGray    = TermColor {37,  47};
+TermColor TermColor::kDarkGray     = TermColor {90, 100};
+TermColor TermColor::kLightRed     = TermColor {91, 101};
+TermColor TermColor::kLightGreen   = TermColor {92, 102};
+TermColor TermColor::kLightYellow  = TermColor {93, 103};
+TermColor TermColor::kLightBlue    = TermColor {94, 104};
+TermColor TermColor::kLightMagenta = TermColor {95, 105};
+TermColor TermColor::kLightCyan    = TermColor {96, 106};
+TermColor TermColor::kWhite        = TermColor {97, 107};
+
+// Color identifiers for true color terminals.
+TermColor TermColor::kBlack24        = TermColor {  0  , 0,   0};
+TermColor TermColor::kRed24          = TermColor {205,  49,  49};
+TermColor TermColor::kGreen24        = TermColor { 13, 188, 121};
+TermColor TermColor::kYellow24       = TermColor {229, 229,  16};
+TermColor TermColor::kBlue24         = TermColor { 36, 114, 200};
+TermColor TermColor::kMagenta24      = TermColor {188,  63, 188};
+TermColor TermColor::kCyan24         = TermColor {  17,168, 205};
+TermColor TermColor::kLightGray24    = TermColor {229, 229, 229};
+TermColor TermColor::kDarkGray24     = TermColor {102, 102, 102};
+TermColor TermColor::kLightRed24     = TermColor {241,  76,  76};
+TermColor TermColor::kLightGreen24   = TermColor { 35, 209, 139};
+TermColor TermColor::kLightYellow24  = TermColor {245, 245,  67};
+TermColor TermColor::kLightBlue24    = TermColor { 59, 142, 234};
+TermColor TermColor::kLightMagenta24 = TermColor {214, 112, 214};
+TermColor TermColor::kLightCyan24    = TermColor { 41, 184, 219};
+TermColor TermColor::kWhite24        = TermColor {229, 229, 229};
 // clang-format on
 
-uint32_t
-diffy::color_lookup_attributes(const std::vector<std::string>& attributes) {
-    uint32_t result = 0;
+// clang-format off
+const std::unordered_map<
+        std::string,
+        diffy::TermColor> k16Colors = {            
+        { "reset",         TermColor::kReset },
+        { "default",       TermColor::kDefault },
+        { "black",         TermColor::kBlack },
+        { "red",           TermColor::kRed },
+        { "green",         TermColor::kGreen },
+        { "yellow",        TermColor::kYellow },
+        { "blue",          TermColor::kBlue },
+        { "magenta",       TermColor::kMagenta },
+        { "cyan",          TermColor::kCyan },
+        { "light_gray",    TermColor::kLightGray },
+        { "dark_gray",     TermColor::kDarkGray },
+        { "light_red",     TermColor::kLightRed },
+        { "light_green",   TermColor::kLightGreen },
+        { "light_yellow",  TermColor::kLightYellow },
+        { "light_blue",    TermColor::kLightBlue },
+        { "light_magenta", TermColor::kLightMagenta },
+        { "light_cyan",    TermColor::kLightCyan },
+        { "white",         TermColor::kWhite }
+};
+
+std::string
+diffy::repr(const TermColor& color) {
+    std::string ks[] = { "4", "T", "D", "R" };
+    std::string k = ks[(int) color.kind];
+    return fmt::format("{}:({},{},{})", k, color.r, color.g, color.b);
+}
+
+static
+std::tuple<TermColor, TermColor>
+get_term_color_palette(std::string fg, std::string bg) {
+    TermColor fg_color = TermColor::kDefault;
+    TermColor bg_color = TermColor::kDefault;
+
+    if (!fg.empty() && k16Colors.find(fg) != k16Colors.end()) {
+        fg_color = k16Colors.at(fg);
+    } else {
+        // TODO: Error; no such color found
+    }
+
+    if (!bg.empty() && k16Colors.find(bg) != k16Colors.end()) {
+        bg_color = k16Colors.at(bg);
+    } else {
+        // TODO: Error; no such color found
+    }
+
+    return std::tuple(fg_color, bg_color);
+}
+
+static
+std::string
+get_term_color_name(const TermColor& expected) {
+    for (const auto &[name, color] : k16Colors) {
+        if (color == expected) {
+            return name;
+        }
+    }
+    return "default";
+}
+
+static
+TermStyle::Attribute
+color_encode_attributes(const std::vector<std::string>& attributes) {
+    uint16_t result = 0;
     for (const auto& [flag, name, _id] : kAttributes) {
         if (std::find(attributes.begin(), attributes.end(), name) != attributes.end()) {
-            result |= flag;
+            result |= (uint16_t) flag;
+        }
+    }
+    return (TermStyle::Attribute) result;
+}
+
+static
+std::vector<std::string>
+color_decode_attributes(TermStyle::Attribute attr) {
+    std::vector<std::string> result;
+    for (const auto& [flag, name, _id] : kAttributes) {
+        if ((uint16_t) flag & (uint16_t) attr) {
+            result.push_back(name);
         }
     }
     return result;
 }
 
-bool
-diffy::translate_color_name_to_16pal_escape_sequence(const std::string& fg_color,
-                                                     const std::string& bg_color,
-                                                     uint32_t flags,
-                                                     std::string& result) {
-    if (fg_color.empty() && bg_color.empty())
-        return false;
+TermStyle TermStyle::from_value(Value::Table table) {
+    TermStyle c;
 
-    std::string fg_id;
-    std::string bg_id;
+    // Translate color object to ansi code
+    auto fg = table["fg"].as_string();
+    auto bg = table["bg"].as_string();
+    auto attr_value_array = table["attr"];
 
-    if (!fg_color.empty() && k16Colors.find(fg_color) != k16Colors.end()) {
-        fg_id = std::get<0>(k16Colors.at(fg_color));
+    std::vector<std::string> attributes;
+    for (auto& attr_node : attr_value_array.as_array()) {
+        attributes.push_back(attr_node.as_string());
+    }
+    TermStyle::Attribute attr = color_encode_attributes(attributes);
+    
+    if (fg.empty() && bg.empty())
+    {
+        return c;
     }
 
-    if (!bg_color.empty() && k16Colors.find(bg_color) != k16Colors.end()) {
-        bg_id = std::get<1>(k16Colors.at(bg_color));
+    // FIXME: This is where we force 16 palette colors.
+    auto [fg_color, bg_color] = get_term_color_palette(fg, bg);
+
+    c.fg = fg_color;
+    c.bg = bg_color;
+    c.attr = (TermStyle::Attribute) attr;
+
+    return c;
+}
+
+std::string TermStyle::to_ansi() {
+    std::string result;
+
+    std::string kESC1 = "\\";
+
+    switch (fg.kind) {
+        // 24 bit
+        // ESC[38;2;{r};{g};{b}m	Set foreground color as RGB.
+        // ESC[48;2;{r};{g};{b}m	Set background color as RGB.
+        case TermColor::Kind::Color24bit: {
+            result += kESC + fmt::format("[38;2;{};{};{}m", fg.r, fg.g, fg.b);
+            result += kESC + fmt::format("[48;2;{};{};{}m", bg.r, bg.g, bg.b);
+        } break;
+
+        // 256 color palette (unsupported)
+        // ESC[38;5;{ID}m	Set foreground color.
+        // ESC[48;5;{ID}m	Set background color.
+
+        // 16 color palette ('4 bit')
+        // ESC=\033
+        // ESC[{ID};{ID}m  Set foreground and background color
+        case TermColor::Kind::DefaultColor:
+        case TermColor::Kind::Reset:
+        case TermColor::Kind::Color4bit: {
+            std::vector<std::string> codes;
+                codes.push_back(fmt::format("{}", fg.r));
+                if (bg.g != 0) {
+                    // TODO: Only set this when using a background?
+                    codes.push_back(fmt::format("{}", fg.g));
+                }
+
+                for (const auto& [attr_flag, attr_name, attr_code] : kAttributes) {
+                    if ((uint16_t) attr & (uint16_t) attr_flag) {
+                        codes.push_back(attr_code);
+                    }
+                }
+
+                result += kESC + "[";
+                for (auto code : codes) {
+                    result += ";";
+                    result += code;
+                }
+                result += "m";
+        } break;
+        default: assert(false && "missing case");
+    };
+
+    return result;
+}
+
+Value
+TermStyle::to_value() {
+    Value::Array attr_arr;
+    for (const auto& attr : color_decode_attributes(attr)) {
+        attr_arr.push_back({attr});
     }
 
-    if (fg_id.empty() && bg_id.empty()) {
-        return false;
-    }
-
-    result += kESC + "[";
-
-    std::vector<std::string> codes{};
-
-    if (!fg_id.empty()) {
-        codes.push_back(fg_id);
-    }
-
-    if (!bg_id.empty()) {
-        codes.push_back(bg_id);
-    }
-
-    for (const auto& [attr_flag, attr_name, attr_code] : kAttributes) {
-        if (flags & attr_flag) {
-            codes.push_back(attr_code);
-        }
-    }
-
-    for (auto code : codes) {
-        result += ";";
-        result += code;
-    }
-
-    result += "m";
-
-    return true;
+    Value v;
+    v["fg"] = { get_term_color_name(fg) };
+    v["bg"] = { get_term_color_name(bg) };
+    v["attr"] = { attr_arr };
+    return v;
 }
 
 void
 diffy::dump_colors() {
     fmt::print("Available values (16pal)\n");
-    for (const auto& [k, _v] : k16Colors) {
-        fmt::print("- {}\n", k);
+    for (const auto& [k, v] : k16Colors) {
+        auto s = TermStyle { v, TermColor::kReset };
+        fmt::print("{}{}, ", s.to_ansi(), k);
     }
+    fmt::print("\n");
 }
-
-/*
-
->>> _fg_colors
-{'default': 39, 'black': 30, 'red': 31, 'green': 32, 'yellow': 33, 'blue': 34, 'magenta': 35, 'cyan': 36,
-'light_gray': 37, 'dark_gray': 90, 'light_red': 91, 'light_green': 92, 'light_yellow': 93, 'light_blue': 94,
-'light_magenta': 95, 'light_cyan': 96, 'white': 97}
->>> _bg_colors
-{'default': 49, 'black': 40, 'red': 41, 'green': 42, 'yellow': 43, 'blue': 44, 'magenta': 45, 'cyan': 46,
-'light_gray': 47, 'dark_gray': 100, 'light_red': 101, 'light_green': 102, 'light_yellow': 103, 'light_blue':
-104, 'light_magenta': 105, 'light_cyan': 106, 'white': 107}
-
-// name            fg    bg
-
-*/
-
-// 16
-// ESC=\033
-// ESC[1;{ID};{ID}m  Set foreground and background color
-
-// 256
-// ESC[38;5;{ID}m	Set foreground color.
-// ESC[48;5;{ID}m	Set background color.
-
-// truecolor
-// ESC[38;2;{r};{g};{b}m	Set foreground color as RGB.
-// ESC[48;2;{r};{g};{b}m	Set background color as RGB.

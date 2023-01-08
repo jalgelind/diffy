@@ -2,6 +2,8 @@
 //  Half-assed hashmap wrapper where we can iterate through
 //  items in insertion-order.
 //
+// TODO: Incomplete; does not handle updating keys?
+//
 
 #pragma once
 

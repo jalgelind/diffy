@@ -85,7 +85,7 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
 
     // -- -- -- --
 
-    const std::vector<std::tuple<Value*, std::string*>> colors = {
+    const std::vector<std::tuple<TermStyle*, std::string*>> colors = {
             {&sbs_style_opts.header, &sbs_style_escape_codes.header},
             {&sbs_style_opts.delete_line, &sbs_style_escape_codes.delete_line},
             {&sbs_style_opts.delete_token, &sbs_style_escape_codes.delete_token},
@@ -98,29 +98,6 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
             {&sbs_style_opts.frame, &sbs_style_escape_codes.frame},
             {&sbs_style_opts.empty_line, &sbs_style_escape_codes.empty_line},
     };
-
-    auto translate_color = [](Value::Table& stored_table) {
-        std::string parsed_color;
-        {
-            // Translate color object to ansi code
-            auto fg = stored_table["fg"].as_string();
-            auto bg = stored_table["bg"].as_string();
-            auto attr = stored_table["attr"];
-
-            std::vector<std::string> attributes;
-            for (auto& attr_node : attr.as_array()) {
-                attributes.push_back(attr_node.as_string());
-            }
-
-            diffy::translate_color_name_to_16pal_escape_sequence(
-                fg, bg, diffy::color_lookup_attributes(attributes), parsed_color);
-        }
-        return parsed_color;
-    };
-
-    for (const auto &[source_value, dest_string] : colors) {
-        dest_string->assign(translate_color(source_value->as_table()));
-    }
 
     // -- -- -- --
 
@@ -136,12 +113,12 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
                     *((std::string*) ptr) = stored_value->get().as_string();
                 } break;
                 case C::Color: {
-                    *((Value*) ptr) = stored_value->get();
+                    *((TermStyle*) ptr) = TermStyle::from_value(stored_value->get().as_table());
                 } break;
             }
         } else {
-            // No such setting in the stored file, so we use the default.
-            // parse value from the option struct as a table
+            // No such setting in the stored file, so we store the default value
+            // from the struct.
             switch (type) {
                 case C::Bool: {
                     Value v{Value::Bool{*(bool*) ptr}};
@@ -152,10 +129,16 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
                     config_file_table_value.set_value_at(path, v);
                 } break;
                 case C::Color: {
-                    config_file_table_value.set_value_at(path, *(Value*) ptr);
+                    TermStyle* style = (TermStyle*) ptr;
+                    config_file_table_value.set_value_at(path, style->to_value());
                 }
             }
         }
+    }
+
+    // Set up escape code heper struct values
+    for (const auto &[source_value, dest_string] : colors) {
+        dest_string->assign(source_value->to_ansi());
     }
 
     // Write the configuration to disk with default settings

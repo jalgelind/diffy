@@ -1,6 +1,6 @@
 #pragma once
 
-#include "config/config.hpp"
+#include "config/parser/config_parser.hpp"
 
 #include <cstdint>
 #include <string>
@@ -8,85 +8,131 @@
 
 namespace diffy {
 
-// TODO: rename to Style; or AnsiStyle or something...
-struct Color {
+struct TermColor {
+    enum class Kind : uint8_t {
+        Color4bit = 0,
+        Color24bit,
+        DefaultColor,
+        Reset
+    };
+    Kind kind;
+
     uint8_t r;
     uint8_t g;
     uint8_t b;
-    uint16_t attr;
 
-    // Configuration style
-    static Color from_value(Value::Table table) {
-        Color c;
-
-        // Translate color object to ansi code
-        auto fg = table["fg"].as_string();
-        auto bg = table["bg"].as_string();
-        auto attr = table["attr"];
-
-        std::vector<std::string> attributes;
-        for (auto& attr_node : attr.as_array()) {
-            attributes.push_back(attr_node.as_string());
-        }
-        //diffy::translate_color_name_to_16pal_escape_sequence(
-        //    fg, bg, diffy::color_lookup_attributes(attributes), parsed_color);
-
-        return c;
+    TermColor() {
+        *this = TermColor::kDefault;
     }
 
-    const static Color kReset;
-    const static Color kBlack;
-    const static Color kRed;
-    const static Color kGreen;
-    const static Color kYellow;
-    const static Color kBlue;
-    const static Color kMagenta;
-    const static Color kCyan;
-    const static Color kLightGray;
-    const static Color kDefault;
-    const static Color kDarkGray;
-    const static Color kLightRed;
-    const static Color kLightGreen;
-    const static Color kLightYellow;
-    const static Color kLightBlue;
-    const static Color kLightMagenta;
-    const static Color kLightCyan;
-    const static Color kWhite;
+    // 24 bit RGB with attributes
+    explicit TermColor(uint8_t r, uint8_t g, uint8_t b)
+        : kind(Kind::Color24bit)
+        , r(r)
+        , g(g)
+        , b(b) {}
 
+    // 24 bit RGB with attributes
+    explicit TermColor(uint8_t bg, uint8_t fg)
+        : kind(Kind::Color4bit)
+        , r(fg)
+        , g(bg)
+        , b(0) {}
+
+    // Custom ones    
+    TermColor(Kind kind, uint8_t r, uint8_t g, uint8_t b)
+        : kind(kind)
+        , r(r)
+        , g(g)
+        , b(b) {}
+
+    bool operator == (const TermColor& other) const {
+        return other.kind == kind && other.r == r && other.g == g && other.b == b;
+    }
+
+    // 
+    static TermColor kReset;
+    static TermColor kDefault;
+
+    // Colors (standard 4 bit palette)
+    static TermColor kBlack;
+    static TermColor kRed;
+    static TermColor kGreen;
+    static TermColor kYellow;
+    static TermColor kBlue;
+    static TermColor kMagenta;
+    static TermColor kCyan;
+    static TermColor kLightGray;
+    static TermColor kDarkGray;
+    static TermColor kLightRed;
+    static TermColor kLightGreen;
+    static TermColor kLightYellow;
+    static TermColor kLightBlue;
+    static TermColor kLightMagenta;
+    static TermColor kLightCyan;
+    static TermColor kWhite;
+
+    // Colors (for terminals that support 24 bit)
+    static TermColor kBlack24;
+    static TermColor kRed24;
+    static TermColor kGreen24;
+    static TermColor kYellow24;
+    static TermColor kBlue24;
+    static TermColor kMagenta24;
+    static TermColor kCyan24;
+    static TermColor kLightGray24;
+    static TermColor kDarkGray24;
+    static TermColor kLightRed24;
+    static TermColor kLightGreen24;
+    static TermColor kLightYellow24;
+    static TermColor kLightBlue24;
+    static TermColor kLightMagenta24;
+    static TermColor kLightCyan24;
+    static TermColor kWhite24;
 };
 
-const uint32_t kStyleFlag_BOLD = 1 << 1;
-const uint32_t kStyleFlag_DIM = 1 << 2;
-const uint32_t kStyleFlag_ITALIC = 1 << 3;
-const uint32_t kStyleFlag_UNDERLINE = 1 << 4;
-const uint32_t kStyleFlag_BLINK = 1 << 5;  // really?
-const uint32_t kStyleFlag_INVERSE = 1 << 7;
-const uint32_t kStyleFlag_HIDDEN = 1 << 8;
-const uint32_t kStyleFlag_STRIKETHROUGH = 1 << 9;
+std::string
+repr(const TermColor& color);
 
-uint32_t
-color_lookup_attributes(const std::vector<std::string>& attributes);
+struct TermStyle {
 
-// 16 color palette
-bool
-translate_color_name_to_16pal_escape_sequence(const std::string& fg_color,
-                                              const std::string& bg_color,
-                                              uint32_t flags,
-                                              std::string& result);
+    enum class Attribute : uint16_t {
+        None          = 0,
+        Bold          = 1 << 0,
+        Dim           = 1 << 1,
+        Italic        = 1 << 2,
+        Underline     = 1 << 4,
+        Blink         = 1 << 5,
+        Inverse       = 1 << 6,
+        Hidden        = 1 << 7,
+        Strikethrough = 1 << 8,
+    };
 
-#if 0
-// 256 color palette
-bool
-translate_color_name_to_256pal_escape_sequence(const std::string& fg_color,
-                                               const std::string& bg_color,
-                                               std::string& result);
-// truetype color palette
-// Only accepts a 24 bit hex value, #rrggbb
-bool
-translate_color_name_to_tt_escape_sequence(const std::string& fg_color,
-                                           const std::string& bg_color,
-                                           std::string& result);
-#endif
+    TermColor fg;
+    TermColor bg;
+    Attribute attr;
+
+    TermStyle()
+    : TermStyle(TermColor::kDefault, TermColor::kDefault) {}
+
+    // Colors and with attributes
+    explicit TermStyle(TermColor fg, TermColor bg, Attribute attr)
+        : fg(fg)
+        , bg(bg)
+        , attr(attr) {}
+
+    // Fore- and background color
+    explicit TermStyle(TermColor fg, TermColor bg)
+        : TermStyle(fg, bg, Attribute::None) {}
+
+    // Parse color from configuration table value
+    static TermStyle from_value(Value::Table table);
+
+    Value to_value();
+
+    // Convert color to ansi escape sequence
+    std::string to_ansi();
+};
 
 void
 dump_colors();

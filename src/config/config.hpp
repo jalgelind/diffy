@@ -1,6 +1,7 @@
 #pragma once
 
 #include "parser/config_parser.hpp"
+#include "util/color.hpp"
 
 #include <string>
 
@@ -32,85 +33,73 @@ struct ProgramOptions {
     std::string right_file_name;
 };
 
-// TODO: Hmm... but this should be a Color type?
-// Color.to_value()
 struct ColumnViewTextStyle {
     // clang-format off
-    Value header = { Value::Table {
-        { "fg", Value {"white"} },
-        { "bg", Value {"default"} },
-        { "attr", { Value::Array {
-            {"underline"}
-        }},
-    }}};
+    TermStyle header = TermStyle {
+        TermColor::kWhite,
+        TermColor::kDefault,
+        TermStyle::Attribute::Underline
+    };
 
-    Value delete_line = { Value::Table {
-        { "fg", Value {"default"} },
-        { "bg", Value {"default"} },
-        { "attr", { Value::Array {}},
-    }}};
+    TermStyle delete_line = TermStyle {
+        TermColor::kDefault,
+        TermColor::kDefault,
+        TermStyle::Attribute::None
+    };
 
-    Value delete_token = { Value::Table {
-        { "fg", Value {"light_red"} },
-        { "bg", Value {"default"} },
-        { "attr", { Value::Array {
-            {"bold"}
-        }},
-    }}};
+    TermStyle delete_token = TermStyle {
+        TermColor::kLightRed,
+        TermColor::kDefault,
+        TermStyle::Attribute::Bold
+    };
 
-    Value delete_line_number = { Value::Table {
-        { "fg", Value {"red"} },
-        { "bg", Value {"dark_red"} },
-        { "attr", { Value::Array {
-            {"bold"}
-        }},
-    }}};
+    TermStyle delete_line_number = TermStyle {
+        TermColor::kRed,
+        TermColor::kDefault,
+        TermStyle::Attribute::Bold
+    };
 
-    Value insert_line = { Value::Table {
-        { "fg", Value {"default"} },
-        { "bg", Value {"default"} },
-        { "attr", { Value::Array {}},
-    }}};
+    TermStyle insert_line = TermStyle {
+        TermColor::kDefault,
+        TermColor::kDefault,
+        TermStyle::Attribute::None
+    };
 
-    Value insert_token = { Value::Table {
-        { "fg", Value {"light_green"} },
-        { "bg", Value {"default"} },
-        { "attr", { Value::Array {
-            {"bold"}
-        }},
-    }}};
+    TermStyle insert_token = TermStyle {
+        TermColor::kLightGreen,
+        TermColor::kDefault,
+        TermStyle::Attribute::Bold
+    };
 
-    Value insert_line_number = { Value::Table {
-        { "fg", Value {"green"} },
-        { "bg", Value {"dark_green"} },
-        { "attr", { Value::Array {
-            {"bold"}
-        }},
-    }}};
+    TermStyle insert_line_number = TermStyle {
+        TermColor::kGreen,
+        TermColor::kDefault,
+        TermStyle::Attribute::Bold
+    };
 
-    Value common_line = { Value::Table {
-        { "fg", Value {"default"} },
-        { "bg", Value {"default"} },
-        { "attr", { Value::Array {}},
-    }}};
+    TermStyle common_line = TermStyle {
+        TermColor::kDefault,
+        TermColor::kDefault,
+        TermStyle::Attribute::None
+    };
 
-    Value common_line_number = { Value::Table {
-        { "fg", Value {"default"} },
-        { "bg", Value {"default"} },
-        { "attr", { Value::Array {}},
-    }}};
+    TermStyle common_line_number = TermStyle {
+        TermColor::kDefault,
+        TermColor::kDefault,
+        TermStyle::Attribute::None
+    };
 
-    Value frame = { Value::Table {
-        { "fg", Value {"dark_grey"} },
-        { "bg", Value {"light_grey"} },
-        { "attr", { Value::Array {}},
-    }}};
+    TermStyle frame = TermStyle {
+        TermColor::kDarkGray,
+        TermColor::kLightGray,
+        TermStyle::Attribute::None
+    };
 
-    Value empty_line = { Value::Table {
-        { "fg", Value {"white"} },
-        { "bg", Value {"default"} },
-        { "attr", { Value::Array {}},
-    }}};
+    TermStyle empty_line = TermStyle {
+        TermColor::kWhite,
+        TermColor::kLightGray,
+        TermStyle::Attribute::None
+    };
     // clang-format on
 };
 
