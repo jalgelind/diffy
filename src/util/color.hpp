@@ -25,20 +25,6 @@ struct TermColor {
         *this = TermColor::kDefault;
     }
 
-    // 24 bit RGB with attributes
-    explicit TermColor(uint8_t r, uint8_t g, uint8_t b)
-        : kind(Kind::Color24bit)
-        , r(r)
-        , g(g)
-        , b(b) {}
-
-    // 24 bit RGB with attributes
-    explicit TermColor(uint8_t bg, uint8_t fg)
-        : kind(Kind::Color4bit)
-        , r(fg)
-        , g(bg)
-        , b(0) {}
-
     // Custom ones    
     TermColor(Kind kind, uint8_t r, uint8_t g, uint8_t b)
         : kind(kind)

@@ -29,40 +29,41 @@ const std::array<std::tuple<const TermStyle::Attribute, const std::string, const
 TermColor TermColor::kReset   = TermColor {TermColor::Kind::Reset, 0, 0, 0};
 TermColor TermColor::kDefault = TermColor {TermColor::Kind::DefaultColor, 39, 49, 0};
 
-TermColor TermColor::kBlack        = TermColor {30,  40};
-TermColor TermColor::kRed          = TermColor {31,  41};
-TermColor TermColor::kGreen        = TermColor {32,  42};
-TermColor TermColor::kYellow       = TermColor {33,  43};
-TermColor TermColor::kBlue         = TermColor {34,  44};
-TermColor TermColor::kMagenta      = TermColor {35,  45};
-TermColor TermColor::kCyan         = TermColor {36,  46};
-TermColor TermColor::kLightGray    = TermColor {37,  47};
-TermColor TermColor::kDarkGray     = TermColor {90, 100};
-TermColor TermColor::kLightRed     = TermColor {91, 101};
-TermColor TermColor::kLightGreen   = TermColor {92, 102};
-TermColor TermColor::kLightYellow  = TermColor {93, 103};
-TermColor TermColor::kLightBlue    = TermColor {94, 104};
-TermColor TermColor::kLightMagenta = TermColor {95, 105};
-TermColor TermColor::kLightCyan    = TermColor {96, 106};
-TermColor TermColor::kWhite        = TermColor {97, 107};
+// TODO: sync the names to this? https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
+TermColor TermColor::kBlack        = TermColor { TermColor::Kind::Color4bit, 30,  40, 0 };
+TermColor TermColor::kRed          = TermColor { TermColor::Kind::Color4bit, 31,  41, 0 };
+TermColor TermColor::kGreen        = TermColor { TermColor::Kind::Color4bit, 32,  42, 0 };
+TermColor TermColor::kYellow       = TermColor { TermColor::Kind::Color4bit, 33,  43, 0 };
+TermColor TermColor::kBlue         = TermColor { TermColor::Kind::Color4bit, 34,  44, 0 };
+TermColor TermColor::kMagenta      = TermColor { TermColor::Kind::Color4bit, 35,  45, 0 };
+TermColor TermColor::kCyan         = TermColor { TermColor::Kind::Color4bit, 36,  46, 0 };
+TermColor TermColor::kLightGray    = TermColor { TermColor::Kind::Color4bit, 37,  47, 0 };
+TermColor TermColor::kDarkGray     = TermColor { TermColor::Kind::Color4bit, 90, 100, 0 };
+TermColor TermColor::kLightRed     = TermColor { TermColor::Kind::Color4bit, 91, 101, 0 };
+TermColor TermColor::kLightGreen   = TermColor { TermColor::Kind::Color4bit, 92, 102, 0 };
+TermColor TermColor::kLightYellow  = TermColor { TermColor::Kind::Color4bit, 93, 103, 0 };
+TermColor TermColor::kLightBlue    = TermColor { TermColor::Kind::Color4bit, 94, 104, 0 };
+TermColor TermColor::kLightMagenta = TermColor { TermColor::Kind::Color4bit, 95, 105, 0 };
+TermColor TermColor::kLightCyan    = TermColor { TermColor::Kind::Color4bit, 96, 106, 0 };
+TermColor TermColor::kWhite        = TermColor { TermColor::Kind::Color4bit, 97, 107, 0 };
 
 // Color identifiers for true color terminals.
-TermColor TermColor::kBlack24        = TermColor {  0  , 0,   0};
-TermColor TermColor::kRed24          = TermColor {205,  49,  49};
-TermColor TermColor::kGreen24        = TermColor { 13, 188, 121};
-TermColor TermColor::kYellow24       = TermColor {229, 229,  16};
-TermColor TermColor::kBlue24         = TermColor { 36, 114, 200};
-TermColor TermColor::kMagenta24      = TermColor {188,  63, 188};
-TermColor TermColor::kCyan24         = TermColor {  17,168, 205};
-TermColor TermColor::kLightGray24    = TermColor {229, 229, 229};
-TermColor TermColor::kDarkGray24     = TermColor {102, 102, 102};
-TermColor TermColor::kLightRed24     = TermColor {241,  76,  76};
-TermColor TermColor::kLightGreen24   = TermColor { 35, 209, 139};
-TermColor TermColor::kLightYellow24  = TermColor {245, 245,  67};
-TermColor TermColor::kLightBlue24    = TermColor { 59, 142, 234};
-TermColor TermColor::kLightMagenta24 = TermColor {214, 112, 214};
-TermColor TermColor::kLightCyan24    = TermColor { 41, 184, 219};
-TermColor TermColor::kWhite24        = TermColor {229, 229, 229};
+TermColor TermColor::kBlack24        = TermColor { TermColor::Kind::Color24bit,   0  , 0,   0};
+TermColor TermColor::kRed24          = TermColor { TermColor::Kind::Color24bit, 205,  49,  49};
+TermColor TermColor::kGreen24        = TermColor { TermColor::Kind::Color24bit,  13, 188, 121};
+TermColor TermColor::kYellow24       = TermColor { TermColor::Kind::Color24bit, 229, 229,  16};
+TermColor TermColor::kBlue24         = TermColor { TermColor::Kind::Color24bit,  36, 114, 200};
+TermColor TermColor::kMagenta24      = TermColor { TermColor::Kind::Color24bit, 188,  63, 188};
+TermColor TermColor::kCyan24         = TermColor { TermColor::Kind::Color24bit,   17,168, 205};
+TermColor TermColor::kLightGray24    = TermColor { TermColor::Kind::Color24bit, 229, 229, 229};
+TermColor TermColor::kDarkGray24     = TermColor { TermColor::Kind::Color24bit, 102, 102, 102};
+TermColor TermColor::kLightRed24     = TermColor { TermColor::Kind::Color24bit, 241,  76,  76};
+TermColor TermColor::kLightGreen24   = TermColor { TermColor::Kind::Color24bit,  35, 209, 139};
+TermColor TermColor::kLightYellow24  = TermColor { TermColor::Kind::Color24bit, 245, 245,  67};
+TermColor TermColor::kLightBlue24    = TermColor { TermColor::Kind::Color24bit,  59, 142, 234};
+TermColor TermColor::kLightMagenta24 = TermColor { TermColor::Kind::Color24bit, 214, 112, 214};
+TermColor TermColor::kLightCyan24    = TermColor { TermColor::Kind::Color24bit,  41, 184, 219};
+TermColor TermColor::kWhite24        = TermColor { TermColor::Kind::Color24bit, 229, 229, 229};
 // clang-format on
 
 // clang-format off
@@ -206,24 +207,24 @@ std::string TermStyle::to_ansi() {
         case TermColor::Kind::Reset:
         case TermColor::Kind::Color4bit: {
             std::vector<std::string> codes;
-                codes.push_back(fmt::format("{}", fg.r));
-                if (bg.g != 0) {
-                    // TODO: Only set this when using a background?
-                    codes.push_back(fmt::format("{}", fg.g));
-                }
+            codes.push_back(fmt::format("{}", fg.r));
+            codes.push_back(fmt::format("{}", bg.g));
 
-                for (const auto& [attr_flag, attr_name, attr_code] : kAttributes) {
-                    if ((uint16_t) attr & (uint16_t) attr_flag) {
-                        codes.push_back(attr_code);
-                    }
+            for (const auto& [attr_flag, attr_name, attr_code] : kAttributes) {
+                if ((uint16_t) attr & (uint16_t) attr_flag) {
+                    codes.push_back(attr_code);
                 }
+            }
 
-                result += kESC + "[";
-                for (auto code : codes) {
+            result += kESC + "[";
+            for (int i = 0; i < codes.size(); i++) {
+                auto& code = codes[i];
+                if (i > 0) {
                     result += ";";
-                    result += code;
                 }
-                result += "m";
+                result += code;
+            }
+            result += "m";
         } break;
         default: assert(false && "missing case");
     };

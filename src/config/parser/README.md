@@ -12,7 +12,7 @@ Writing this was fun, but it should probably be replaced with json or something.
 Known bugs/limitations:
 -----------------------
 
-* Some comments are lost when deserializing a file, followed by serializing it again.
+* Some comments are lost when deserializing a file and serializing it again.
 
 When we deserialize into a value tree, we try to attach comments to the
 logically closest context. Some comments are not preserved, as we don't
