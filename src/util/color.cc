@@ -10,10 +10,7 @@
 
 using namespace diffy;
 
-// https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
-
-const std::string kESC = "\033";
-
+// clang-format off
 const std::array<std::tuple<const TermStyle::Attribute, const std::string, const std::string>, 8> kAttributes {{
     { TermStyle::Attribute::Bold,          "bold",          "1" },
     { TermStyle::Attribute::Dim,           "dim",           "2" },
@@ -25,10 +22,11 @@ const std::array<std::tuple<const TermStyle::Attribute, const std::string, const
     { TermStyle::Attribute::Strikethrough, "strikethrough", "9" }
 }};
 
-// Color identifiers for 4 bit terminals.
+// Special colors for default colors and for resetting colors + attributes.
 TermColor TermColor::kReset   = TermColor {TermColor::Kind::Reset, 0, 0, 0};
 TermColor TermColor::kDefault = TermColor {TermColor::Kind::DefaultColor, 39, 49, 0};
 
+// Color identifiers for 4 bit terminals.
 // TODO: sync the names to this? https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
 TermColor TermColor::kBlack        = TermColor { TermColor::Kind::Color4bit, 30,  40, 0 };
 TermColor TermColor::kRed          = TermColor { TermColor::Kind::Color4bit, 31,  41, 0 };
@@ -64,12 +62,9 @@ TermColor TermColor::kLightBlue24    = TermColor { TermColor::Kind::Color24bit, 
 TermColor TermColor::kLightMagenta24 = TermColor { TermColor::Kind::Color24bit, 214, 112, 214};
 TermColor TermColor::kLightCyan24    = TermColor { TermColor::Kind::Color24bit,  41, 184, 219};
 TermColor TermColor::kWhite24        = TermColor { TermColor::Kind::Color24bit, 229, 229, 229};
-// clang-format on
 
-// clang-format off
-const std::unordered_map<
-        std::string,
-        diffy::TermColor> k16Colors = {            
+const std::unordered_map<std::string, diffy::TermColor>
+k16Colors = {            
         { "reset",         TermColor::kReset },
         { "default",       TermColor::kDefault },
         { "black",         TermColor::kBlack },
@@ -89,6 +84,7 @@ const std::unordered_map<
         { "light_cyan",    TermColor::kLightCyan },
         { "white",         TermColor::kWhite }
 };
+// clang-format on
 
 std::string
 diffy::repr(const TermColor& color) {
@@ -185,7 +181,9 @@ TermStyle TermStyle::from_value(Value::Table table) {
 std::string TermStyle::to_ansi() {
     std::string result;
 
-    std::string kESC1 = "\\";
+    // https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
+    const std::string kESC = "\033";
+    const std::string kESC1 = "\\";
 
     switch (fg.kind) {
         // 24 bit
