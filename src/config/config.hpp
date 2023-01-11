@@ -36,7 +36,7 @@ struct ProgramOptions {
 struct ColumnViewTextStyle {
     // clang-format off
     TermStyle header = TermStyle {
-        TermColor::kBlue,
+        TermColor::kWhite,
         TermColor::kDefault,
         TermStyle::Attribute::Underline
     };
@@ -48,14 +48,14 @@ struct ColumnViewTextStyle {
     };
 
     TermStyle delete_token = TermStyle {
-        TermColor::kLightRed,
         TermColor::kBlack,
+        TermColor::kLightRed,
         TermStyle::Attribute::Bold
     };
 
     TermStyle delete_line_number = TermStyle {
         TermColor::kRed,
-        TermColor::kDefault,
+        TermColor::kBlack,
         TermStyle::Attribute::Bold
     };
 
@@ -66,14 +66,14 @@ struct ColumnViewTextStyle {
     };
 
     TermStyle insert_token = TermStyle {
-        TermColor::kLightGreen,
         TermColor::kBlack,
+        TermColor::kGreen,
         TermStyle::Attribute::Bold
     };
 
     TermStyle insert_line_number = TermStyle {
-        TermColor::kDefault,
-        TermColor::kGreen,
+        TermColor::kRed,
+        TermColor::kBlack,
         TermStyle::Attribute::Bold
     };
 
@@ -90,8 +90,8 @@ struct ColumnViewTextStyle {
     };
 
     TermStyle frame = TermStyle {
-        TermColor::kDarkGray,
-        TermColor::kLightGray,
+        TermColor::kDefault,
+        TermColor::kDefault,
         TermStyle::Attribute::None
     };
 

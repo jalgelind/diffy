@@ -279,8 +279,8 @@ make_header_columns(const std::string& left, const std::string right, const Colu
     auto blen = utf8_len(b);
 
     return {
-        {DisplayLine{{{config.style.header + a, alen, 0, EditType::Meta}}, alen}},
-        {DisplayLine{{{config.style.header + b, blen, 0, EditType::Meta}}, blen}},
+        {DisplayLine{{{config.style.header + a + "\033[0m", alen, 0, EditType::Meta}}, alen}},
+        {DisplayLine{{{config.style.header + b + "\033[0m", blen, 0, EditType::Meta}}, blen}},
         false,
     };
 }
@@ -293,10 +293,9 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
 
     hunk_columns.push_back(make_header_columns(diff_input.A_name, diff_input.B_name, config));
 
-    auto make_rows = [&diff_input, &config](auto side, const auto& lines) {
+    auto make_rows = [&config](const auto& content_strings, const auto& lines) {
         std::vector<DisplayLine> rows;
         for (const auto& line : lines) {
-            const auto& content_strings = side == ColumnSide::Left ? diff_input.A : diff_input.B;
             const auto& display_lines = make_display_lines(content_strings, line, config);
             for (const auto& display_line : display_lines) {
                 rows.push_back(display_line);
@@ -308,8 +307,8 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
     for (const auto& hunk : hunks) {
         DisplayColumns columns{
             // TODO: replace ColumnSide with diff_input.A/B
-            make_rows(ColumnSide::Left, hunk.a_lines),
-            make_rows(ColumnSide::Right, hunk.b_lines),
+            make_rows(diff_input.A, hunk.a_lines),
+            make_rows(diff_input.B, hunk.b_lines),
         };
 
         insert_alignment_rows(columns);
