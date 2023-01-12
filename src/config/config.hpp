@@ -49,6 +49,11 @@ struct ColumnViewTextStyle {
     //       would be nice to remove ColumnViewCharacters
     //       character repeat flag? string edges flag? something to use multiple symbols as separators, header wrappers adding e.g a fade
 
+    // flag: conter contents? where does width come from? we might have it stored somewhere since it's a fixed size
+    // std::optional<std::string> prefix_chars;
+    // std::optional<std::string> postfix_chars;
+    // TermStyle::to_ansi_with_decorations(prefix_chars, postfix_chars, text)
+
     TermStyle header_background = TermStyle {
         TermColor::kWhite,
         TermColor::kDefault,

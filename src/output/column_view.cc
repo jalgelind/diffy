@@ -217,6 +217,8 @@ std::vector<DisplayLine>
 make_display_lines(const gsl::span<diffy::Line>& content_strings,
                    const EditLine& line,
                    const ColumnViewState& config) {
+
+    // TODO: So... this is the one that works on line level...
     DisplayLine display_line = transform_edit_line(content_strings, line, config);
 
     if (!config.settings.word_wrap) {
