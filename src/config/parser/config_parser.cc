@@ -214,18 +214,18 @@ diffy::cfg_parse(const std::string& input_data,
         }                                           \
     }
 
-    #define PARSER_EXPECT(expected_id) {                                                                   \
-        if (!((expected_id) & token.id)) {                                                                 \
-            result.set_error(token, fmt::format("Expected {}, found {} [src:{}]",                          \
-                diffy::config_tokenizer::repr(expected_id), diffy::config_tokenizer::repr(token.id), __LINE__));                   \
-            return false;                                                                                  \
-        }                                                                                                  \
+    #define PARSER_EXPECT(expected_id) {                                                                        \
+        if (!((expected_id) & token.id)) {                                                                      \
+            result.set_error(token, fmt::format("Expected {}, found {} [src:{}]",                               \
+                diffy::config_tokenizer::repr(expected_id), diffy::config_tokenizer::repr(token.id), __LINE__));\
+            return false;                                                                                       \
+        }                                                                                                       \
     }
 
-    #define PARSER_EXPECT_AND_ADVANCE(expected_id) {                                                       \
-        if (!((expected_id) & token.id)) {                                                                 \
-            result.set_error(token, fmt::format("Expected {}, found {} [src:{}]",                          \
-                diffy::config_tokenizer::repr(expected_id), diffy::config_tokenizer::repr(token.id), __LINE__));                   \
+    #define PARSER_EXPECT_AND_ADVANCE(expected_id) {                                                            \
+        if (!((expected_id) & token.id)) {                                                                      \
+            result.set_error(token, fmt::format("Expected {}, found {} [src:{}]",                               \
+                diffy::config_tokenizer::repr(expected_id), diffy::config_tokenizer::repr(token.id), __LINE__));\
             return false;                                                                                  \
         } else {                                                                                           \
             PARSER_NEXT_TOKEN();                                                                           \
@@ -233,10 +233,10 @@ diffy::cfg_parse(const std::string& input_data,
     }
 
     #define PARSER_GIVE_UP(message) {                                                                  \
-        if (token.id & config_tokenizer::TokenId_Terminator)                                                       \
+        if (token.id & config_tokenizer::TokenId_Terminator)                                           \
             PARSER_NEXT_STATE();                                                                       \
         result.set_error(token, fmt::format("error: \033[1m'{}'\033[0m while processing {} [src: {}]", \
-                message, diffy::config_tokenizer::repr(token.id), __LINE__));                                      \
+                message, diffy::config_tokenizer::repr(token.id), __LINE__));                          \
         return false;                                                                                  \
     }
 
@@ -266,12 +266,12 @@ diffy::cfg_parse(const std::string& input_data,
         PARSER_NEXT_TOKEN();                                       \
     }
 
-    #define PARSER_EAT_COMMENTS() {                                                     \
-        while (token.id & config_tokenizer::TokenId_Comment) {                                      \
-            emit_ins({TbOperator::Comment, token.str_from(input_data)},                 \
-                         token.id & config_tokenizer::TokenId_FirstOnLine);                         \
-            PARSER_NEXT_TOKEN();                                                        \
-        }                                                                               \
+    #define PARSER_EAT_COMMENTS() {                                        \
+        while (token.id & config_tokenizer::TokenId_Comment) {             \
+            emit_ins({TbOperator::Comment, token.str_from(input_data)},    \
+                         token.id & config_tokenizer::TokenId_FirstOnLine);\
+            PARSER_NEXT_TOKEN();                                           \
+        }                                                                  \
     }
 
     #define PARSER_SKIP(ids) {    \

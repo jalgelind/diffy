@@ -2,6 +2,7 @@ TODO
 ----
 * Theme selection
   * (Color scheme support on top of fg/bg/attr)
+* Move config/parser to util/config_parser
 * Improve color rendering to support 16 bit palettes and 24 bit color codes
 * Investigate failing test cases (looks ok when checking manually; error in test runner?)
 
