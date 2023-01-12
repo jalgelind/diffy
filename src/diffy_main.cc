@@ -121,7 +121,7 @@ Side by side options:
     -l, --line                 line based diff instead of word based diff
     -W [width]                 maximum width in each column
 )"),
-                                       argv[0]);
+                                       argv[0], diffy::config_get_directory());
 
 #ifdef DIFFY_DEBUG
         help += R"(
@@ -131,6 +131,8 @@ Side by side options:
 #endif
 
         help += "\n";
+
+        help += "Config directory:\n    " + diffy::config_get_directory();
 
         if (!optional_error_message.empty()) {
             help += optional_error_message;

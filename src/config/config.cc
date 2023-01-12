@@ -24,12 +24,17 @@ enum class ConfigVariableType {
     Color,
 };
 
+std::string
+diffy::config_get_directory() {
+    return fmt::format("{}/diffy", sago::getConfigHome());
+}
+
 void
 diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
                     diffy::ColumnViewSettings& sbs_view_opts,
                     diffy::ColumnViewTextStyle& sbs_style_opts,
                     diffy::ColumnViewTextStyleEscapeCodes& sbs_style_escape_codes) {
-    const std::string config_root = fmt::format("{}/diffy", sago::getConfigHome());
+    const std::string config_root = config_get_directory();
     const std::string config_path = fmt::format("{}/config.conf", config_root);
     bool flush_config_to_disk = false;
 

@@ -154,6 +154,9 @@ struct ColumnViewSettings {
     bool line_number_align_right = false;
 };
 
+std::string
+config_get_directory();
+
 void
 config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
              diffy::ColumnViewSettings& sbs_view_opts,
