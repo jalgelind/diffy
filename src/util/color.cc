@@ -190,8 +190,8 @@ std::string TermStyle::to_ansi() {
         // ESC[38;2;{r};{g};{b}m	Set foreground color as RGB.
         // ESC[48;2;{r};{g};{b}m	Set background color as RGB.
         case TermColor::Kind::Color24bit: {
-            result += kESC + fmt::format(kESC + "[38;2;{};{};{}m", fg.r, fg.g, fg.b);
-            result += kESC + fmt::format(kESC + "[48;2;{};{};{}m", bg.r, bg.g, bg.b);
+            result += kESC + fmt::format("[38;2;{};{};{}m", fg.r, fg.g, fg.b);
+            result += kESC + fmt::format("[48;2;{};{};{}m", bg.r, bg.g, bg.b);
             // TODO: missing attributes; should probably share the code builder
             return result;
         } break;
