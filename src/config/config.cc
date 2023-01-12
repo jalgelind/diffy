@@ -148,7 +148,21 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
 
     // Write the configuration to disk with default settings
     if (flush_config_to_disk) {
-        std::error_code ec;
+
+        // Add help text to the configuration file
+        config_file_table_value["theme"].key_comments.push_back(
+R"foo( Theme configuration
+# 
+# TODO: fill this in with whatever we come up with
+# TODO: and since you're seeing this maybe you should fix the
+#       serializer formatting to avoid the exessive newlining?
+#       maybe align the values nicely?
+# TODO: also look at the extra space at the start of this string
+#       ...
+# 
+)foo");
+
+        std::error_code ec; // TODO: use
         std::filesystem::create_directory(config_root, ec);
 
         do {
