@@ -45,11 +45,6 @@ format_line_number(int64_t line_number, int64_t width, bool right_align) {
     return fmt::format("{:<{}}", line_number, width);
 }
 
-enum class ColumnSide {
-    Left,
-    Right,
-};
-
 struct DisplayLineSegment {
     std::string text;
     int64_t text_len;
@@ -306,7 +301,6 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
 
     for (const auto& hunk : hunks) {
         DisplayColumns columns{
-            // TODO: replace ColumnSide with diff_input.A/B
             make_rows(diff_input.A, hunk.a_lines),
             make_rows(diff_input.B, hunk.b_lines),
         };
