@@ -1,6 +1,6 @@
 #pragma once
 
-#include "parser/config_parser.hpp"
+#include "util/config_parser/config_parser.hpp"
 #include "util/color.hpp"
 
 #include <string>

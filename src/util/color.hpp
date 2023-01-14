@@ -1,6 +1,6 @@
 #pragma once
 
-#include "config/parser/config_parser.hpp"
+#include "config_parser/config_parser.hpp"
 
 #include <cstdint>
 #include <string>

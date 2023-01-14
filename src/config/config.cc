@@ -1,9 +1,9 @@
 #include "config.hpp"
 
-#include <config/parser/config_parser.hpp>
-#include <config/parser/config_parser_utils.hpp>
 #include <output/column_view.hpp>
 #include <processing/tokenizer.hpp>
+#include <util/config_parser/config_parser.hpp>
+#include <util/config_parser/config_parser_utils.hpp>
 #include <util/color.hpp>
 
 #include <fmt/format.h>
