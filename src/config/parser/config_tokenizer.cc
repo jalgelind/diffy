@@ -1,7 +1,5 @@
 #include "config_tokenizer.hpp"
 
-#include "util/hash.hpp"
-
 #include <fmt/format.h>
 
 #include <algorithm>
