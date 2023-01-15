@@ -121,6 +121,8 @@ struct ColumnViewTextStyle {
     // clang-format on
 };
 
+
+
 struct ColumnViewTextStyleEscapeCodes {
     std::string header;
     std::string delete_line;

@@ -56,6 +56,48 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
         }
     }
 
+    // Update the color table
+    {
+        const std::vector<std::string> palette_color_names = {
+            "black",
+            "red",
+            "green",
+            "yellow",
+            "blue",
+            "magenta",
+            "cyan",
+            "light_gray",
+            "dark_gray",
+            "light_red",
+            "light_green",
+            "light_yellow",
+            "light_blue",
+            "light_magenta",
+            "light_cyan",
+            "white",
+        };
+
+        if (!config_file_table_value.contains("colors")) {
+            // TODO: We have to include something here to avoid broken output
+            // (empty section had equal sign followed by empty table)
+            config_file_table_value.set_value_at("colors.example", { "#f1f1f1" });
+
+        }
+
+        auto& color_values = config_file_table_value["colors"];
+
+        for (const auto& color: palette_color_names) {
+            if (color_values.contains(color)) {
+                auto& v = color_values[color];
+                auto term_color = TermColor::from_value(v);
+                if (term_color) {
+                    color_map_set(color, *term_color);
+                }
+            }
+        }
+    }
+
+    // Sync up the rest of the configuration with the options structs
     using C = ConfigVariableType;
     // clang-format off
     const std::vector<std::tuple<std::string, ConfigVariableType, void*>> options = {
@@ -88,20 +130,6 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
         { "theme.frame",                    C::Color,  &sbs_style_opts.frame },
     };
     // clang-format on
-
-    const std::vector<std::tuple<TermStyle*, std::string*>> colors = {
-            {&sbs_style_opts.header, &sbs_style_escape_codes.header},
-            {&sbs_style_opts.delete_line, &sbs_style_escape_codes.delete_line},
-            {&sbs_style_opts.delete_token, &sbs_style_escape_codes.delete_token},
-            {&sbs_style_opts.delete_line_number, &sbs_style_escape_codes.delete_line_number},
-            {&sbs_style_opts.insert_line, &sbs_style_escape_codes.insert_line},
-            {&sbs_style_opts.insert_token, &sbs_style_escape_codes.insert_token},
-            {&sbs_style_opts.insert_line_number, &sbs_style_escape_codes.insert_line_number},
-            {&sbs_style_opts.common_line, &sbs_style_escape_codes.common_line},
-            {&sbs_style_opts.common_line_number, &sbs_style_escape_codes.common_line_number},
-            {&sbs_style_opts.frame, &sbs_style_escape_codes.frame},
-            {&sbs_style_opts.empty_line, &sbs_style_escape_codes.empty_line},
-    };
 
     for (const auto& [path, type, ptr] : options) {
         // Do we have a value for this option in the config we loaded?
@@ -142,6 +170,20 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
     }
 
     // Set up escape code heper struct values
+    const std::vector<std::tuple<TermStyle*, std::string*>> colors = {
+            {&sbs_style_opts.header, &sbs_style_escape_codes.header},
+            {&sbs_style_opts.delete_line, &sbs_style_escape_codes.delete_line},
+            {&sbs_style_opts.delete_token, &sbs_style_escape_codes.delete_token},
+            {&sbs_style_opts.delete_line_number, &sbs_style_escape_codes.delete_line_number},
+            {&sbs_style_opts.insert_line, &sbs_style_escape_codes.insert_line},
+            {&sbs_style_opts.insert_token, &sbs_style_escape_codes.insert_token},
+            {&sbs_style_opts.insert_line_number, &sbs_style_escape_codes.insert_line_number},
+            {&sbs_style_opts.common_line, &sbs_style_escape_codes.common_line},
+            {&sbs_style_opts.common_line_number, &sbs_style_escape_codes.common_line_number},
+            {&sbs_style_opts.frame, &sbs_style_escape_codes.frame},
+            {&sbs_style_opts.empty_line, &sbs_style_escape_codes.empty_line},
+    };
+
     for (const auto &[source_value, dest_string] : colors) {
         dest_string->assign(source_value->to_ansi());
     }
@@ -150,6 +192,18 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
     if (flush_config_to_disk) {
 
         // Add help text to the configuration file
+        config_file_table_value["colors"].key_comments.push_back(
+R"foo( Color palette customization
+# Available color names:
+#   black, red, green, yellow, blue, magenta, cyan, light_gray,
+#   dark_gray, light_red, light_green, light_yellow, light_blue,
+#   light_magenta, light_cyan, white,
+#
+# Example:
+#   [colors]
+#       white = "#f0f0f0"
+)foo");
+
         config_file_table_value["theme"].key_comments.push_back(
 R"foo( Theme configuration
 # 

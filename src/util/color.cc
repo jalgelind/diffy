@@ -45,7 +45,8 @@ TermColor TermColor::kLightMagenta = TermColor { TermColor::Kind::Color4bit, 95,
 TermColor TermColor::kLightCyan    = TermColor { TermColor::Kind::Color4bit, 96, 106, 0 };
 TermColor TermColor::kWhite        = TermColor { TermColor::Kind::Color4bit, 97, 107, 0 };
 
-const std::unordered_map<std::string, diffy::TermColor> k16Colors = {
+// Default color mapping for best compatibility
+const std::unordered_map<std::string, diffy::TermColor> k16DefaultColors = {
         { "reset",         TermColor::kReset },
         { "default",       TermColor::kDefault },
         { "black",         TermColor::kBlack },
@@ -66,6 +67,9 @@ const std::unordered_map<std::string, diffy::TermColor> k16Colors = {
         { "white",         TermColor::kWhite }
 };
 // clang-format on
+
+// Color look-up table where colors can be re-defined
+std::unordered_map<std::string, diffy::TermColor> k16Colors = k16DefaultColors;
 
 // Parse color from configuration table value
 std::optional<TermColor>
@@ -250,8 +254,14 @@ TermStyle::to_value() {
     return v;
 }
 
+
 void
-diffy::dump_colors() {
+diffy::color_map_set(std::string color_name, diffy::TermColor color) {
+    k16Colors[color_name] = color;
+}
+
+void
+diffy::color_dump() {
     fmt::print("Available values (16pal)\n");
     for (const auto& [k, v] : k16Colors) {
         auto s = TermStyle { v, TermColor::kReset };

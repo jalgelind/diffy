@@ -183,7 +183,7 @@ Side by side options:
                         } break;
                     }
                     puts("");
-                    diffy::dump_colors();
+                    diffy::color_dump();
                     exit(0);
                 }
                 case 'a':
