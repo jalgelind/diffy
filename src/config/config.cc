@@ -118,7 +118,10 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
                     *((std::string*) ptr) = stored_value->get().as_string();
                 } break;
                 case C::Color: {
-                    *((TermStyle*) ptr) = TermStyle::from_value(stored_value->get().as_table());
+                    auto style = TermStyle::from_value(stored_value->get().as_table());
+                    if (style) {
+                        *((TermStyle*) ptr) = *style;
+                    }
                 } break;
             }
         } else {

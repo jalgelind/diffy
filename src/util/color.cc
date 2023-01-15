@@ -84,34 +84,55 @@ k16Colors = {
         { "light_cyan",    TermColor::kLightCyan },
         { "white",         TermColor::kWhite }
 };
+
+const std::unordered_map<std::string, diffy::TermColor>
+k24Colors = {            
+        { "reset",         TermColor::kReset },
+        { "default",       TermColor::kDefault },
+        { "black",         TermColor::kBlack24 },
+        { "red",           TermColor::kRed24 },
+        { "green",         TermColor::kGreen24 },
+        { "yellow",        TermColor::kYellow24 },
+        { "blue",          TermColor::kBlue24 },
+        { "magenta",       TermColor::kMagenta24 },
+        { "cyan",          TermColor::kCyan24 },
+        { "light_gray",    TermColor::kLightGray24 },
+        { "dark_gray",     TermColor::kDarkGray24 },
+        { "light_red",     TermColor::kLightRed24 },
+        { "light_green",   TermColor::kLightGreen24 },
+        { "light_yellow",  TermColor::kLightYellow24 },
+        { "light_blue",    TermColor::kLightBlue24 },
+        { "light_magenta", TermColor::kLightMagenta24 },
+        { "light_cyan",    TermColor::kLightCyan24 },
+        { "white",         TermColor::kWhite24 }
+};
 // clang-format on
+
+// Parse color from configuration table value
+std::optional<TermColor>
+TermColor::from_value(Value value) {
+
+    if (!value.is_string()) {
+        return {};
+    }
+
+    auto s = value.as_string();
+    if (s.empty()) {
+        return {};
+    }
+
+    if (k16Colors.find(s) != k16Colors.end()) {
+        return k16Colors.at(s);
+    }
+
+    return {};
+}
 
 std::string
 diffy::repr(const TermColor& color) {
     std::string ks[] = { "4", "T", "D", "R" };
     std::string k = ks[(int) color.kind];
     return fmt::format("{}:({},{},{})", k, color.r, color.g, color.b);
-}
-
-static
-std::tuple<TermColor, TermColor>
-get_term_color_palette(std::string fg, std::string bg) {
-    TermColor fg_color = TermColor::kDefault;
-    TermColor bg_color = TermColor::kDefault;
-
-    if (!fg.empty() && k16Colors.find(fg) != k16Colors.end()) {
-        fg_color = k16Colors.at(fg);
-    } else {
-        // TODO: Error; no such color found
-    }
-
-    if (!bg.empty() && k16Colors.find(bg) != k16Colors.end()) {
-        bg_color = k16Colors.at(bg);
-    } else {
-        // TODO: Error; no such color found
-    }
-
-    return std::tuple(fg_color, bg_color);
 }
 
 static
@@ -149,31 +170,31 @@ color_decode_attributes(TermStyle::Attribute attr) {
     return result;
 }
 
-TermStyle TermStyle::from_value(Value::Table table) {
+std::optional<TermStyle>
+TermStyle::from_value(Value::Table table) {
     TermStyle c;
 
-    // Translate color object to ansi code
-    auto fg = table["fg"].as_string();
-    auto bg = table["bg"].as_string();
     auto attr_value_array = table["attr"];
 
     std::vector<std::string> attributes;
     for (auto& attr_node : attr_value_array.as_array()) {
         attributes.push_back(attr_node.as_string());
     }
-    TermStyle::Attribute attr = color_encode_attributes(attributes);
-    
-    if (fg.empty() && bg.empty())
-    {
-        return c;
+    c.attr = color_encode_attributes(attributes);
+
+    if (table.contains("fg")) {
+        auto color = TermColor::from_value(table["fg"]);
+        if (color) {
+            c.fg = *color;
+        }
     }
 
-    // FIXME: This is where we force 16 palette colors.
-    auto [fg_color, bg_color] = get_term_color_palette(fg, bg);
-
-    c.fg = fg_color;
-    c.bg = bg_color;
-    c.attr = (TermStyle::Attribute) attr;
+    if (table.contains("fg")) {
+        auto color = TermColor::from_value(table["bg"]);
+        if (color) {
+            c.bg = *color;
+        }
+    }
 
     return c;
 }

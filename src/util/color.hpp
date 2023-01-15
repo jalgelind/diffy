@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <optional>
 #include <vector>
 
 namespace diffy {
@@ -15,6 +16,7 @@ struct TermColor {
         DefaultColor,
         Reset
     };
+
     Kind kind;
 
     uint8_t r;
@@ -35,6 +37,10 @@ struct TermColor {
     bool operator == (const TermColor& other) const {
         return other.kind == kind && other.r == r && other.g == g && other.b == b;
     }
+
+    // Parse color from configuration table value
+    static std::optional<TermColor>
+    from_value(Value value);
 
     // 
     static TermColor kReset;
@@ -111,13 +117,16 @@ struct TermStyle {
     explicit TermStyle(TermColor fg, TermColor bg)
         : TermStyle(fg, bg, Attribute::None) {}
 
-    // Parse color from configuration table value
-    static TermStyle from_value(Value::Table table);
+    // Parse style from configuration table value
+    static std::optional<TermStyle>
+    from_value(Value::Table table);
 
-    Value to_value();
+    Value
+    to_value();
 
     // Convert color to ansi escape sequence
-    std::string to_ansi();
+    std::string
+    to_ansi();
 };
 
 void
