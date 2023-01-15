@@ -45,26 +45,7 @@ TermColor TermColor::kLightMagenta = TermColor { TermColor::Kind::Color4bit, 95,
 TermColor TermColor::kLightCyan    = TermColor { TermColor::Kind::Color4bit, 96, 106, 0 };
 TermColor TermColor::kWhite        = TermColor { TermColor::Kind::Color4bit, 97, 107, 0 };
 
-// Color identifiers for true color terminals.
-TermColor TermColor::kBlack24        = TermColor { TermColor::Kind::Color24bit,   0  , 0,   0};
-TermColor TermColor::kRed24          = TermColor { TermColor::Kind::Color24bit, 205,  49,  49};
-TermColor TermColor::kGreen24        = TermColor { TermColor::Kind::Color24bit,  13, 188, 121};
-TermColor TermColor::kYellow24       = TermColor { TermColor::Kind::Color24bit, 229, 229,  16};
-TermColor TermColor::kBlue24         = TermColor { TermColor::Kind::Color24bit,  36, 114, 200};
-TermColor TermColor::kMagenta24      = TermColor { TermColor::Kind::Color24bit, 188,  63, 188};
-TermColor TermColor::kCyan24         = TermColor { TermColor::Kind::Color24bit,   17,168, 205};
-TermColor TermColor::kLightGray24    = TermColor { TermColor::Kind::Color24bit, 229, 229, 229};
-TermColor TermColor::kDarkGray24     = TermColor { TermColor::Kind::Color24bit, 102, 102, 102};
-TermColor TermColor::kLightRed24     = TermColor { TermColor::Kind::Color24bit, 241,  76,  76};
-TermColor TermColor::kLightGreen24   = TermColor { TermColor::Kind::Color24bit,  35, 209, 139};
-TermColor TermColor::kLightYellow24  = TermColor { TermColor::Kind::Color24bit, 245, 245,  67};
-TermColor TermColor::kLightBlue24    = TermColor { TermColor::Kind::Color24bit,  59, 142, 234};
-TermColor TermColor::kLightMagenta24 = TermColor { TermColor::Kind::Color24bit, 214, 112, 214};
-TermColor TermColor::kLightCyan24    = TermColor { TermColor::Kind::Color24bit,  41, 184, 219};
-TermColor TermColor::kWhite24        = TermColor { TermColor::Kind::Color24bit, 229, 229, 229};
-
-const std::unordered_map<std::string, diffy::TermColor>
-k16Colors = {            
+const std::unordered_map<std::string, diffy::TermColor> k16Colors = {
         { "reset",         TermColor::kReset },
         { "default",       TermColor::kDefault },
         { "black",         TermColor::kBlack },
@@ -84,34 +65,11 @@ k16Colors = {
         { "light_cyan",    TermColor::kLightCyan },
         { "white",         TermColor::kWhite }
 };
-
-const std::unordered_map<std::string, diffy::TermColor>
-k24Colors = {            
-        { "reset",         TermColor::kReset },
-        { "default",       TermColor::kDefault },
-        { "black",         TermColor::kBlack24 },
-        { "red",           TermColor::kRed24 },
-        { "green",         TermColor::kGreen24 },
-        { "yellow",        TermColor::kYellow24 },
-        { "blue",          TermColor::kBlue24 },
-        { "magenta",       TermColor::kMagenta24 },
-        { "cyan",          TermColor::kCyan24 },
-        { "light_gray",    TermColor::kLightGray24 },
-        { "dark_gray",     TermColor::kDarkGray24 },
-        { "light_red",     TermColor::kLightRed24 },
-        { "light_green",   TermColor::kLightGreen24 },
-        { "light_yellow",  TermColor::kLightYellow24 },
-        { "light_blue",    TermColor::kLightBlue24 },
-        { "light_magenta", TermColor::kLightMagenta24 },
-        { "light_cyan",    TermColor::kLightCyan24 },
-        { "white",         TermColor::kWhite24 }
-};
 // clang-format on
 
 // Parse color from configuration table value
 std::optional<TermColor>
 TermColor::from_value(Value value) {
-
     if (!value.is_string()) {
         return {};
     }
@@ -131,6 +89,7 @@ TermColor::from_value(Value value) {
         switch (s.size()) {
             // '#ABC'
             case 4: {
+                // TODO: validate
                 long color24 = strtol(&s[1], nullptr, 16);
                 uint8_t r = (color24 >>  8) & 0x0F;
                 uint8_t g = (color24 >>  4) & 0x0F;
@@ -140,6 +99,7 @@ TermColor::from_value(Value value) {
             } break;
             // '#AABBCC'
             case 7: {
+                // TODO: validate
                 long color24 = strtol(&s[1], nullptr, 16);
                 uint8_t r = (color24 >> 16) & 0xFF;
                 uint8_t g = (color24 >>  8) & 0xFF;
@@ -148,7 +108,6 @@ TermColor::from_value(Value value) {
             } break;
         }
     }
-
     return {};
 }
 
@@ -192,35 +151,6 @@ color_decode_attributes(TermStyle::Attribute attr) {
         }
     }
     return result;
-}
-
-std::optional<TermStyle>
-TermStyle::from_value(Value::Table table) {
-    TermStyle c;
-
-    auto attr_value_array = table["attr"];
-
-    std::vector<std::string> attributes;
-    for (auto& attr_node : attr_value_array.as_array()) {
-        attributes.push_back(attr_node.as_string());
-    }
-    c.attr = color_encode_attributes(attributes);
-
-    if (table.contains("fg")) {
-        auto color = TermColor::from_value(table["fg"]);
-        if (color) {
-            c.fg = *color;
-        }
-    }
-
-    if (table.contains("fg")) {
-        auto color = TermColor::from_value(table["bg"]);
-        if (color) {
-            c.bg = *color;
-        }
-    }
-
-    return c;
 }
 
 std::string TermStyle::to_ansi() {
@@ -275,6 +205,35 @@ std::string TermStyle::to_ansi() {
     };
 
     return result;
+}
+
+std::optional<TermStyle>
+TermStyle::from_value(Value::Table table) {
+    TermStyle c;
+
+    auto attr_value_array = table["attr"];
+
+    std::vector<std::string> attributes;
+    for (auto& attr_node : attr_value_array.as_array()) {
+        attributes.push_back(attr_node.as_string());
+    }
+    c.attr = color_encode_attributes(attributes);
+
+    if (table.contains("fg")) {
+        auto color = TermColor::from_value(table["fg"]);
+        if (color) {
+            c.fg = *color;
+        }
+    }
+
+    if (table.contains("fg")) {
+        auto color = TermColor::from_value(table["bg"]);
+        if (color) {
+            c.bg = *color;
+        }
+    }
+
+    return c;
 }
 
 Value

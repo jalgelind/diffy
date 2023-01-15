@@ -30,7 +30,8 @@ diffy::config_get_directory() {
 }
 
 void
-diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
+diffy::config_apply(diffy::ProgramOptions& program_options,
+                    diffy::ColumnViewCharacters& sbs_char_opts,
                     diffy::ColumnViewSettings& sbs_view_opts,
                     diffy::ColumnViewTextStyle& sbs_style_opts,
                     diffy::ColumnViewTextStyleEscapeCodes& sbs_style_escape_codes) {
@@ -88,8 +89,6 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
     };
     // clang-format on
 
-    // -- -- -- --
-
     const std::vector<std::tuple<TermStyle*, std::string*>> colors = {
             {&sbs_style_opts.header, &sbs_style_escape_codes.header},
             {&sbs_style_opts.delete_line, &sbs_style_escape_codes.delete_line},
@@ -103,8 +102,6 @@ diffy::config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
             {&sbs_style_opts.frame, &sbs_style_escape_codes.frame},
             {&sbs_style_opts.empty_line, &sbs_style_escape_codes.empty_line},
     };
-
-    // -- -- -- --
 
     for (const auto& [path, type, ptr] : options) {
         // Do we have a value for this option in the config we loaded?

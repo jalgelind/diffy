@@ -90,9 +90,6 @@ compute_diff(diffy::Algo algorithm,
 int
 main(int argc, char* argv[]) {
     diffy::ProgramOptions opts;
-    diffy::ColumnViewState sbs_ui_opts;
-
-    diffy::config_apply(sbs_ui_opts.chars, sbs_ui_opts.settings, sbs_ui_opts.style_config, sbs_ui_opts.style);
 
     auto show_help = [&](const std::string& optional_error_message) {
         std::string help = fmt::format((R"(
@@ -156,7 +153,7 @@ Side by side options:
                                                {"list-colors", no_argument, 0, '1'},
                                                {0, 0, 0, 0}};
         int c = 0, option_index = 0;
-        while ((c = getopt_long(in_argc, in_argv, "a:dhlsS:tuU:W:o:n:iw", long_options, &option_index)) >=
+        while ((c = getopt_long(in_argc, in_argv, "a:dhlsS:uU:W:o:n:iw", long_options, &option_index)) >=
                0) {
             switch (c) {
                 case 'v':
@@ -165,9 +162,6 @@ Side by side options:
 #ifdef DIFFY_DEBUG
                 case 'd':
                     opts.debug = true;
-                    break;
-                case 't':
-                    opts.test_case = true;
                     break;
 #endif
                 case 'h':
@@ -305,6 +299,9 @@ Side by side options:
         return 0;
     }
 
+    diffy::ColumnViewState sbs_ui_opts;
+    diffy::config_apply(opts, sbs_ui_opts.chars, sbs_ui_opts.settings, sbs_ui_opts.style_config, sbs_ui_opts.style);
+
     auto left_line_data = diffy::readlines(opts.left_file, opts.ignore_line_endings);
     auto right_line_data = diffy::readlines(opts.right_file, opts.ignore_line_endings);
 
@@ -332,19 +329,7 @@ Side by side options:
 
     auto hunks = diffy::compose_hunks(result.edit_sequence, opts.context_lines);
 
-    if (opts.test_case) {
-        // TODO: Finish this; generate unit tests from functional tests
-        auto EditType_to_string = [](diffy::EditType t) {
-            std::string s[] = {"Delete", "Insert", "Common", "Meta"};
-            return fmt::format("EditType::{}", s[(int) t]);
-        };
-        fmt::print("dump test case\n");
-        for (auto edit : result.edit_sequence) {
-            fmt::print("{{");
-            fmt::print("{}", EditType_to_string(edit.type));
-            fmt::print("}}");
-        }
-    } else if (opts.debug) {
+    if (opts.debug) {
         // TODO: Dump hunks?
         (void) hunks;
         fmt::print("input (N/M: {}/{})\n", diff_input.A.size(), diff_input.B.size());

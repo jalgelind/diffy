@@ -18,7 +18,6 @@ struct ProgramOptions {
     bool column_view = false;
     bool line_granularity = false;
     bool unified = false;
-    bool test_case = false;
     Algo algorithm = Algo::kPatience;
     int64_t context_lines = 3;
     int64_t width = 0;
@@ -74,7 +73,7 @@ struct ColumnViewTextStyle {
 
     TermStyle delete_line_number = TermStyle {
         TermColor::kRed,
-        TermColor::kBlack,
+        TermColor::kDefault,
         TermStyle::Attribute::Bold
     };
 
@@ -91,8 +90,8 @@ struct ColumnViewTextStyle {
     };
 
     TermStyle insert_line_number = TermStyle {
-        TermColor::kRed,
-        TermColor::kBlack,
+        TermColor::kGreen,
+        TermColor::kDefault,
         TermStyle::Attribute::Bold
     };
 
@@ -158,7 +157,8 @@ std::string
 config_get_directory();
 
 void
-config_apply(diffy::ColumnViewCharacters& sbs_char_opts,
+config_apply(diffy::ProgramOptions& program_options,
+             diffy::ColumnViewCharacters& sbs_char_opts,
              diffy::ColumnViewSettings& sbs_view_opts,
              diffy::ColumnViewTextStyle& sbs_style_opts,
              diffy::ColumnViewTextStyleEscapeCodes& sbs_style_escape_codes);
