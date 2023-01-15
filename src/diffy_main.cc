@@ -255,7 +255,7 @@ Side by side options:
         }
 
         if (opts.unified && opts.column_view) {
-            show_help("error: -s -S[context] -s -S[context] are mutually exclusive");
+            show_help("error: -s and -S[context], -u -U[context] are mutually exclusive");
             return false;
         } else if (!opts.unified && !opts.column_view) {
             opts.column_view = true;
