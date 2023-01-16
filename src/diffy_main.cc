@@ -129,7 +129,7 @@ Side by side options:
 
         help += "\n";
 
-        help += "Config directory:\n    " + diffy::config_get_directory();
+        help += "Config directory:\n    " + diffy::config_get_directory() + "\n\n";
 
         if (!optional_error_message.empty()) {
             help += optional_error_message;
