@@ -66,8 +66,8 @@ struct ColumnViewTextStyle {
     };
 
     TermStyle delete_token = TermStyle {
-        TermColor::kBlack,
-        TermColor::kLightRed,
+        TermColor::kRed,
+        TermColor::kDefault,
         TermStyle::Attribute::Bold
     };
 
@@ -84,8 +84,8 @@ struct ColumnViewTextStyle {
     };
 
     TermStyle insert_token = TermStyle {
-        TermColor::kBlack,
         TermColor::kGreen,
+        TermColor::kDefault,
         TermStyle::Attribute::Bold
     };
 
