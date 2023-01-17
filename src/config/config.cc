@@ -56,6 +56,20 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
         }
     }
 
+#if DIFFY_DEBUG
+    // TODO: Why don't we return ParseResult and add a bool operation on it?
+    diffy::ParseResult result;
+
+    // TODO: Why is test1 causing the serializer to barf the empty key?
+    diffy::Value obj;
+    if (cfg_parse_value_tree("[section]", result, obj)) {
+        diffy::Value tmp1 { diffy::Value::Table {} };
+        tmp1.set_value_at("colors", { Value::Table {} });
+        fmt::print("TEST: {}\n", cfg_serialize(obj));
+        fmt::print("TEST: {}\n", cfg_serialize(tmp1));
+    }
+#endif
+
     // Update the color table
     {
         const std::vector<std::string> palette_color_names = {
