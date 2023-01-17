@@ -72,6 +72,57 @@ static void config_save(
     } while (0);
 }
 
+using OptionVector = std::vector<std::tuple<std::string, ConfigVariableType, void*>>;
+
+static void
+config_apply_options(
+        diffy::ProgramOptions& program_options,
+        diffy::ColumnViewCharacters& sbs_char_opts,
+        diffy::ColumnViewSettings& sbs_view_opts,
+        diffy::ColumnViewTextStyle& sbs_style_opts,
+        diffy::ColumnViewTextStyleEscapeCodes& sbs_style_escape_codes,
+        diffy::Value& config,
+        const OptionVector& options) {
+
+    for (const auto& [path, type, ptr] : options) {
+        // Do we have a value for this option in the config we loaded?
+        if (auto stored_value = config.lookup_value_by_path(path); stored_value) {
+            // Yes. So we take the value and write it into our settings struct.
+            switch (type) {
+                case ConfigVariableType::Bool: {
+                    *((bool*) ptr) = stored_value->get().as_bool();
+                } break;
+                case ConfigVariableType::String: {
+                    *((std::string*) ptr) = stored_value->get().as_string();
+                } break;
+                case ConfigVariableType::Color: {
+                    auto style = diffy::TermStyle::from_value(stored_value->get().as_table());
+                    if (style) {
+                        *((diffy::TermStyle*) ptr) = *style;
+                    }
+                } break;
+            }
+        } else {
+            // No such setting in the stored file, so we store the default value
+            // from the struct.
+            switch (type) {
+                case ConfigVariableType::Bool: {
+                    diffy::Value v{diffy::Value::Bool{*(bool*) ptr}};
+                    config.set_value_at(path, v);
+                } break;
+                case ConfigVariableType::String: {
+                    diffy::Value v{diffy::Value::String{*(std::string*) ptr}};
+                    config.set_value_at(path, v);
+                } break;
+                case ConfigVariableType::Color: {
+                    diffy::TermStyle* style = (diffy::TermStyle*) ptr;
+                    config.set_value_at(path, style->to_value());
+                }
+            }
+        }
+    }
+}
+
 void
 diffy::config_apply(diffy::ProgramOptions& program_options,
                     diffy::ColumnViewCharacters& sbs_char_opts,
@@ -162,76 +213,42 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
     }
 
     // Sync up the rest of the configuration with the options structs
-    using C = ConfigVariableType;
+    using OptionVector = std::vector<std::tuple<std::string, ConfigVariableType, void*>>;
     // clang-format off
-    const std::vector<std::tuple<std::string, ConfigVariableType, void*>> options = {
+    const OptionVector options = {
         // side-by-side settings
-        { "general.show_line_numbers",            C::Bool, &sbs_view_opts.show_line_numbers},
-        { "general.context_colored_line_numbers", C::Bool, &sbs_view_opts.context_colored_line_numbers},
-        { "general.word_wrap",                    C::Bool, &sbs_view_opts.word_wrap},
-        { "general.line_number_align_right",      C::Bool, &sbs_view_opts.line_number_align_right},
+        { "general.word_wrap",                    ConfigVariableType::Bool, &sbs_view_opts.word_wrap},
+        { "general.show_line_numbers",            ConfigVariableType::Bool, &sbs_view_opts.show_line_numbers},
+        { "general.context_colored_line_numbers", ConfigVariableType::Bool, &sbs_view_opts.context_colored_line_numbers},
+        { "general.line_number_align_right",      ConfigVariableType::Bool, &sbs_view_opts.line_number_align_right},
 
         // side-by-side theme
-        { "theme.chars.column_separator",         C::String, &sbs_char_opts.column_separator },
-        { "theme.chars.edge_separator",           C::String, &sbs_char_opts.edge_separator },
-        { "theme.chars.tab_replacement",          C::String, &sbs_char_opts.tab_replacement },
-        { "theme.chars.cr_replacement",           C::String, &sbs_char_opts.cr_replacement },
-        { "theme.chars.lf_replacement",           C::String, &sbs_char_opts.lf_replacement },
-        { "theme.chars.crlf_replacement",         C::String, &sbs_char_opts.crlf_replacement },
-        { "theme.chars.space_replacement",        C::String, &sbs_char_opts.space_replacement },
+        { "theme.chars.column_separator",         ConfigVariableType::String, &sbs_char_opts.column_separator },
+        { "theme.chars.edge_separator",           ConfigVariableType::String, &sbs_char_opts.edge_separator },
+        { "theme.chars.tab_replacement",          ConfigVariableType::String, &sbs_char_opts.tab_replacement },
+        { "theme.chars.cr_replacement",           ConfigVariableType::String, &sbs_char_opts.cr_replacement },
+        { "theme.chars.lf_replacement",           ConfigVariableType::String, &sbs_char_opts.lf_replacement },
+        { "theme.chars.crlf_replacement",         ConfigVariableType::String, &sbs_char_opts.crlf_replacement },
+        { "theme.chars.space_replacement",        ConfigVariableType::String, &sbs_char_opts.space_replacement },
 
         // side-by-side color style
-        { "theme.style.header",                   C::Color,  &sbs_style_opts.header },
-        { "theme.style.delete_line",              C::Color,  &sbs_style_opts.delete_line },
-        { "theme.style.delete_token",             C::Color,  &sbs_style_opts.delete_token },
-        { "theme.style.delete_line_number",       C::Color,  &sbs_style_opts.delete_line_number },
-        { "theme.style.insert_line",              C::Color,  &sbs_style_opts.insert_line },
-        { "theme.style.insert_token",             C::Color,  &sbs_style_opts.insert_token },
-        { "theme.style.insert_line_number",       C::Color,  &sbs_style_opts.insert_line_number },
-        { "theme.style.common_line",              C::Color,  &sbs_style_opts.common_line },
-        { "theme.style.empty_line",               C::Color,  &sbs_style_opts.empty_line },
-        { "theme.style.common_line_number",       C::Color,  &sbs_style_opts.common_line_number },
-        { "theme.style.frame",                    C::Color,  &sbs_style_opts.frame },
+        { "theme.style.header",                   ConfigVariableType::Color,  &sbs_style_opts.header },
+        { "theme.style.delete_line",              ConfigVariableType::Color,  &sbs_style_opts.delete_line },
+        { "theme.style.delete_token",             ConfigVariableType::Color,  &sbs_style_opts.delete_token },
+        { "theme.style.delete_line_number",       ConfigVariableType::Color,  &sbs_style_opts.delete_line_number },
+        { "theme.style.insert_line",              ConfigVariableType::Color,  &sbs_style_opts.insert_line },
+        { "theme.style.insert_token",             ConfigVariableType::Color,  &sbs_style_opts.insert_token },
+        { "theme.style.insert_line_number",       ConfigVariableType::Color,  &sbs_style_opts.insert_line_number },
+        { "theme.style.common_line",              ConfigVariableType::Color,  &sbs_style_opts.common_line },
+        { "theme.style.empty_line",               ConfigVariableType::Color,  &sbs_style_opts.empty_line },
+        { "theme.style.common_line_number",       ConfigVariableType::Color,  &sbs_style_opts.common_line_number },
+        { "theme.style.frame",                    ConfigVariableType::Color,  &sbs_style_opts.frame },
     };
     // clang-format on
 
-    for (const auto& [path, type, ptr] : options) {
-        // Do we have a value for this option in the config we loaded?
-        if (auto stored_value = config_file_table_value.lookup_value_by_path(path); stored_value) {
-            // Yes. So we take the value and write it into our settings struct.
-            switch (type) {
-                case C::Bool: {
-                    *((bool*) ptr) = stored_value->get().as_bool();
-                } break;
-                case C::String: {
-                    *((std::string*) ptr) = stored_value->get().as_string();
-                } break;
-                case C::Color: {
-                    auto style = TermStyle::from_value(stored_value->get().as_table());
-                    if (style) {
-                        *((TermStyle*) ptr) = *style;
-                    }
-                } break;
-            }
-        } else {
-            // No such setting in the stored file, so we store the default value
-            // from the struct.
-            switch (type) {
-                case C::Bool: {
-                    Value v{Value::Bool{*(bool*) ptr}};
-                    config_file_table_value.set_value_at(path, v);
-                } break;
-                case C::String: {
-                    Value v{Value::String{*(std::string*) ptr}};
-                    config_file_table_value.set_value_at(path, v);
-                } break;
-                case C::Color: {
-                    TermStyle* style = (TermStyle*) ptr;
-                    config_file_table_value.set_value_at(path, style->to_value());
-                }
-            }
-        }
-    }
+    config_apply_options(
+        program_options, sbs_char_opts, sbs_view_opts, sbs_style_opts, sbs_style_escape_codes,
+        config_file_table_value, options);
 
     // Set up escape code heper struct values
     const std::vector<std::tuple<TermStyle*, std::string*>> colors = {
