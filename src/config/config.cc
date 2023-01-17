@@ -18,6 +18,28 @@
 #include <tuple>
 #include <vector>
 
+static std::string config_doc_color_map = R"foo( Color palette customization
+# Available color names:
+#   black, red, green, yellow, blue, magenta, cyan, light_gray,
+#   dark_gray, light_red, light_green, light_yellow, light_blue,
+#   light_magenta, light_cyan, white,
+#
+# Example:
+#   [colors]
+#       white = "#f0f0f0"
+)foo";
+
+static std::string config_doc_theme = R"foo( Theme configuration
+# 
+# TODO: fill this in with whatever we come up with
+# TODO: and since you're seeing this maybe you should fix the
+#       serializer formatting to avoid the exessive newlining?
+#       maybe align the values nicely?
+# TODO: also look at the extra space at the start of this string
+#       ...
+# 
+)foo";
+
 enum class ConfigVariableType {
     Bool,
     String,
@@ -70,6 +92,12 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
     }
 #endif
 
+    // Ensure the general section is up top
+    // TODO: Remove this if we move the theaming to a separate file
+    if (!config_file_table_value.lookup_value_by_path("general")) {
+        config_file_table_value["general"] = { Value::Table {} };
+    }
+
     // Update the color table
     {
         const std::vector<std::string> palette_color_names = {
@@ -91,14 +119,15 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
             "white",
         };
 
-        if (!config_file_table_value.contains("colors")) {
-            // TODO: We have to include something here to avoid broken output
-            // (empty section had equal sign followed by empty table)
-            config_file_table_value.set_value_at("colors.example", { "#f1f1f1" });
+        if (!config_file_table_value.lookup_value_by_path("theme.style.color_map")) {
+            config_file_table_value.set_value_at("theme.style.color_map.red", { "red" });
 
+            // Add help text to the configuration file
+            auto colors_section = config_file_table_value.lookup_value_by_path("theme.style.color_map");
+            colors_section->get().key_comments.push_back(config_doc_color_map);
         }
 
-        auto& color_values = config_file_table_value["colors"];
+        auto& color_values = config_file_table_value.lookup_value_by_path("theme.style.color_map")->get();
 
         for (const auto& color: palette_color_names) {
             if (color_values.contains(color)) {
@@ -122,26 +151,26 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
         { "general.line_number_align_right",      C::Bool, &sbs_view_opts.line_number_align_right},
 
         // side-by-side theme
-        { "theme.column_separator",         C::String, &sbs_char_opts.column_separator },
-        { "theme.edge_separator",           C::String, &sbs_char_opts.edge_separator },
-        { "theme.tab_replacement",          C::String, &sbs_char_opts.tab_replacement },
-        { "theme.cr_replacement",           C::String, &sbs_char_opts.cr_replacement },
-        { "theme.lf_replacement",           C::String, &sbs_char_opts.lf_replacement },
-        { "theme.crlf_replacement",         C::String, &sbs_char_opts.crlf_replacement },
-        { "theme.space_replacement",        C::String, &sbs_char_opts.space_replacement },
+        { "theme.chars.column_separator",         C::String, &sbs_char_opts.column_separator },
+        { "theme.chars.edge_separator",           C::String, &sbs_char_opts.edge_separator },
+        { "theme.chars.tab_replacement",          C::String, &sbs_char_opts.tab_replacement },
+        { "theme.chars.cr_replacement",           C::String, &sbs_char_opts.cr_replacement },
+        { "theme.chars.lf_replacement",           C::String, &sbs_char_opts.lf_replacement },
+        { "theme.chars.crlf_replacement",         C::String, &sbs_char_opts.crlf_replacement },
+        { "theme.chars.space_replacement",        C::String, &sbs_char_opts.space_replacement },
 
         // side-by-side color style
-        { "theme.header",                   C::Color,  &sbs_style_opts.header },
-        { "theme.delete_line",              C::Color,  &sbs_style_opts.delete_line },
-        { "theme.delete_token",             C::Color,  &sbs_style_opts.delete_token },
-        { "theme.delete_line_number",       C::Color,  &sbs_style_opts.delete_line_number },
-        { "theme.insert_line",              C::Color,  &sbs_style_opts.insert_line },
-        { "theme.insert_token",             C::Color,  &sbs_style_opts.insert_token },
-        { "theme.insert_line_number",       C::Color,  &sbs_style_opts.insert_line_number },
-        { "theme.common_line",              C::Color,  &sbs_style_opts.common_line },
-        { "theme.empty_line",               C::Color,  &sbs_style_opts.empty_line },
-        { "theme.common_line_number",       C::Color,  &sbs_style_opts.common_line_number },
-        { "theme.frame",                    C::Color,  &sbs_style_opts.frame },
+        { "theme.style.header",                   C::Color,  &sbs_style_opts.header },
+        { "theme.style.delete_line",              C::Color,  &sbs_style_opts.delete_line },
+        { "theme.style.delete_token",             C::Color,  &sbs_style_opts.delete_token },
+        { "theme.style.delete_line_number",       C::Color,  &sbs_style_opts.delete_line_number },
+        { "theme.style.insert_line",              C::Color,  &sbs_style_opts.insert_line },
+        { "theme.style.insert_token",             C::Color,  &sbs_style_opts.insert_token },
+        { "theme.style.insert_line_number",       C::Color,  &sbs_style_opts.insert_line_number },
+        { "theme.style.common_line",              C::Color,  &sbs_style_opts.common_line },
+        { "theme.style.empty_line",               C::Color,  &sbs_style_opts.empty_line },
+        { "theme.style.common_line_number",       C::Color,  &sbs_style_opts.common_line_number },
+        { "theme.style.frame",                    C::Color,  &sbs_style_opts.frame },
     };
     // clang-format on
 
@@ -203,32 +232,8 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
     }
 
     // Write the configuration to disk with default settings
-    if (flush_config_to_disk) {
-
-        // Add help text to the configuration file
-        config_file_table_value["colors"].key_comments.push_back(
-R"foo( Color palette customization
-# Available color names:
-#   black, red, green, yellow, blue, magenta, cyan, light_gray,
-#   dark_gray, light_red, light_green, light_yellow, light_blue,
-#   light_magenta, light_cyan, white,
-#
-# Example:
-#   [colors]
-#       white = "#f0f0f0"
-)foo");
-
-        config_file_table_value["theme"].key_comments.push_back(
-R"foo( Theme configuration
-# 
-# TODO: fill this in with whatever we come up with
-# TODO: and since you're seeing this maybe you should fix the
-#       serializer formatting to avoid the exessive newlining?
-#       maybe align the values nicely?
-# TODO: also look at the extra space at the start of this string
-#       ...
-# 
-)foo");
+    if (true) {
+        config_file_table_value["theme"].key_comments.push_back(config_doc_theme);
 
         std::error_code ec; // TODO: use
         std::filesystem::create_directory(config_root, ec);
