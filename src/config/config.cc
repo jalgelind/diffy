@@ -51,6 +51,27 @@ diffy::config_get_directory() {
     return fmt::format("{}/diffy", sago::getConfigHome());
 }
 
+static void config_save(
+        const std::string& config_root,
+        const std::string& config_name,
+        diffy::Value& config_value) {
+
+    std::filesystem::create_directory(config_root);
+
+    do {
+        FILE* f = fopen(config_name.c_str(), "wb");
+        if (!f) {
+            fprintf(stderr, "Failed to open '%s' for writing.\n", config_name.c_str());
+            fprintf(stderr, "   errno (%d) = %s\n", errno, strerror(errno));
+            return;
+        }
+
+        std::string serialized = cfg_serialize(config_value);
+        fwrite(serialized.c_str(), serialized.size(), 1, f);
+        fclose(f);
+    } while (0);
+}
+
 void
 diffy::config_apply(diffy::ProgramOptions& program_options,
                     diffy::ColumnViewCharacters& sbs_char_opts,
@@ -232,26 +253,14 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
     }
 
     // Write the configuration to disk with default settings
-    if (true) {
+    if (flush_config_to_disk) {
         config_file_table_value["theme"].key_comments.push_back(config_doc_theme);
 
-        std::error_code ec; // TODO: use
-        std::filesystem::create_directory(config_root, ec);
-
-        do {
-            FILE* f = fopen(config_path.c_str(), "wb");
-            if (!f) {
-                fprintf(stderr, "Failed to open '%s' for writing.\n", config_path.c_str());
-                fprintf(stderr, "   errno (%d) = %s\n", errno, strerror(errno));
-                break;
-            }
-
-            std::string serialized = cfg_serialize(config_file_table_value);
-            fwrite(serialized.c_str(), serialized.size(), 1, f);
-            fclose(f);
-        } while (0);
+        config_save(config_root, config_path, config_file_table_value);
     }
 }
+
+
 
 diffy::Algo
 diffy::algo_from_string(std::string s) {
