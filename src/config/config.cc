@@ -40,6 +40,13 @@ static std::string config_doc_theme = R"foo( Theme configuration
 # 
 )foo";
 
+// TODO: Is program_options used yet?
+//  * flag to force-generate the config file
+//  * flag to ignore theme
+//  * optional theme name, overriding the config file
+//  * ability to set default algorithm
+//  * ability to set default number of context lines
+
 enum class ConfigVariableType {
     Bool,
     String,
@@ -55,21 +62,18 @@ static void config_save(
         const std::string& config_root,
         const std::string& config_name,
         diffy::Value& config_value) {
-
     std::filesystem::create_directory(config_root);
 
-    do {
-        FILE* f = fopen(config_name.c_str(), "wb");
-        if (!f) {
-            fprintf(stderr, "Failed to open '%s' for writing.\n", config_name.c_str());
-            fprintf(stderr, "   errno (%d) = %s\n", errno, strerror(errno));
-            return;
-        }
+    FILE* f = fopen(config_name.c_str(), "wb");
+    if (!f) {
+        fprintf(stderr, "Failed to open '%s' for writing.\n", config_name.c_str());
+        fprintf(stderr, "   errno (%d) = %s\n", errno, strerror(errno));
+        return;
+    }
 
-        std::string serialized = cfg_serialize(config_value);
-        fwrite(serialized.c_str(), serialized.size(), 1, f);
-        fclose(f);
-    } while (0);
+    std::string serialized = cfg_serialize(config_value);
+    fwrite(serialized.c_str(), serialized.size(), 1, f);
+    fclose(f);
 }
 
 using OptionVector = std::vector<std::tuple<std::string, ConfigVariableType, void*>>;
@@ -123,32 +127,61 @@ config_apply_options(
     }
 }
 
+enum class ConfigLoadResult {
+    Ok,
+    Invalid,
+    DoesNotExist,
+};
+
+ConfigLoadResult
+config_load_file(const std::string& config_path, diffy::Value& config_table, diffy::ParseResult& load_result) {
+    ConfigLoadResult result = ConfigLoadResult::Ok;
+
+    diffy::Value config_file_table_value{diffy::Value::Table{}};
+    if (cfg_load_file(config_path, load_result, config_file_table_value)) {
+        if (config_file_table_value.is_table()) {
+            result = ConfigLoadResult::Ok;
+        } else {
+            result = ConfigLoadResult::Invalid;
+        }
+    } else {
+        if (load_result.kind == diffy::ParseErrorKind::File) {
+            result = ConfigLoadResult::DoesNotExist;
+        } else {
+            result = ConfigLoadResult::Invalid;
+        }
+    }
+    return result;
+}
+
+
 void
 diffy::config_apply(diffy::ProgramOptions& program_options,
                     diffy::ColumnViewCharacters& sbs_char_opts,
                     diffy::ColumnViewSettings& sbs_view_opts,
                     diffy::ColumnViewTextStyle& sbs_style_opts,
                     diffy::ColumnViewTextStyleEscapeCodes& sbs_style_escape_codes) {
-    const std::string config_root = config_get_directory();
-    const std::string config_path = fmt::format("{}/config.conf", config_root);
+
+    const std::string config_file_name = "theme_default.conf";
+    const std::string config_root = diffy::config_get_directory();
+    const std::string config_path = fmt::format("{}/{}", config_root, config_file_name);
+
     bool flush_config_to_disk = false;
 
-    Value config_file_table_value{Value::Table{}};
-    {
-        ParseResult load_result;
-
-        if (cfg_load_file(config_path, load_result, config_file_table_value)) {
-            assert(config_file_table_value.is_table() && "Expected a table");
-            // Below we are going to assume we can access the value via as_table().
-        } else {
-            if (load_result.kind == diffy::ParseErrorKind::File) {
-                flush_config_to_disk = true;
-                fmt::print("warning: could not find default config. creating one.\n\t{}\n", config_path);
-            } else {
-                fmt::print("error: {}\n", load_result.error);
-            }
-        }
-    }
+    ParseResult config_parse_result;
+    Value config_file_table_value;
+    switch (config_load_file(config_path, config_file_table_value, config_parse_result)) {
+        case ConfigLoadResult::Ok: {
+            // yay!
+        } break;
+        case ConfigLoadResult::Invalid: {
+            fmt::print("error: {}\n", config_parse_result.error);
+        } break;
+        case ConfigLoadResult::DoesNotExist: {
+            fmt::print("warning: could not find default config. creating one.\n\t{}\n", config_path);
+            flush_config_to_disk = true;
+        } break;
+    };
 
 #if DIFFY_DEBUG
     // TODO: Why don't we return ParseResult and add a bool operation on it?
@@ -163,12 +196,6 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
         fmt::print("TEST: {}\n", cfg_serialize(tmp1));
     }
 #endif
-
-    // Ensure the general section is up top
-    // TODO: Remove this if we move the theaming to a separate file
-    if (!config_file_table_value.lookup_value_by_path("general")) {
-        config_file_table_value["general"] = { Value::Table {} };
-    }
 
     // Update the color table
     {
@@ -217,10 +244,10 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
     // clang-format off
     const OptionVector options = {
         // side-by-side settings
-        { "general.word_wrap",                    ConfigVariableType::Bool, &sbs_view_opts.word_wrap},
-        { "general.show_line_numbers",            ConfigVariableType::Bool, &sbs_view_opts.show_line_numbers},
-        { "general.context_colored_line_numbers", ConfigVariableType::Bool, &sbs_view_opts.context_colored_line_numbers},
-        { "general.line_number_align_right",      ConfigVariableType::Bool, &sbs_view_opts.line_number_align_right},
+        { "theme.settings.word_wrap",                    ConfigVariableType::Bool, &sbs_view_opts.word_wrap},
+        { "theme.settings.show_line_numbers",            ConfigVariableType::Bool, &sbs_view_opts.show_line_numbers},
+        { "theme.settings.context_colored_line_numbers", ConfigVariableType::Bool, &sbs_view_opts.context_colored_line_numbers},
+        { "theme.settings.line_number_align_right",      ConfigVariableType::Bool, &sbs_view_opts.line_number_align_right},
 
         // side-by-side theme
         { "theme.chars.column_separator",         ConfigVariableType::String, &sbs_char_opts.column_separator },
