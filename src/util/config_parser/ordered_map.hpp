@@ -31,8 +31,8 @@ struct OrderedMap {
 
     OrderedMap(const std::initializer_list<std::pair<T, V>> kw_args) {
         for (auto& [key, value] : kw_args) {
-            keys_.push_back(key);
-            m_.insert({key, value});
+            auto pair = std::make_pair(key, value);
+            insert(pair);
         }
     }
 
