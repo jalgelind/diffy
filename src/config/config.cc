@@ -2,9 +2,9 @@
 
 #include <output/column_view.hpp>
 #include <processing/tokenizer.hpp>
+#include <util/color.hpp>
 #include <util/config_parser/config_parser.hpp>
 #include <util/config_parser/config_parser_utils.hpp>
-#include <util/color.hpp>
 
 #include <fmt/format.h>
 #include <sago/platform_folders.h>
@@ -58,10 +58,8 @@ diffy::config_get_directory() {
     return fmt::format("{}/diffy", sago::getConfigHome());
 }
 
-static void config_save(
-        const std::string& config_root,
-        const std::string& config_name,
-        diffy::Value& config_value) {
+static void
+config_save(const std::string& config_root, const std::string& config_name, diffy::Value& config_value) {
     std::filesystem::create_directory(config_root);
 
     FILE* f = fopen(config_name.c_str(), "wb");
@@ -79,15 +77,7 @@ static void config_save(
 using OptionVector = std::vector<std::tuple<std::string, ConfigVariableType, void*>>;
 
 static void
-config_apply_options(
-        diffy::ProgramOptions& program_options,
-        diffy::ColumnViewCharacters& sbs_char_opts,
-        diffy::ColumnViewSettings& sbs_view_opts,
-        diffy::ColumnViewTextStyle& sbs_style_opts,
-        diffy::ColumnViewTextStyleEscapeCodes& sbs_style_escape_codes,
-        diffy::Value& config,
-        const OptionVector& options) {
-
+config_apply_options(diffy::Value& config, const OptionVector& options) {
     for (const auto& [path, type, ptr] : options) {
         // Do we have a value for this option in the config we loaded?
         if (auto stored_value = config.lookup_value_by_path(path); stored_value) {
@@ -134,7 +124,9 @@ enum class ConfigLoadResult {
 };
 
 ConfigLoadResult
-config_load_file(const std::string& config_path, diffy::Value& config_table, diffy::ParseResult& load_result) {
+config_load_file(const std::string& config_path,
+                 diffy::Value& config_table,
+                 diffy::ParseResult& load_result) {
     ConfigLoadResult result = ConfigLoadResult::Ok;
 
     diffy::Value config_file_table_value{diffy::Value::Table{}};
@@ -154,14 +146,12 @@ config_load_file(const std::string& config_path, diffy::Value& config_table, dif
     return result;
 }
 
-
 void
 diffy::config_apply(diffy::ProgramOptions& program_options,
                     diffy::ColumnViewCharacters& sbs_char_opts,
                     diffy::ColumnViewSettings& sbs_view_opts,
                     diffy::ColumnViewTextStyle& sbs_style_opts,
                     diffy::ColumnViewTextStyleEscapeCodes& sbs_style_escape_codes) {
-
     const std::string config_file_name = "theme_default.conf";
     const std::string config_root = diffy::config_get_directory();
     const std::string config_path = fmt::format("{}/{}", config_root, config_file_name);
@@ -190,8 +180,8 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
     // TODO: Why is test1 causing the serializer to barf the empty key?
     diffy::Value obj;
     if (cfg_parse_value_tree("[section]", result, obj)) {
-        diffy::Value tmp1 { diffy::Value::Table {} };
-        tmp1.set_value_at("colors", { Value::Table {} });
+        diffy::Value tmp1{diffy::Value::Table{}};
+        tmp1.set_value_at("colors", {Value::Table{}});
         fmt::print("TEST: {}\n", cfg_serialize(obj));
         fmt::print("TEST: {}\n", cfg_serialize(tmp1));
     }
@@ -200,26 +190,13 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
     // Update the color table
     {
         const std::vector<std::string> palette_color_names = {
-            "black",
-            "red",
-            "green",
-            "yellow",
-            "blue",
-            "magenta",
-            "cyan",
-            "light_gray",
-            "dark_gray",
-            "light_red",
-            "light_green",
-            "light_yellow",
-            "light_blue",
-            "light_magenta",
-            "light_cyan",
-            "white",
+            "black",      "red",           "green",      "yellow",    "blue",        "magenta",
+            "cyan",       "light_gray",    "dark_gray",  "light_red", "light_green", "light_yellow",
+            "light_blue", "light_magenta", "light_cyan", "white",
         };
 
         if (!config_file_table_value.lookup_value_by_path("theme.style.color_map")) {
-            config_file_table_value.set_value_at("theme.style.color_map.red", { "red" });
+            config_file_table_value.set_value_at("theme.style.color_map.red", {"red"});
 
             // Add help text to the configuration file
             auto colors_section = config_file_table_value.lookup_value_by_path("theme.style.color_map");
@@ -228,7 +205,7 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
 
         auto& color_values = config_file_table_value.lookup_value_by_path("theme.style.color_map")->get();
 
-        for (const auto& color: palette_color_names) {
+        for (const auto& color : palette_color_names) {
             if (color_values.contains(color)) {
                 auto& v = color_values[color];
                 auto term_color = TermColor::from_value(v);
@@ -273,26 +250,24 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
     };
     // clang-format on
 
-    config_apply_options(
-        program_options, sbs_char_opts, sbs_view_opts, sbs_style_opts, sbs_style_escape_codes,
-        config_file_table_value, options);
+    config_apply_options(config_file_table_value, options);
 
     // Set up escape code heper struct values
     const std::vector<std::tuple<TermStyle*, std::string*>> colors = {
-            {&sbs_style_opts.header, &sbs_style_escape_codes.header},
-            {&sbs_style_opts.delete_line, &sbs_style_escape_codes.delete_line},
-            {&sbs_style_opts.delete_token, &sbs_style_escape_codes.delete_token},
-            {&sbs_style_opts.delete_line_number, &sbs_style_escape_codes.delete_line_number},
-            {&sbs_style_opts.insert_line, &sbs_style_escape_codes.insert_line},
-            {&sbs_style_opts.insert_token, &sbs_style_escape_codes.insert_token},
-            {&sbs_style_opts.insert_line_number, &sbs_style_escape_codes.insert_line_number},
-            {&sbs_style_opts.common_line, &sbs_style_escape_codes.common_line},
-            {&sbs_style_opts.common_line_number, &sbs_style_escape_codes.common_line_number},
-            {&sbs_style_opts.frame, &sbs_style_escape_codes.frame},
-            {&sbs_style_opts.empty_line, &sbs_style_escape_codes.empty_line},
+        {&sbs_style_opts.header, &sbs_style_escape_codes.header},
+        {&sbs_style_opts.delete_line, &sbs_style_escape_codes.delete_line},
+        {&sbs_style_opts.delete_token, &sbs_style_escape_codes.delete_token},
+        {&sbs_style_opts.delete_line_number, &sbs_style_escape_codes.delete_line_number},
+        {&sbs_style_opts.insert_line, &sbs_style_escape_codes.insert_line},
+        {&sbs_style_opts.insert_token, &sbs_style_escape_codes.insert_token},
+        {&sbs_style_opts.insert_line_number, &sbs_style_escape_codes.insert_line_number},
+        {&sbs_style_opts.common_line, &sbs_style_escape_codes.common_line},
+        {&sbs_style_opts.common_line_number, &sbs_style_escape_codes.common_line_number},
+        {&sbs_style_opts.frame, &sbs_style_escape_codes.frame},
+        {&sbs_style_opts.empty_line, &sbs_style_escape_codes.empty_line},
     };
 
-    for (const auto &[source_value, dest_string] : colors) {
+    for (const auto& [source_value, dest_string] : colors) {
         dest_string->assign(source_value->to_ansi());
     }
 
@@ -303,8 +278,6 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
         config_save(config_root, config_path, config_file_table_value);
     }
 }
-
-
 
 diffy::Algo
 diffy::algo_from_string(std::string s) {

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "util/config_parser/config_parser.hpp"
 #include "util/color.hpp"
+#include "util/config_parser/config_parser.hpp"
 
 #include <string>
 
@@ -120,8 +120,6 @@ struct ColumnViewTextStyle {
     };
     // clang-format on
 };
-
-
 
 struct ColumnViewTextStyleEscapeCodes {
     std::string header;
