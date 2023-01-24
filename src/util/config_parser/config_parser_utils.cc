@@ -278,7 +278,7 @@ diffy::cfg_dump_value_object(Value& v, int depth) {
         fmt::print("Table {{\n");
         table.for_each([depth](const std::string& key, Value& value) {
             fmt::print("{}", INDENT(depth + 2));
-            fmt::print("Key: {}\n", key);
+            fmt::print("Key: '{}'\n", key);
             cfg_dump_value_object(value, depth + 3);
             fmt::print("\n");
         });

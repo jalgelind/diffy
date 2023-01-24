@@ -81,21 +81,20 @@ Value::set_value_at(const std::string_view dotted_path, Value value) {
     std::string_view remaining{dotted_path};
     while (!done) {
         auto [head, rest] = internal::str_split2(remaining, '.');
-
         std::string key{head};
-        if (!iter->contains(std::string{key})) {
-            iter->as_table().insert(key, {Value::Table{}});
+        bool is_at_insert_node = rest.empty();
+
+        if (!is_at_insert_node) {
+            if (!iter->contains(std::string{key})) {
+                iter->as_table().insert(key, {Value::Table{}});
+            }
+            remaining = rest;
+            iter = &(*iter)[key];
+            continue;
         }
-
-        iter = &(*iter)[key];
-
-        bool is_last = rest.find(".") == std::string_view::npos;
-        if (is_last && iter->is_table()) {
-            (*iter)[std::string(rest)] = value;
-            return true;
-        }
-
-        remaining = rest;
+        
+        (*iter)[std::string(key)] = value;
+        return true;
     }
     return false;
 }
