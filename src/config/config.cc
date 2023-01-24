@@ -40,6 +40,17 @@ static std::string config_doc_theme = R"foo( Theme configuration
 # 
 )foo";
 
+static std::string config_doc_general = R"foo( General configuration for ´diffy´
+# 
+# TODO: fill this in with whatever we come up with
+# TODO: and since you're seeing this maybe you should fix the
+#       serializer formatting to avoid the exessive newlining?
+#       maybe align the values nicely?
+# TODO: also look at the extra space at the start of this string
+#       ...
+# 
+)foo";
+
 // TODO: Is program_options used yet?
 //  * flag to force-generate the config file
 //  * flag to ignore theme
@@ -146,11 +157,53 @@ config_load_file(const std::string& config_path,
 }
 
 void
-diffy::config_apply(diffy::ProgramOptions& program_options,
-                    diffy::ColumnViewCharacters& sbs_char_opts,
-                    diffy::ColumnViewSettings& sbs_view_opts,
-                    diffy::ColumnViewTextStyle& sbs_style_opts,
-                    diffy::ColumnViewTextStyleEscapeCodes& sbs_style_escape_codes) {
+diffy::config_apply_options(diffy::ProgramOptions program_options) {
+    const std::string config_file_name = "diffy.conf";
+    const std::string config_root = diffy::config_get_directory();
+    const std::string config_path = fmt::format("{}/{}", config_root, config_file_name);
+
+    bool flush_config_to_disk = false;
+
+    ParseResult config_parse_result;
+    Value config_file_table_value;
+    switch (config_load_file(config_path, config_file_table_value, config_parse_result)) {
+        case ConfigLoadResult::Ok: {
+            // yay!
+        } break;
+        case ConfigLoadResult::Invalid: {
+            fmt::print("error: {}\n", config_parse_result.error);
+        } break;
+        case ConfigLoadResult::DoesNotExist: {
+            fmt::print("warning: could not find default config. creating one.\n\t{}\n", config_path);
+            flush_config_to_disk = true;
+        } break;
+    };
+
+    // Sync up the rest of the configuration with the options structs
+    using OptionVector = std::vector<std::tuple<std::string, ConfigVariableType, void*>>;
+    // clang-format off
+    const OptionVector options = {
+       // { "general.word_wrap",                    ConfigVariableType::Bool, &sbs_view_opts.word_wrap},
+       // { "theme.theme_name",         ConfigVariableType::String, &sbs_char_opts.column_separator },
+    };
+    // clang-format on
+
+    config_apply_options(config_file_table_value, options);
+
+
+    // Write the configuration to disk with default settings
+    if (flush_config_to_disk) {
+        config_file_table_value["general"].key_comments.push_back(config_doc_general);
+
+        config_save(config_root, config_path, config_file_table_value);
+    }
+}
+
+void
+diffy::config_apply_theme(diffy::ColumnViewCharacters& sbs_char_opts,
+                          diffy::ColumnViewSettings& sbs_view_opts,
+                          diffy::ColumnViewTextStyle& sbs_style_opts,
+                          diffy::ColumnViewTextStyleEscapeCodes& sbs_style_escape_codes) {
     const std::string config_file_name = "theme_default.conf";
     const std::string config_root = diffy::config_get_directory();
     const std::string config_path = fmt::format("{}/{}", config_root, config_file_name);
@@ -173,7 +226,7 @@ diffy::config_apply(diffy::ProgramOptions& program_options,
     };
 
     if (!config_file_table_value.lookup_value_by_path("settings")) {
-        config_file_table_value["settings"] = { Value::Table {} };
+        config_file_table_value["settings"] = {Value::Table{}};
     }
 
     // Update the color table
