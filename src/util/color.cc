@@ -254,6 +254,12 @@ TermStyle::to_value() {
     return v;
 }
 
+std::string
+diffy::repr(const TermStyle& style) {
+    return fmt::format("fg: {}, bg: {}, attr: 0x{:x}",
+        repr(style.fg), repr(style.bg), (int) style.attr);
+}
+
 
 void
 diffy::color_map_set(std::string color_name, diffy::TermColor color) {

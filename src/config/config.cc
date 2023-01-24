@@ -129,9 +129,8 @@ config_load_file(const std::string& config_path,
                  diffy::ParseResult& load_result) {
     ConfigLoadResult result = ConfigLoadResult::Ok;
 
-    diffy::Value config_file_table_value{diffy::Value::Table{}};
-    if (cfg_load_file(config_path, load_result, config_file_table_value)) {
-        if (config_file_table_value.is_table()) {
+    if (cfg_load_file(config_path, load_result, config_table)) {
+        if (config_table.is_table()) {
             result = ConfigLoadResult::Ok;
         } else {
             result = ConfigLoadResult::Invalid;

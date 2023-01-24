@@ -115,6 +115,9 @@ struct TermStyle {
 void
 color_map_set(std::string color_name, diffy::TermColor color);
 
+std::string
+repr(const TermStyle& style);
+
 void
 color_dump();
 
