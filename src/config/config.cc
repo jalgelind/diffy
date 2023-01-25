@@ -60,6 +60,7 @@ static std::string config_doc_general = R"foo( General configuration for ´diffy
 
 enum class ConfigVariableType {
     Bool,
+    Int,
     String,
     Color,
 };
@@ -97,6 +98,9 @@ config_apply_options(diffy::Value& config, const OptionVector& options) {
                 case ConfigVariableType::Bool: {
                     *((bool*) ptr) = stored_value->get().as_bool();
                 } break;
+                case ConfigVariableType::Int: {
+                    *((int64_t*) ptr) = (int64_t) stored_value->get().is_int();
+                } break;
                 case ConfigVariableType::String: {
                     *((std::string*) ptr) = stored_value->get().as_string();
                 } break;
@@ -113,6 +117,11 @@ config_apply_options(diffy::Value& config, const OptionVector& options) {
             switch (type) {
                 case ConfigVariableType::Bool: {
                     diffy::Value v{diffy::Value::Bool{*(bool*) ptr}};
+                    config.set_value_at(path, v);
+                } break;
+                case ConfigVariableType::Int: {
+                    int value = *(int64_t*) ptr;
+                    diffy::Value v{diffy::Value::Int{value}};
                     config.set_value_at(path, v);
                 } break;
                 case ConfigVariableType::String: {
@@ -157,7 +166,7 @@ config_load_file(const std::string& config_path,
 }
 
 void
-diffy::config_apply_options(diffy::ProgramOptions program_options) {
+diffy::config_apply_options(diffy::ProgramOptions& program_options) {
     const std::string config_file_name = "diffy.conf";
     const std::string config_root = diffy::config_get_directory();
     const std::string config_path = fmt::format("{}/{}", config_root, config_file_name);
@@ -182,13 +191,34 @@ diffy::config_apply_options(diffy::ProgramOptions program_options) {
     // Sync up the rest of the configuration with the options structs
     using OptionVector = std::vector<std::tuple<std::string, ConfigVariableType, void*>>;
     // clang-format off
+/*
+    bool column_view = false;
+    bool line_granularity = false;
+    bool unified = false;
+    Algo algorithm = Algo::kPatience;
+    int64_t context_lines = 3;
+    int64_t width = 0;
+
+    bool ignore_line_endings = false;
+    bool ignore_whitespace = false;
+*/
+    std::string algorithm = "ml";
+
     const OptionVector options = {
-       // { "general.word_wrap",                    ConfigVariableType::Bool, &sbs_view_opts.word_wrap},
-       // { "theme.theme_name",         ConfigVariableType::String, &sbs_char_opts.column_separator },
+       { "general.default_algorithm", ConfigVariableType::String, &algorithm },
+       { "general.theme", ConfigVariableType::String, &program_options.theme },
+       { "general.context_lines", ConfigVariableType::Int, &program_options.context_lines},
+       { "general.ignore_line_endings", ConfigVariableType::Bool, &program_options.ignore_line_endings },
+       { "general.ignore_whitespace", ConfigVariableType::Bool, &program_options.ignore_whitespace },
     };
     // clang-format on
 
     config_apply_options(config_file_table_value, options);
+
+    if (auto algo = algo_from_string(algorithm); algo != Algo::kInvalid) {
+        program_options.algorithm = algo;
+    }
+
 
 
     // Write the configuration to disk with default settings
@@ -200,11 +230,12 @@ diffy::config_apply_options(diffy::ProgramOptions program_options) {
 }
 
 void
-diffy::config_apply_theme(diffy::ColumnViewCharacters& sbs_char_opts,
+diffy::config_apply_theme(const std::string& theme,
+                          diffy::ColumnViewCharacters& sbs_char_opts,
                           diffy::ColumnViewSettings& sbs_view_opts,
                           diffy::ColumnViewTextStyle& sbs_style_opts,
                           diffy::ColumnViewTextStyleEscapeCodes& sbs_style_escape_codes) {
-    const std::string config_file_name = "theme_default.conf";
+    const std::string config_file_name = fmt::format("{}.conf", theme);
     const std::string config_root = diffy::config_get_directory();
     const std::string config_path = fmt::format("{}/{}", config_root, config_file_name);
 
@@ -220,8 +251,10 @@ diffy::config_apply_theme(diffy::ColumnViewCharacters& sbs_char_opts,
             fmt::print("error: {}\n", config_parse_result.error);
         } break;
         case ConfigLoadResult::DoesNotExist: {
-            fmt::print("warning: could not find default config. creating one.\n\t{}\n", config_path);
-            flush_config_to_disk = true;
+            if (theme == "theme_default") {
+                fmt::print("warning: could not find default theme\n\t{}\n", config_path);
+                flush_config_to_disk = true;
+            }
         } break;
     };
 

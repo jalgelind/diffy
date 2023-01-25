@@ -22,6 +22,8 @@ struct ProgramOptions {
     int64_t context_lines = 3;
     int64_t width = 0;
 
+    std::string theme = "theme_default";
+
     bool ignore_line_endings = false;
     bool ignore_whitespace = false;
 
@@ -157,10 +159,11 @@ std::string
 config_get_directory();
 
 void
-config_apply_options(diffy::ProgramOptions program_options);
+config_apply_options(diffy::ProgramOptions& program_options);
 
 void
-config_apply_theme(diffy::ColumnViewCharacters& sbs_char_opts,
+config_apply_theme(const std::string& theme,
+                   diffy::ColumnViewCharacters& sbs_char_opts,
                    diffy::ColumnViewSettings& sbs_view_opts,
                    diffy::ColumnViewTextStyle& sbs_style_opts,
                    diffy::ColumnViewTextStyleEscapeCodes& sbs_style_escape_codes);

@@ -302,7 +302,7 @@ Side by side options:
     diffy::config_apply_options(opts);
 
     diffy::ColumnViewState sbs_ui_opts;
-    diffy::config_apply_theme(sbs_ui_opts.chars, sbs_ui_opts.settings, sbs_ui_opts.style_config, sbs_ui_opts.style);
+    diffy::config_apply_theme(opts.theme, sbs_ui_opts.chars, sbs_ui_opts.settings, sbs_ui_opts.style_config, sbs_ui_opts.style);
 
     auto left_line_data = diffy::readlines(opts.left_file, opts.ignore_line_endings);
     auto right_line_data = diffy::readlines(opts.right_file, opts.ignore_line_endings);
