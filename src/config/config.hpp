@@ -42,19 +42,6 @@ struct ColumnViewTextStyle {
         TermStyle::Attribute::Underline
     };
 
-    // TODO: can we make this more flexible; adding color options requires making changes in a lot of places? and the mirror struct...
-    // maybe we can use a hashmap instead.
-
-    // TODO: maybe TermStyle can have an optional char in it?
-    //       will that cover all cases ui chars used on screen?
-    //       would be nice to remove ColumnViewCharacters
-    //       character repeat flag? string edges flag? something to use multiple symbols as separators, header wrappers adding e.g a fade
-
-    // flag: conter contents? where does width come from? we might have it stored somewhere since it's a fixed size
-    // std::optional<std::string> prefix_chars;
-    // std::optional<std::string> postfix_chars;
-    // TermStyle::to_ansi_with_decorations(prefix_chars, postfix_chars, text)
-
     TermStyle header_background = TermStyle {
         TermColor::kWhite,
         TermColor::kDefault,
