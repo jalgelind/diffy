@@ -290,6 +290,9 @@ Side by side options:
         return true;
     };
 
+    // Load the global defaults before we override them with command line args
+    diffy::config_apply_options(opts);
+
     if (!parse_args(argc, argv)) {
         return -1;
     }
@@ -298,8 +301,6 @@ Side by side options:
         show_help("");
         return 0;
     }
-
-    diffy::config_apply_options(opts);
 
     diffy::ColumnViewState sbs_ui_opts;
     diffy::config_apply_theme(opts.theme, sbs_ui_opts.chars, sbs_ui_opts.settings, sbs_ui_opts.style_config, sbs_ui_opts.style);
