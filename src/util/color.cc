@@ -95,11 +95,11 @@ TermColor::from_value(Value value) {
             case 4: {
                 // TODO: validate
                 long color24 = strtol(&s[1], nullptr, 16);
-                uint8_t r = (color24 >>  8) & 0x0F;
-                uint8_t g = (color24 >>  4) & 0x0F;
-                uint8_t b = (color24 >>  0) & 0x0F;
+                uint8_t r = ((color24 >> 8) & 0x0F) * 17;
+                uint8_t g = ((color24 >> 4) & 0x0F) * 17;
+                uint8_t b = ((color24 >> 0) & 0x0F) * 17;
                 return TermColor(TermColor::Kind::Color24bit,
-                    (r | r << 4), (g | g << 4), (b | r << b));
+                    (r | r << 8), (g | g << 4), (b | b << 0));
             } break;
             // '#AABBCC'
             case 7: {
