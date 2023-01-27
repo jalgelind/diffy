@@ -23,10 +23,6 @@ static std::string config_doc_color_map = R"foo( Color palette customization
 #   black, red, green, yellow, blue, magenta, cyan, light_gray,
 #   dark_gray, light_red, light_green, light_yellow, light_blue,
 #   light_magenta, light_cyan, white,
-#
-# Example:
-#   [color_map]
-#       white = "#f0f0f0"
 )foo";
 
 static std::string config_doc_theme = R"foo( Theme configuration
