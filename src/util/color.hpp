@@ -15,6 +15,7 @@ struct TermColor {
         Color4bit = 0,
         Color24bit,
         DefaultColor,
+        Ignore,
         Reset
     };
 
@@ -43,7 +44,12 @@ struct TermColor {
     static std::optional<TermColor>
     from_value(Value value);
 
+    // #rgb, #rrggbb
+    static std::optional<TermColor>
+    from_hex(const std::string& value);
+
     // 
+    static TermColor kNone;
     static TermColor kReset;
     static TermColor kDefault;
 

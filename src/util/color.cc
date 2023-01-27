@@ -11,18 +11,19 @@
 using namespace diffy;
 
 // clang-format off
-const std::array<std::tuple<const TermStyle::Attribute, const std::string, const std::string>, 8> kAttributes {{
-    { TermStyle::Attribute::Bold,          "bold",          "1" },
-    { TermStyle::Attribute::Dim,           "dim",           "2" },
-    { TermStyle::Attribute::Italic,        "italic",        "3" },
-    { TermStyle::Attribute::Underline,     "underline",     "4" },
-    { TermStyle::Attribute::Blink,         "blink",         "5" },
-    { TermStyle::Attribute::Inverse,       "inverse",       "7" },
-    { TermStyle::Attribute::Hidden,        "hidden",        "8" },
-    { TermStyle::Attribute::Strikethrough, "strikethrough", "9" }
+const std::array<std::tuple<const TermStyle::Attribute, const std::string, int>, 8> kAttributes {{
+    { TermStyle::Attribute::Bold,          "bold",          1 },
+    { TermStyle::Attribute::Dim,           "dim",           2 },
+    { TermStyle::Attribute::Italic,        "italic",        3 },
+    { TermStyle::Attribute::Underline,     "underline",     4 },
+    { TermStyle::Attribute::Blink,         "blink",         5 },
+    { TermStyle::Attribute::Inverse,       "inverse",       7 },
+    { TermStyle::Attribute::Hidden,        "hidden",        8 },
+    { TermStyle::Attribute::Strikethrough, "strikethrough", 9 }
 }};
 
 // Special colors for default colors and for resetting colors + attributes.
+TermColor TermColor::kNone    = TermColor {TermColor::Kind::Ignore, 0, 0, 0};
 TermColor TermColor::kReset   = TermColor {TermColor::Kind::Reset, 0, 0, 0};
 TermColor TermColor::kDefault = TermColor {TermColor::Kind::DefaultColor, 39, 49, 0};
 
@@ -47,6 +48,7 @@ TermColor TermColor::kWhite        = TermColor { TermColor::Kind::Color4bit, 97,
 
 // Default color mapping for best compatibility
 const std::unordered_map<std::string, diffy::TermColor> k16DefaultColors = {
+        { "none",          TermColor::kNone },
         { "reset",         TermColor::kReset },
         { "default",       TermColor::kDefault },
         { "black",         TermColor::kBlack },
@@ -71,23 +73,8 @@ const std::unordered_map<std::string, diffy::TermColor> k16DefaultColors = {
 // Color look-up table where colors can be re-defined
 std::unordered_map<std::string, diffy::TermColor> k16Colors = k16DefaultColors;
 
-// Parse color from configuration table value
 std::optional<TermColor>
-TermColor::from_value(Value value) {
-    if (!value.is_string()) {
-        return {};
-    }
-
-    auto s = value.as_string();
-    if (s.empty()) {
-        return {};
-    }
-
-    // Is it a palette color?
-    if (k16Colors.find(s) != k16Colors.end()) {
-        return k16Colors.at(s);
-    }
-
+TermColor::from_hex(const std::string& s) {
     // Hex code parser that supports '#FFF' and '#FE83EE'
     if ((s.size() == 4 || s.size() == 7) && s[0] == '#') {
         switch (s.size()) {
@@ -113,6 +100,27 @@ TermColor::from_value(Value value) {
         }
     }
     return {};
+}
+
+// Parse color from configuration table value
+std::optional<TermColor>
+TermColor::from_value(Value value) {
+    if (!value.is_string()) {
+        return {};
+    }
+
+    auto s = value.as_string();
+    if (s.empty()) {
+        return {};
+    }
+
+    // Is it a palette color?
+    if (k16Colors.find(s) != k16Colors.end()) {
+        return k16Colors.at(s);
+    }
+
+    // Try to parse it as hex 🤷‍♂️
+    return from_hex(s);
 }
 
 std::string
@@ -164,52 +172,89 @@ std::string TermStyle::to_ansi() {
     const std::string kESC = "\033";
     const std::string kESC1 = "\\";
 
-    switch (fg.kind) {
-        // 24 bit
-        // ESC[38;2;{r};{g};{b}m	Set foreground color as RGB.
-        // ESC[48;2;{r};{g};{b}m	Set background color as RGB.
-        case TermColor::Kind::Color24bit: {
-            result += kESC + fmt::format("[38;2;{};{};{}m", fg.r, fg.g, fg.b);
-            result += kESC + fmt::format("[48;2;{};{};{}m", bg.r, bg.g, bg.b);
-            // TODO: missing attributes; should probably share the code builder
-            return result;
-        } break;
+    std::vector<std::vector<int>> escseqs;
 
-        // 256 color palette (unsupported)
-        // ESC[38;5;{ID}m	Set foreground color.
-        // ESC[48;5;{ID}m	Set background color.
-
-        // 16 color palette ('4 bit')
-        // ESC=\033
-        // ESC[{ID};{ID}m  Set foreground and background color
-        case TermColor::Kind::DefaultColor:
-        case TermColor::Kind::Reset:
-        case TermColor::Kind::Color4bit: {
-            std::vector<std::string> codes;
-            codes.push_back(fmt::format("{}", fg.r));
-            codes.push_back(fmt::format("{}", bg.g));
-
-            for (const auto& [attr_flag, attr_name, attr_code] : kAttributes) {
-                if ((uint16_t) attr & (uint16_t) attr_flag) {
-                    codes.push_back(attr_code);
+    auto apply_color = [&](TermColor& color, bool is_fg) {
+        switch (color.kind) {
+            // 24 bit
+            // ESC[38;2;{r};{g};{b}m	Set foreground color as RGB.
+            // ESC[48;2;{r};{g};{b}m	Set background color as RGB.
+            case TermColor::Kind::Color24bit: {
+                if (is_fg) {
+                    escseqs.back().insert(escseqs.back().end(), {38, 2});
+                } else {
+                    escseqs.back().insert(escseqs.back().end(), {48, 2});
                 }
-            }
+                escseqs.back().insert(escseqs.back().end(), {color.r, color.g, color.b});
+            } break;
 
-            result += kESC + "[";
-            for (int i = 0; i < codes.size(); i++) {
-                auto& code = codes[i];
-                if (i > 0) {
-                    result += ";";
+            // 256 color palette (unsupported)
+            // ESC[38;5;{ID}m	Set foreground color.
+            // ESC[48;5;{ID}m	Set background color.
+
+            // 16 color palette ('4 bit')
+            // ESC=\033
+            // ESC[{ID};{ID}m  Set foreground and background color
+            case TermColor::Kind::DefaultColor:
+            case TermColor::Kind::Reset:
+            case TermColor::Kind::Color4bit: {
+                if (is_fg) {
+                    escseqs.back().insert(escseqs.back().end(), { color.r /* fg id */ });
+                } else {
+                    escseqs.back().insert(escseqs.back().end(), { color.g /* bg id */ });
                 }
-                result += code;
-            }
-            result += "m";
-        } break;
-        default: assert(false && "missing case");
+            } break;
+            case TermColor::Kind::Ignore: {
+            } break;
+            default: assert(false && "missing case");
+        }
     };
 
+    escseqs.push_back({});
+    apply_color(fg, true);
+    escseqs.push_back({});
+    for (const auto& [attr_flag, attr_name, attr_code] : kAttributes) {
+        if ((uint16_t) attr & (uint16_t) attr_flag) {
+           escseqs.back().insert(escseqs.back().end(), { attr_code });
+        }
+    }
+    escseqs.push_back({});
+    apply_color(bg, false);
+
+    for (const auto& seq : escseqs) {
+        if (seq.empty()) continue;
+        result += kESC + "[";
+        for (const int code : seq) {
+            result += fmt::format("{};", code);
+        }
+        if (result.back() == ';') {
+            result.pop_back();
+        }
+        result += "m";
+    }
     return result;
 }
+
+#if 0
+struct render_test {
+    render_test() {
+       auto fg = *TermColor::from_hex("#f00");
+       auto bg = *TermColor::from_hex("#000");
+       //auto bg = TermColor::kDefault;
+       TermStyle tmp(fg, bg, TermStyle::Attribute::Bold);
+
+        // "\U0000001b[38;2;255;0;255m\U0000001b[1m\U0000001b[39m"
+        // "\U0000001b[38;2;255;0;255m\U0000001b[m\U0000001b[39m"
+        // "\U0000001b[38;2;255;255;255m\U0000001b[1m\U0000001b[49m"
+        // "\U0000001b[38;2;255;255;255m\U0000001b[1m\U0000001b[m"
+        // "\U0000001b[38;2;0;255;0m\U0000001b[1m\U0000001b[49m"
+        auto ansi = tmp.to_ansi();
+
+       fmt::print("[[[[ " + ansi + " TEXT ]]]]");
+    }
+};
+static render_test render_testaaaa;
+#endif
 
 std::optional<TermStyle>
 TermStyle::from_value(Value::Table table) {

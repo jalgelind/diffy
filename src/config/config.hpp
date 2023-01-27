@@ -38,67 +38,67 @@ struct ColumnViewTextStyle {
     // clang-format off
     TermStyle header = TermStyle {
         TermColor::kWhite,
-        TermColor::kDefault,
+        TermColor::kNone,
         TermStyle::Attribute::Underline
     };
 
     TermStyle header_background = TermStyle {
         TermColor::kWhite,
-        TermColor::kDefault,
+        TermColor::kNone,
         TermStyle::Attribute::Underline
     };
 
     TermStyle delete_line = TermStyle {
-        TermColor::kDefault,
-        TermColor::kDefault,
+        TermColor::kNone,
+        TermColor::kNone,
         TermStyle::Attribute::None
     };
 
     TermStyle delete_token = TermStyle {
         TermColor::kRed,
-        TermColor::kDefault,
+        TermColor::kNone,
         TermStyle::Attribute::Bold
     };
 
     TermStyle delete_line_number = TermStyle {
         TermColor::kRed,
-        TermColor::kDefault,
+        TermColor::kNone,
         TermStyle::Attribute::Bold
     };
 
     TermStyle insert_line = TermStyle {
-        TermColor::kDefault,
-        TermColor::kDefault,
+        TermColor::kNone,
+        TermColor::kNone,
         TermStyle::Attribute::None
     };
 
     TermStyle insert_token = TermStyle {
         TermColor::kGreen,
-        TermColor::kDefault,
+        TermColor::kNone,
         TermStyle::Attribute::Bold
     };
 
     TermStyle insert_line_number = TermStyle {
         TermColor::kGreen,
-        TermColor::kDefault,
+        TermColor::kNone,
         TermStyle::Attribute::Bold
     };
 
     TermStyle common_line = TermStyle {
-        TermColor::kDefault,
-        TermColor::kDefault,
+        TermColor::kNone,
+        TermColor::kNone,
         TermStyle::Attribute::None
     };
 
     TermStyle common_line_number = TermStyle {
-        TermColor::kDefault,
-        TermColor::kDefault,
+        TermColor::kNone,
+        TermColor::kNone,
         TermStyle::Attribute::None
     };
 
     TermStyle frame = TermStyle {
-        TermColor::kDefault,
-        TermColor::kDefault,
+        TermColor::kNone,
+        TermColor::kNone,
         TermStyle::Attribute::None
     };
 
