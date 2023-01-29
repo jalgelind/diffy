@@ -18,6 +18,22 @@
             "MIMode": "lldb"
         },
         {
+            "name": "Diffy Debug2",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/out/debug/diffy",
+            "args": [
+                "-W50",
+                "test_a.txt",
+                "test_b.txt",
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb"
+        },
+        {
             "name": "Diffy-Test",
             "type": "cppdbg",
             "request": "launch",
