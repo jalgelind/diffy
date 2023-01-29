@@ -176,7 +176,7 @@ diffy::config_apply_options(diffy::ProgramOptions& program_options) {
             // yay!
         } break;
         case ConfigLoadResult::Invalid: {
-            fmt::print("error: {}\n", config_parse_result.error);
+            fmt::print("error: {}\n\twhile parsing: {}\n", config_parse_result.error, config_path);
         } break;
         case ConfigLoadResult::DoesNotExist: {
             fmt::print("warning: could not find default config. creating one.\n\t{}\n", config_path);
@@ -244,7 +244,7 @@ diffy::config_apply_theme(const std::string& theme,
             // yay!
         } break;
         case ConfigLoadResult::Invalid: {
-            fmt::print("error: {}\n", config_parse_result.error);
+            fmt::print("error: {}\n\twhile parsing: {}\n", config_parse_result.error, config_path);
         } break;
         case ConfigLoadResult::DoesNotExist: {
             if (theme == "theme_default") {
