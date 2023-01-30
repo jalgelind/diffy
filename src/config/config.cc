@@ -18,41 +18,34 @@
 #include <tuple>
 #include <vector>
 
-static std::string config_doc_color_map = R"foo( Color palette customization
-# Available color names:
-#   black, red, green, yellow, blue, magenta, cyan, light_gray,
-#   dark_gray, light_red, light_green, light_yellow, light_blue,
-#   light_magenta, light_cyan, white,
-)foo";
-
 static std::string config_doc_theme = R"foo( Theme configuration
 # 
-# TODO: fill this in with whatever we come up with
-# TODO: and since you're seeing this maybe you should fix the
-#       serializer formatting to avoid the exessive newlining?
-#       maybe align the values nicely?
-# TODO: also look at the extra space at the start of this string
-#       ...
-# 
+# Customize colors using the `color_map` table for global mappings
+# or changing the color style of each specific theme item.
+#
+# You can re-map these colors in `color_map` below. Supported
+# values are the palette names below, and hex RGB colors:
+#   '#RGB' and '#RRGGBB'. I.e '#F00' or '#FF0000' for bright red.
+#
+# Available color names (16 color palette SGR colors):
+#   black, red, green, yellow, blue, magenta, cyan, light_gray,
+#   dark_gray, light_red, light_green, light_yellow, light_blue,
+#   light_magenta, light_cyan, white
+#
+# Available attributes:
+#   'bold', 'dim', 'italic', 'underline',
+#   'blink', 'inverse', 'hidden', 'strikethrough'
+#
 )foo";
 
 static std::string config_doc_general = R"foo( General configuration for ´diffy´
 # 
-# TODO: fill this in with whatever we come up with
-# TODO: and since you're seeing this maybe you should fix the
-#       serializer formatting to avoid the exessive newlining?
-#       maybe align the values nicely?
-# TODO: also look at the extra space at the start of this string
-#       ...
+# Configure default options. These can be overriden with command-line arguments.
+#
+# To use another theme, update `theme` to point to another theme file; i.e:
+#   theme = 'custom_theme'  # load custom_theme.conf
 # 
 )foo";
-
-// TODO: Is program_options used yet?
-//  * flag to force-generate the config file
-//  * flag to ignore theme
-//  * optional theme name, overriding the config file
-//  * ability to set default algorithm
-//  * ability to set default number of context lines
 
 enum class ConfigVariableType {
     Bool,
@@ -253,15 +246,11 @@ diffy::config_apply_theme(const std::string& theme,
             "light_blue", "light_magenta", "light_cyan", "white",
         };
 
-        if (!config_file_table_value.lookup_value_by_path("style.color_map")) {
-            config_file_table_value.set_value_at("style.color_map.red", {"red"});
-
-            // Add help text to the configuration file
-            auto colors_section = config_file_table_value.lookup_value_by_path("style.color_map");
-            colors_section->get().key_comments.push_back(config_doc_color_map);
+        if (!config_file_table_value.lookup_value_by_path("color_map")) {
+            config_file_table_value.set_value_at("color_map.red", {"red"});
         }
 
-        auto& color_values = config_file_table_value.lookup_value_by_path("style.color_map")->get();
+        auto& color_values = config_file_table_value.lookup_value_by_path("color_map")->get();
 
         for (const auto& color : palette_color_names) {
             if (color_values.contains(color)) {
