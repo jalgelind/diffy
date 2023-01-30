@@ -293,6 +293,9 @@ Side by side options:
     // Load the global defaults before we override them with command line args
     diffy::config_apply_options(opts);
 
+    diffy::ColumnViewState sbs_ui_opts;
+    diffy::config_apply_theme(opts.theme, sbs_ui_opts.chars, sbs_ui_opts.settings, sbs_ui_opts.style_config, sbs_ui_opts.style);
+
     if (!parse_args(argc, argv)) {
         return -1;
     }
@@ -301,9 +304,6 @@ Side by side options:
         show_help("");
         return 0;
     }
-
-    diffy::ColumnViewState sbs_ui_opts;
-    diffy::config_apply_theme(opts.theme, sbs_ui_opts.chars, sbs_ui_opts.settings, sbs_ui_opts.style_config, sbs_ui_opts.style);
 
     auto left_line_data = diffy::readlines(opts.left_file, opts.ignore_line_endings);
     auto right_line_data = diffy::readlines(opts.right_file, opts.ignore_line_endings);

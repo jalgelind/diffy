@@ -179,7 +179,7 @@ diffy::config_apply_options(diffy::ProgramOptions& program_options) {
             fmt::print("error: {}\n\twhile parsing: {}\n", config_parse_result.error, config_path);
         } break;
         case ConfigLoadResult::DoesNotExist: {
-            fmt::print("warning: could not find default config. creating one.\n\t{}\n", config_path);
+            fmt::print("warning: could not find default config. creating file:\n\t{}\n", config_path);
             flush_config_to_disk = true;
         } break;
     };
@@ -248,7 +248,7 @@ diffy::config_apply_theme(const std::string& theme,
         } break;
         case ConfigLoadResult::DoesNotExist: {
             if (theme == "theme_default") {
-                fmt::print("warning: could not find default theme\n\t{}\n", config_path);
+                fmt::print("warning: could not find default theme, creating file:\n\t{}\n", config_path);
                 flush_config_to_disk = true;
             }
         } break;
