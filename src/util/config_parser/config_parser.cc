@@ -324,7 +324,9 @@ diffy::cfg_parse(const std::string& input_data,
                 }
 
                 // Maybe we're parsing something like `key = value`?
-                if (state_selection_tokens[0].id & TokenId_Identifier) {
+                if (state_selection_tokens.size() > 2 &&
+                        state_selection_tokens[0].id & TokenId_Identifier &&
+                        state_selection_tokens[1].id & TokenId_Assign) {
                     scope_stack.push(Scope::Table);
                     emit_ins(TbInstruction{TbOperator::TableStart});
                     state = State::ParseKey;
