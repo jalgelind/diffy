@@ -187,7 +187,7 @@ diffy::config_apply_options(diffy::ProgramOptions& program_options) {
     // Sync up the rest of the configuration with the options structs
     using OptionVector = std::vector<std::tuple<std::string, ConfigVariableType, void*>>;
 
-    std::string algorithm = "ml";
+    std::string algorithm = "patience";
 
     // clang-format off
     const OptionVector options = {
