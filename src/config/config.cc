@@ -186,26 +186,16 @@ diffy::config_apply_options(diffy::ProgramOptions& program_options) {
 
     // Sync up the rest of the configuration with the options structs
     using OptionVector = std::vector<std::tuple<std::string, ConfigVariableType, void*>>;
-    // clang-format off
-/*
-    bool column_view = false;
-    bool line_granularity = false;
-    bool unified = false;
-    Algo algorithm = Algo::kPatience;
-    int64_t context_lines = 3;
-    int64_t width = 0;
 
-    bool ignore_line_endings = false;
-    bool ignore_whitespace = false;
-*/
     std::string algorithm = "ml";
 
+    // clang-format off
     const OptionVector options = {
-       { "general.default_algorithm", ConfigVariableType::String, &algorithm },
-       { "general.theme", ConfigVariableType::String, &program_options.theme },
-       { "general.context_lines", ConfigVariableType::Int, &program_options.context_lines},
-       { "general.ignore_line_endings", ConfigVariableType::Bool, &program_options.ignore_line_endings },
-       { "general.ignore_whitespace", ConfigVariableType::Bool, &program_options.ignore_whitespace },
+       { "general.default_algorithm",   ConfigVariableType::String, &algorithm },
+       { "general.theme",               ConfigVariableType::String, &program_options.theme },
+       { "general.context_lines",       ConfigVariableType::Int,    &program_options.context_lines},
+       { "general.ignore_line_endings", ConfigVariableType::Bool,   &program_options.ignore_line_endings },
+       { "general.ignore_whitespace",   ConfigVariableType::Bool,   &program_options.ignore_whitespace },
     };
     // clang-format on
 
@@ -214,8 +204,6 @@ diffy::config_apply_options(diffy::ProgramOptions& program_options) {
     if (auto algo = algo_from_string(algorithm); algo != Algo::kInvalid) {
         program_options.algorithm = algo;
     }
-
-
 
     // Write the configuration to disk with default settings
     if (flush_config_to_disk) {
@@ -286,8 +274,6 @@ diffy::config_apply_theme(const std::string& theme,
             }
         }
     }
-
-    // TODO: Maybe we should set this vector up in diffy_main...?
 
     // Sync up the rest of the configuration with the options structs
     using OptionVector = std::vector<std::tuple<std::string, ConfigVariableType, void*>>;
