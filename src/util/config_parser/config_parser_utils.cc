@@ -56,7 +56,7 @@ serialize_obj(Value& value, int depth, std::string& output, bool is_last_element
                         if (!is_on_empty_line(output)) {
                             output += "\n" + indent(depth + 1);
                         }
-                        output += indent(depth) + "#" + comment + "\n";
+                        output += indent(depth) + comment + "\n";
                         output += indent(depth);
                     }
                     serialize_obj(v, depth + 1, output, row == rows - 1, true);
@@ -81,7 +81,7 @@ serialize_obj(Value& value, int depth, std::string& output, bool is_last_element
                         if (!is_on_empty_line(output)) {
                             output += "\n" + indent(depth) + "\n";
                         }
-                        output += "#" + comment + "\n";
+                        output += comment + "\n";
                         output += indent(depth);
                     }
                     output += k + " = ";
@@ -129,29 +129,30 @@ serialize_section(Value& value, int depth, std::string& output) {
     // Write sections at the lowest depth.
     // A section is a table of tables
     for (auto& comment : value.key_comments) {
-        output += "#" + comment + "\n";
+        output += comment + "\n";
     }
     for (auto& comment : value.value_comments) {
-        output += "#" + comment + "\n";
+        output += comment + "\n";
     }
     if (depth == 0 && value.is_table()) {
         value.as_table().for_each([&](auto k, auto& v) {
             for (auto& comment : v.key_comments) {
-                output += indent(depth) + "#" + comment + "\n";
+                output += indent(depth) + comment + "\n";
             }
             output += "[" + k + "]";
             for (auto& comment : v.value_comments) {
                 output += " #" + comment + "\n";
             }
+            // tweak depth for indentation of section keys
             output += "\n";
             assert(v.is_table());
             v.as_table().for_each([&](auto k1, auto& v1) {
                 for (auto& comment : v1.key_comments) {
-                    output += indent(depth) + "#" + comment + "\n";
+                    output += indent(depth) + comment + "\n";
                 }
                 output += indent(depth) + k1 + " = ";
                 serialize_obj(v1, depth + 1, output, true, true);
-                output += "\n";
+                //output += "\n";
                 output += "\n";
             });
             output += "\n";

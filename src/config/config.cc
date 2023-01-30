@@ -18,7 +18,7 @@
 #include <tuple>
 #include <vector>
 
-static std::string config_doc_theme = R"foo( Theme configuration
+static std::string config_doc_theme = R"foo(# Theme configuration
 # 
 # Customize colors using the `color_map` table for global mappings
 # or changing the color style of each specific theme item.
@@ -38,7 +38,7 @@ static std::string config_doc_theme = R"foo( Theme configuration
 #
 )foo";
 
-static std::string config_doc_general = R"foo( General configuration for ´diffy´
+static std::string config_doc_general = R"foo(# General configuration for ´diffy´
 # 
 # Configure default options. These can be overriden with command-line arguments.
 #
