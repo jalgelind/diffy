@@ -315,8 +315,12 @@ void
 diffy::color_dump() {
     fmt::print("Available values (16pal)\n");
     for (const auto& [k, v] : k16Colors) {
-        auto s = TermStyle { v, TermColor::kReset };
-        fmt::print("{}{}, ", s.to_ansi(), k);
+        auto reset = TermStyle { TermColor::kReset, TermColor::kReset };
+        auto fg = TermStyle { v, TermColor::kNone };
+        auto bg = TermStyle { TermColor::kNone, v };
+        fmt::print("{}{}{}, {}{}{},",
+            fg.to_ansi(), k, reset.to_ansi(),
+            bg.to_ansi(), k, reset.to_ansi());
     }
     fmt::print("\n");
 }
