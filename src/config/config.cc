@@ -66,6 +66,34 @@ diffy::config_get_directory() {
     return fmt::format("{}/diffy", sago::getConfigHome());
 }
 
+enum class ConfigLoadResult {
+    Ok,
+    Invalid,
+    DoesNotExist,
+};
+
+ConfigLoadResult
+config_load_file(const std::string& config_path,
+                 diffy::Value& config_table,
+                 diffy::ParseResult& load_result) {
+    ConfigLoadResult result = ConfigLoadResult::Ok;
+
+    if (cfg_load_file(config_path, load_result, config_table)) {
+        if (config_table.is_table()) {
+            result = ConfigLoadResult::Ok;
+        } else {
+            result = ConfigLoadResult::Invalid;
+        }
+    } else {
+        if (load_result.kind == diffy::ParseErrorKind::File) {
+            result = ConfigLoadResult::DoesNotExist;
+        } else {
+            result = ConfigLoadResult::Invalid;
+        }
+    }
+    return result;
+}
+
 static void
 config_save(const std::string& config_root, const std::string& config_name, diffy::Value& config_value) {
     std::filesystem::create_directory(config_root);
@@ -133,34 +161,6 @@ config_apply_options(diffy::Value& config, const OptionVector& options) {
     }
 }
 
-enum class ConfigLoadResult {
-    Ok,
-    Invalid,
-    DoesNotExist,
-};
-
-ConfigLoadResult
-config_load_file(const std::string& config_path,
-                 diffy::Value& config_table,
-                 diffy::ParseResult& load_result) {
-    ConfigLoadResult result = ConfigLoadResult::Ok;
-
-    if (cfg_load_file(config_path, load_result, config_table)) {
-        if (config_table.is_table()) {
-            result = ConfigLoadResult::Ok;
-        } else {
-            result = ConfigLoadResult::Invalid;
-        }
-    } else {
-        if (load_result.kind == diffy::ParseErrorKind::File) {
-            result = ConfigLoadResult::DoesNotExist;
-        } else {
-            result = ConfigLoadResult::Invalid;
-        }
-    }
-    return result;
-}
-
 void
 diffy::config_apply_options(diffy::ProgramOptions& program_options) {
     const std::string config_file_name = "diffy.conf";
@@ -208,7 +208,6 @@ diffy::config_apply_options(diffy::ProgramOptions& program_options) {
     // Write the configuration to disk with default settings
     if (flush_config_to_disk) {
         config_file_table_value["general"].key_comments.push_back(config_doc_general);
-
         config_save(config_root, config_path, config_file_table_value);
     }
 }
@@ -333,7 +332,6 @@ diffy::config_apply_theme(const std::string& theme,
     // Write the configuration to disk with default settings
     if (flush_config_to_disk) {
         config_file_table_value["settings"].key_comments.push_back(config_doc_theme);
-
         config_save(config_root, config_path, config_file_table_value);
     }
 }
