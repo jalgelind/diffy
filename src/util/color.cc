@@ -313,14 +313,29 @@ diffy::color_map_set(std::string color_name, diffy::TermColor color) {
 
 void
 diffy::color_dump() {
-    fmt::print("Available values (16pal)\n");
+    auto reset = TermStyle { TermColor::kReset, TermColor::kReset };
+    auto rgb = TermStyle { *TermColor::from_hex("#ff0000"), TermColor::kNone };
+    fmt::print("{}{}{}", rgb.to_ansi(), "#RRGGBB test\n", reset.to_ansi());
+    
+    for (int i = 0; i < 255; i += 4) {
+        auto fg = TermColor { TermColor::Kind::Color24bit, (uint8_t) (127-i/2), 255, (uint8_t) (255-i) };
+        auto bg = TermColor { TermColor::Kind::Color24bit, (uint8_t) i, 0, 0 };
+        auto style = TermStyle { fg, bg };
+        fmt::print("{}{}{}", style.to_ansi(), "·", reset.to_ansi());
+    }
+    fmt::print("\n\n");
+    
+    fmt::print("Available values (16 color palette)\n");
+    int counter = 0;
     for (const auto& [k, v] : k16Colors) {
-        auto reset = TermStyle { TermColor::kReset, TermColor::kReset };
         auto fg = TermStyle { v, TermColor::kNone };
         auto bg = TermStyle { TermColor::kNone, v };
-        fmt::print("{}{}{}, {}{}{},",
+        fmt::print("{}{:^15}{}{}{:^15}{}",
             fg.to_ansi(), k, reset.to_ansi(),
             bg.to_ansi(), k, reset.to_ansi());
+        if (counter++ % 2 == 1) {
+            fmt::print("\n");
+        }
     }
     fmt::print("\n");
 }

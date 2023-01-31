@@ -2,8 +2,6 @@
 //  Half-assed hashmap wrapper where we can iterate through
 //  items in insertion-order.
 //
-// TODO: Incomplete; does not handle updating keys?
-//
 
 #pragma once
 
@@ -88,8 +86,6 @@ struct OrderedMap {
         return m_.contains(s);
     }
 
-    // TODO: It'd be nice to support for-each syntax. Can't beat these lines
-    //       for simplicity though.
     void
     for_each(std::function<void(T, V&)> cb) {
         for (auto& k : keys_) {
