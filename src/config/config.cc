@@ -246,7 +246,7 @@ diffy::config_apply_theme(const std::string& theme,
             "light_blue", "light_magenta", "light_cyan", "white",
         };
 
-        if (!config_file_table_value.lookup_value_by_path("color_map")) {
+        if (!config_file_table_value.lookup_value_by_path("color_map.red")) {
             config_file_table_value.set_value_at("color_map.red", {"red"});
         }
 
