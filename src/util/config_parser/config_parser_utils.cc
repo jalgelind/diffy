@@ -27,6 +27,63 @@ indent(int count) {
 }
 
 void
+dump_value_object(Value& v, std::string& s, int depth) {
+    auto INDENT = [](int x) {
+        return std::string((x) *2, ' ');
+    };
+    
+    s += fmt::format("{}", INDENT(depth));
+    s += fmt::format("Comments:\n");
+    for (auto& comment : v.key_comments) {
+        s += fmt::format("{}", INDENT(depth + 2));
+        s += fmt::format("K: {}\n", comment);
+    }
+    for (auto& comment : v.value_comments) {
+        s += fmt::format("{}", INDENT(depth + 2));
+        s += fmt::format("V: {}\n", comment);
+    }
+
+    s += fmt::format("{}", INDENT(depth));
+    s += fmt::format("Value:\n");
+
+    if (v.is_table()) {
+        auto& table = v.as_table();
+        s += fmt::format("{}", INDENT(depth + 1));
+        s += fmt::format("Table {{\n");
+        table.for_each([depth, &s, INDENT](const std::string& key, Value& value) {
+            s += fmt::format("{}", INDENT(depth + 2));
+            s += fmt::format("Key: '{}'\n", key);
+            dump_value_object(value, s, depth + 3);
+            s += fmt::format("\n");
+        });
+        s += fmt::format("{}", INDENT(depth + 1));
+        s += fmt::format("}}\n");
+    } else if (v.is_array()) {
+        auto& array = v.as_array();
+        s += fmt::format("{}", INDENT(depth + 1));
+        s += fmt::format("Array [\n");
+        for (auto& value : array) {
+            dump_value_object(value, s, depth + 2);
+            s += fmt::format("\n");
+        }
+        s += fmt::format("{}", INDENT(depth + 1));
+        s += fmt::format("]\n");
+
+    } else if (v.is_int()) {
+        s += fmt::format("{}", INDENT(depth + 1));
+        s += fmt::format("{}\n", v.as_int());
+    } else if (v.is_bool()) {
+        s += fmt::format("{}", INDENT(depth + 1));
+        s += fmt::format("{}\n", v.as_bool());
+    } else if (v.is_string()) {
+        s += fmt::format("{}", INDENT(depth + 1));
+        s += fmt::format("'{}'\n", v.as_string());
+    } else {
+        assert(false && "bad state");
+    }
+}
+
+void
 serialize_obj(Value& value, int depth, std::string& output, bool is_last_element, bool parent_is_container) {
     auto is_on_empty_line = [](const std::string& s) {
         auto line_start = s.rfind('\n');
@@ -254,60 +311,11 @@ diffy::cfg_dump_instructions(std::vector<TbInstruction>& inst) {
     }
 }
 
-// TODO: should output to string
-void
+std::string
 diffy::cfg_dump_value_object(Value& v, int depth) {
-#define INDENT(x) std::string((x) *2, ' ')
-
-    fmt::print("{}", INDENT(depth));
-    fmt::print("Comments:\n");
-    for (auto& comment : v.key_comments) {
-        fmt::print("{}", INDENT(depth + 2));
-        fmt::print("K: {}\n", comment);
-    }
-    for (auto& comment : v.value_comments) {
-        fmt::print("{}", INDENT(depth + 2));
-        fmt::print("V: {}\n", comment);
-    }
-
-    fmt::print("{}", INDENT(depth));
-    fmt::print("Value:\n");
-
-    if (v.is_table()) {
-        auto& table = v.as_table();
-        fmt::print("{}", INDENT(depth + 1));
-        fmt::print("Table {{\n");
-        table.for_each([depth](const std::string& key, Value& value) {
-            fmt::print("{}", INDENT(depth + 2));
-            fmt::print("Key: '{}'\n", key);
-            cfg_dump_value_object(value, depth + 3);
-            fmt::print("\n");
-        });
-        fmt::print("{}", INDENT(depth + 1));
-        fmt::print("}}\n");
-    } else if (v.is_array()) {
-        auto& array = v.as_array();
-        fmt::print("{}", INDENT(depth + 1));
-        fmt::print("Array [\n");
-        for (auto& value : array) {
-            cfg_dump_value_object(value, depth + 2);
-            fmt::print("\n");
-        }
-        fmt::print("{}", INDENT(depth + 1));
-        fmt::print("]\n");
-
-    } else if (v.is_int()) {
-        fmt::print("{}", INDENT(depth + 1));
-        fmt::print("{}\n", v.as_int());
-    } else if (v.is_bool()) {
-        fmt::print("{}", INDENT(depth + 1));
-        fmt::print("{}\n", v.as_bool());
-    } else if (v.is_string()) {
-        fmt::print("{}", INDENT(depth + 1));
-        fmt::print("'{}'\n", v.as_string());
-    } else {
-        assert(false && "bad state");
-    }
+    std::string result;
+    internal::dump_value_object(v, result, 0);
+    return result;
 }
 
 std::string

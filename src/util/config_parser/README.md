@@ -46,7 +46,7 @@ Example code and output
     cfg_parse_value_tree(cfg_tmp, result, obj);
 
     fmt::print("tree:\n");
-    cfg_dump_value_object(obj);
+    fmt::print("{}", cfg_dump_value_object(obj));
 
     fmt::print("re-serialized:\n{}\n", cfg_serialize(obj));
     fmt::print("TODO: remove section indentation and trailing empty lines\n");

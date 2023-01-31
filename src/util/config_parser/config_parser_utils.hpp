@@ -41,7 +41,7 @@ repr(TbValueType vt);
 void
 cfg_dump_instructions(std::vector<TbInstruction>& inst);
 
-void
+std::string
 cfg_dump_value_object(Value& v, int depth = 0);
 
 bool
