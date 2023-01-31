@@ -195,7 +195,7 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
                         result.ok = false;
                         result.error =
                             fmt::format("Unterminated string encountered newline (line {}, col {})",
-                                        current_line_number, cursor - last_new_line_offset);
+                                        current_line_number + 1 , cursor - last_new_line_offset + 1);
                         return result.ok;
                     }
                 }
@@ -229,7 +229,7 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
             } else {
                 result.ok = false;
                 result.error = fmt::format("Unterminated string starting on (line {}, col {}, seq)",
-                                           current_line_number, cursor - last_new_line_offset);
+                                           current_line_number + 1, cursor - last_new_line_offset + 1);
                 return result.ok;
             }
         }
