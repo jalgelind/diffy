@@ -16,42 +16,8 @@ Known bugs/limitations:
 
 When we deserialize into a value tree, we try to attach comments to the
 logically closest context. Some comments are not preserved, as we don't
-have anywhere to put them. In the example below we'll drop 9, 10 and 11.
-
-# 1(above section)
-[section] # 2 (next to section)
-# 3(above key, below parent section)
-    key = "value" # 4 (next to "value")
-# 5(above something, after key)
-    something = { # 6 (next to something)
-# 7(below parent something, before apa)
-        apa = "bepa" # 8 (next to "bepa")
-# 9(below apa, last item in table)
-    } # 10 (next to something-close-brace)
-# 11(trailing comment)
-
-This will be reserialized as
-
-# 1(above section)
-[section] # 2 (next to section)
-# 3(below section, above key)
-    key = 'value' # 4 (next to key)
-# 5(before something, after key)
-    something = { # 6 (next to something)
-# 7(before apa on a new line)
-        apa = 'bepa' # 8 (next to apa)
-    }
-
-How to fix:
-We could consider keeping just the value comments inside a Value. We then
-replace the Value::Table value type to a sum type of Value|Comment. That
-way we can embed the comments as values (unsure what the key would be)
-
-This would probably fix the "comments before the table/array terminating brace" issue (9).
-We'd trivially know where to put them when serializing. :)
-
-Trailing comments like 10 and 11 will end up in the `comments` array after the parsing is
-finished. We just throw them away. (:
+have anywhere to put them (trailing comments, comment to the right of the defined last
+value).
 
 
 Example code and output
@@ -85,22 +51,22 @@ Example code and output
     fmt::print("re-serialized:\n{}\n", cfg_serialize(obj));
     fmt::print("TODO: remove section indentation and trailing empty lines\n");
 
-    if (auto tmp = cfg_lookup_value_by_path({"section", "something", "apa"}, obj); tmp != std::nullopt) {
+    if (auto tmp = obj.lookup_value_by_path({"section", "something", "apa"}); tmp != std::nullopt) {
             fmt::print("1 Found: {}\n", repr(*tmp));
     }
 
-    if (auto tmp = cfg_lookup_value_by_path({"section", "something", "nope"}, obj); tmp != std::nullopt) {
+    if (auto tmp = obj.lookup_value_by_path({"section", "something", "nope"}); tmp != std::nullopt) {
             fmt::print("2 Found: {}\n", repr(*tmp));
     }
 
-    if (auto tmp = cfg_lookup_value_by_path("section.something.apa", obj); tmp != std::nullopt) {
+    if (auto tmp = obj.lookup_value_by_path("section.something.apa"); tmp != std::nullopt) {
             fmt::print("3 Found: {}\n", repr(*tmp));
             if (tmp->get().is_string()) {
             fmt::print("It's a string: {}\n", tmp->get().as_string());
             }
     }
 
-    if (auto tmp = cfg_lookup_value_by_path("section.something.nope", obj); tmp != std::nullopt) {
+    if (auto tmp = obj.lookup_value_by_path("section.something.nope"); tmp != std::nullopt) {
             fmt::print("4 Found: {}\n", repr(*tmp));
     }
 
@@ -190,10 +156,3 @@ Outputs
     # 7 (below parent something, before apa)
     apa = 'bepa' # 8 (next to "bepa")
     }
-
-
-
-    TODO: remove section indentation and trailing empty lines
-    1 Found: String<'bepa'>
-    3 Found: String<'bepa'>
-    It's a string: bepa
