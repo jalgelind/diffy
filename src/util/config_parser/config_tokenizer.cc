@@ -24,28 +24,29 @@ struct TokenDescriptor {
 
 // clang-format off
     const std::vector<TokenDescriptor> kTokens = {{
-        // Name          Identifier             Start symbol   End symbol          Extra type tag
-        { "Doubleslash", TokenId_Doubleslash,   "//",          TokenId_Newline     , TokenId_Comment },
-        { "Space",       TokenId_Space,         " ",           std::nullopt        , std::nullopt    },
-        { "Newline",     TokenId_Newline,       "\n",          std::nullopt        , std::nullopt    },
-        { "OpenBracket", TokenId_OpenBracket,   "[" ,          std::nullopt        , std::nullopt    },
-        { "CloseBracket",TokenId_CloseBracket,  "]" ,          std::nullopt        , std::nullopt    },
-        { "Assign",      TokenId_Assign,        "=" ,          std::nullopt        , std::nullopt    },
-        { "OpenCurly",   TokenId_OpenCurly,     "{" ,          std::nullopt        , std::nullopt    },
-        { "CloseCurly",  TokenId_CloseCurly,    "}" ,          std::nullopt        , std::nullopt    },
-        { "DoubleQuote", TokenId_DoubleQuote,   "\"",          TokenId_DoubleQuote , std::nullopt    },
-        { "SingleQuote", TokenId_SingleQuote,   "'" ,          TokenId_SingleQuote , std::nullopt    },
-        { "Hashtag",     TokenId_Hashtag,       "#" ,          TokenId_Newline     , TokenId_Comment },
-        { "Comma",       TokenId_Comma,         "," ,          std::nullopt        , std::nullopt    },
-        { "Backslash",   TokenId_Backslash,     "\\",          std::nullopt        , std::nullopt    },
+        // Name           Identifier             Start symbol   End symbol          Extra type tag
+        { "Doubleslash",  TokenId_Doubleslash,   "//",          TokenId_Newline     , TokenId_Comment },
+        { "Space",        TokenId_Space,         " ",           std::nullopt        , std::nullopt    },
+        { "Newline",      TokenId_Newline,       "\n",          std::nullopt        , std::nullopt    },
+        { "OpenBracket",  TokenId_OpenBracket,   "[" ,          std::nullopt        , std::nullopt    },
+        { "CloseBracket", TokenId_CloseBracket,  "]" ,          std::nullopt        , std::nullopt    },
+        { "Assign",       TokenId_Assign,        "=" ,          std::nullopt        , std::nullopt    },
+        { "OpenCurly",    TokenId_OpenCurly,     "{" ,          std::nullopt        , std::nullopt    },
+        { "CloseCurly",   TokenId_CloseCurly,    "}" ,          std::nullopt        , std::nullopt    },
+        { "DoubleQuote",  TokenId_DoubleQuote,   "\"",          TokenId_DoubleQuote , std::nullopt    },
+        { "SingleQuote",  TokenId_SingleQuote,   "'" ,          TokenId_SingleQuote , std::nullopt    },
+        { "Hashtag",      TokenId_Hashtag,       "#" ,          TokenId_Newline     , TokenId_Comment },
+        { "Comma",        TokenId_Comma,         "," ,          std::nullopt        , std::nullopt    },
+        { "Backslash",    TokenId_Backslash,     "\\",          std::nullopt        , std::nullopt    },
         // Extra token annotation IDs. An identifier can be e.g:
         //   "String | EmptyString" or "String | Integer"...
-        { "Boolean",     TokenId_Boolean,       std::nullopt , std::nullopt        , std::nullopt    },
-        { "Integer",     TokenId_Integer,       std::nullopt , std::nullopt        , std::nullopt    },
-        { "String",      TokenId_String,        std::nullopt , std::nullopt        , std::nullopt    },
-        { "Identifier",  TokenId_Identifier,    std::nullopt , std::nullopt        , std::nullopt    },
-        { "Comment",     TokenId_Comment,       std::nullopt , std::nullopt        , std::nullopt    },
-        { "Terminator",  TokenId_Terminator,    std::nullopt , std::nullopt        , std::nullopt    },
+        { "Boolean",      TokenId_Boolean,       std::nullopt , std::nullopt        , std::nullopt    },
+        { "Integer",      TokenId_Integer,       std::nullopt , std::nullopt        , std::nullopt    },
+        { "Float",        TokenId_Float,       std::nullopt , std::nullopt        , std::nullopt    },
+        { "String",       TokenId_String,        std::nullopt , std::nullopt        , std::nullopt    },
+        { "Identifier",   TokenId_Identifier,    std::nullopt , std::nullopt        , std::nullopt    },
+        { "Comment",      TokenId_Comment,       std::nullopt , std::nullopt        , std::nullopt    },
+        { "Terminator",   TokenId_Terminator,    std::nullopt , std::nullopt        , std::nullopt    },
         { "FirstOnLine",  TokenId_FirstOnLine,    std::nullopt , std::nullopt        , std::nullopt    },
     }};
 // clang-format on
@@ -336,7 +337,14 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
                 token.id = TokenId_Integer;
                 token.token_int_arg = tmp_int;
             } else {
-                token.id = TokenId_Identifier;
+                int tmp_float;
+                auto result = std::from_chars(token_str.data(), token_str.data() + token_str.size(), tmp_float);
+                if (result.ec != std::errc::invalid_argument) {
+                    token.id = TokenId_Float;
+                    token.token_float_arg = tmp_float;
+                } else {
+                    token.id = TokenId_Identifier;
+                }
             }
         }
         if (token.start == 0 || is_first_token_on_line(token.start - 1)) {

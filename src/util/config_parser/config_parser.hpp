@@ -56,6 +56,7 @@ enum class TbValueType {
     Int,
     Bool,
     String,
+    Float,
 };
 
 // Tree builder operator
@@ -75,6 +76,7 @@ struct TbInstruction {
     std::string oparg1;
     TbValueType oparg2_type = TbValueType::None;
     int oparg2_int = 0;
+    float oparg2_float = 0.f;
     bool oparg2_bool = false;
 
     // HACK(ja): Extra flag used to determine comment context
@@ -83,7 +85,8 @@ struct TbInstruction {
     bool
     operator==(const TbInstruction& other) {
         return op == other.op && oparg1 == other.oparg1 && oparg2_type == other.oparg2_type &&
-               oparg2_int == other.oparg2_int && oparg2_bool == other.oparg2_bool;
+               oparg2_int == other.oparg2_int && oparg2_float == other.oparg2_float &&
+               oparg2_bool == other.oparg2_bool;
     }
 };
 
@@ -93,10 +96,11 @@ struct Value {
     using Table = OrderedMap<std::string, Value>;
     using Array = std::vector<Value>;
     using Int = int32_t;
+    using Float = float;
     using Bool = bool;
     using String = std::string;
 
-    std::variant<Table, Array, Int, Bool, String> v;
+    std::variant<Table, Array, Int, Float, Bool, String> v;
 
     // Comment lines attached to the value, or to the key it's assigned to.
     std::vector<std::string> value_comments;
@@ -138,12 +142,14 @@ struct Value {
     bool is_array() { return std::holds_alternative<Value::Array>(v); }
     bool is_table() { return std::holds_alternative<Value::Table>(v); }
     bool is_int() { return std::holds_alternative<Value::Int>(v); }
+    bool is_float() { return std::holds_alternative<Value::Float>(v); }
     bool is_bool() { return std::holds_alternative<Value::Bool>(v); }
     bool is_string() { return std::holds_alternative<Value::String>(v); }
 
     Array& as_array() { return std::get<Value::Array>(v); }
     Table& as_table() { return std::get<Value::Table>(v); }
     Int& as_int() { return std::get<Value::Int>(v); }
+    Float& as_float() { return std::get<Value::Float>(v); }
     Bool& as_bool() { return std::get<Value::Bool>(v); }
     String& as_string() { return std::get<Value::String>(v); }
     // clang-format on

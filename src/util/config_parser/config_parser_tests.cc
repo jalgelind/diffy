@@ -48,16 +48,16 @@ TEST_CASE("parser") {
         // dump_instructions(instructions);
         // clang-format off
         REQUIRE(instructions.size() == 10);
-        REQUIRE(instructions[ 0] == TbInstruction { TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 1] == TbInstruction {   TbOperator::Key, "fg", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 2] == TbInstruction {   TbOperator::Value, "white", TbValueType::String, 0, false });
-        REQUIRE(instructions[ 3] == TbInstruction {   TbOperator::Key, "bg", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 4] == TbInstruction {   TbOperator::Value, "default", TbValueType::String, 0, false });
-        REQUIRE(instructions[ 5] == TbInstruction {   TbOperator::Key, "attr", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 6] == TbInstruction {   TbOperator::ArrayStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 7] == TbInstruction {     TbOperator::Value, "underline", TbValueType::String, 0, false });
-        REQUIRE(instructions[ 8] == TbInstruction {   TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 9] == TbInstruction { TbOperator::TableEnd, "", TbValueType::None, 0, false });
+        REQUIRE(instructions[ 0] == TbInstruction { TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 1] == TbInstruction {   TbOperator::Key, "fg", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 2] == TbInstruction {   TbOperator::Value, "white", TbValueType::String, 0, 0, false });
+        REQUIRE(instructions[ 3] == TbInstruction {   TbOperator::Key, "bg", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 4] == TbInstruction {   TbOperator::Value, "default", TbValueType::String, 0, 0, false });
+        REQUIRE(instructions[ 5] == TbInstruction {   TbOperator::Key, "attr", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 6] == TbInstruction {   TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 7] == TbInstruction {     TbOperator::Value, "underline", TbValueType::String, 0, 0, false });
+        REQUIRE(instructions[ 8] == TbInstruction {   TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 9] == TbInstruction { TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
         // clang-format on
     }
 
@@ -73,16 +73,16 @@ TEST_CASE("parser") {
         // dump_instructions(instructions);
         // clang-format off
         REQUIRE(instructions.size() == 10);
-        REQUIRE(instructions[ 0] == TbInstruction { TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 1] == TbInstruction {   TbOperator::Key, "fg", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 2] == TbInstruction {   TbOperator::Value, "white", TbValueType::String, 0, false });
-        REQUIRE(instructions[ 3] == TbInstruction {   TbOperator::Key, "bg", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 4] == TbInstruction {   TbOperator::Value, "default", TbValueType::String, 0, false });
-        REQUIRE(instructions[ 5] == TbInstruction {   TbOperator::Key, "attr", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 6] == TbInstruction {   TbOperator::ArrayStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 7] == TbInstruction {     TbOperator::Value, "underline", TbValueType::String, 0, false });
-        REQUIRE(instructions[ 8] == TbInstruction {   TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 9] == TbInstruction { TbOperator::TableEnd, "", TbValueType::None, 0, false });
+        REQUIRE(instructions[ 0] == TbInstruction { TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 1] == TbInstruction {   TbOperator::Key, "fg", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 2] == TbInstruction {   TbOperator::Value, "white", TbValueType::String, 0, 0, false });
+        REQUIRE(instructions[ 3] == TbInstruction {   TbOperator::Key, "bg", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 4] == TbInstruction {   TbOperator::Value, "default", TbValueType::String, 0, 0, false });
+        REQUIRE(instructions[ 5] == TbInstruction {   TbOperator::Key, "attr", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 6] == TbInstruction {   TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 7] == TbInstruction {     TbOperator::Value, "underline", TbValueType::String, 0, 0, false });
+        REQUIRE(instructions[ 8] == TbInstruction {   TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 9] == TbInstruction { TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
         // clang-format on
     }
 
@@ -101,9 +101,9 @@ TEST_CASE("parser") {
 
         // clang-format off
         REQUIRE(instructions.size() == 3);
-        REQUIRE(instructions[0] == TbInstruction { TbOperator::Key, "section", (TbValueType) 0, false });
-        REQUIRE(instructions[1] == TbInstruction {   TbOperator::TableStart, "from section", (TbValueType) 0, false });
-        REQUIRE(instructions[2] == TbInstruction { TbOperator::TableEnd, "", (TbValueType) 0, false });
+        REQUIRE(instructions[0] == TbInstruction { TbOperator::Key, "section", (TbValueType) 0, 0, false });
+        REQUIRE(instructions[1] == TbInstruction {   TbOperator::TableStart, "from section", (TbValueType) 0, 0, false });
+        REQUIRE(instructions[2] == TbInstruction { TbOperator::TableEnd, "", (TbValueType) 0, 0, false });
         // clang-format on
     }
 
@@ -120,10 +120,10 @@ TEST_CASE("parser") {
         REQUIRE(result.is_ok());
         // dump_instructions(instructions);
         REQUIRE(instructions.size() == 3);
-        REQUIRE(instructions[0] == TbInstruction{TbOperator::Key, "section", (TbValueType) 0, false});
+        REQUIRE(instructions[0] == TbInstruction{TbOperator::Key, "section", (TbValueType) 0, 0, false});
         REQUIRE(instructions[1] ==
-                TbInstruction{TbOperator::TableStart, "from section", (TbValueType) 0, false});
-        REQUIRE(instructions[2] == TbInstruction{TbOperator::TableEnd, "", (TbValueType) 0, false});
+                TbInstruction{TbOperator::TableStart, "from section", (TbValueType) 0, 0, false});
+        REQUIRE(instructions[2] == TbInstruction{TbOperator::TableEnd, "", (TbValueType) 0, 0, false});
     }
 
     SUBCASE("bare section with leading comments") {
@@ -142,11 +142,11 @@ TEST_CASE("parser") {
         // dump_instructions(instructions);
         // clang-format off
         REQUIRE(instructions.size() == 5);
-        REQUIRE(instructions[0] == TbInstruction { TbOperator::Comment, " first comment", (TbValueType) 0, false });
-        REQUIRE(instructions[1] == TbInstruction { TbOperator::Comment, " second comment", (TbValueType) 0, false });
-        REQUIRE(instructions[2] == TbInstruction { TbOperator::Key, "section", (TbValueType) 0, false });
-        REQUIRE(instructions[3] == TbInstruction { TbOperator::TableStart, "from section", (TbValueType) 0, false });
-        REQUIRE(instructions[4] == TbInstruction { TbOperator::TableEnd, "", (TbValueType) 0, false });
+        REQUIRE(instructions[0] == TbInstruction { TbOperator::Comment, " first comment", (TbValueType) 0, 0, false });
+        REQUIRE(instructions[1] == TbInstruction { TbOperator::Comment, " second comment", (TbValueType) 0, 0, false });
+        REQUIRE(instructions[2] == TbInstruction { TbOperator::Key, "section", (TbValueType) 0, 0, false });
+        REQUIRE(instructions[3] == TbInstruction { TbOperator::TableStart, "from section", (TbValueType) 0, 0, false });
+        REQUIRE(instructions[4] == TbInstruction { TbOperator::TableEnd, "", (TbValueType) 0, 0, false });
         // clang-format on
     }
 
@@ -165,11 +165,11 @@ TEST_CASE("parser") {
         // dump_instructions(instructions);
         // clang-format off
         REQUIRE(instructions.size() == 5);
-        REQUIRE(instructions[0] == TbInstruction { TbOperator::Key, "section", (TbValueType) 0, false });
-        REQUIRE(instructions[1] == TbInstruction { TbOperator::TableStart, "from section", (TbValueType) 0, false });
-        REQUIRE(instructions[2] == TbInstruction { TbOperator::Key, "my_key", (TbValueType) 0, false });
+        REQUIRE(instructions[0] == TbInstruction { TbOperator::Key, "section", (TbValueType) 0, 0, false });
+        REQUIRE(instructions[1] == TbInstruction { TbOperator::TableStart, "from section", (TbValueType) 0, 0, false });
+        REQUIRE(instructions[2] == TbInstruction { TbOperator::Key, "my_key", (TbValueType) 0, 0, false });
         REQUIRE(instructions[3] == TbInstruction { TbOperator::Value, "hey", (TbValueType) 3, false });
-        REQUIRE(instructions[4] == TbInstruction { TbOperator::TableEnd, "", (TbValueType) 0, false });
+        REQUIRE(instructions[4] == TbInstruction { TbOperator::TableEnd, "", (TbValueType) 0, 0, false });
         // clang-format on
     }
 
@@ -186,19 +186,22 @@ TEST_CASE("parser") {
         if (!cfg_parse_collect(cfg_text, result, instructions)) {
             printf("%s\n", result.error.c_str());
         }
+
+        //cfg_dump_instructions(instructions)
+
         REQUIRE(result.is_ok());
         // dump_instructions(instructions);
         // clang-format off
         REQUIRE(instructions.size() == 9);
-        REQUIRE(instructions[0] == TbInstruction { TbOperator::Key, "section", (TbValueType) 0, 0, false });
-        REQUIRE(instructions[1] == TbInstruction { TbOperator::TableStart, "from section", (TbValueType) 0, 0, false });
-        REQUIRE(instructions[2] == TbInstruction { TbOperator::Key, "my_key", (TbValueType) 0, 0, false });
-        REQUIRE(instructions[3] == TbInstruction { TbOperator::Value, "hey", (TbValueType) 3, 0, false });
-        REQUIRE(instructions[4] == TbInstruction { TbOperator::Key, "my_other_key", (TbValueType) 0, 0, false });
+        REQUIRE(instructions[0] == TbInstruction { TbOperator::Key, "section", (TbValueType) 0, 0, 0, false });
+        REQUIRE(instructions[1] == TbInstruction { TbOperator::TableStart, "from section", (TbValueType) 0, 0, 0, false });
+        REQUIRE(instructions[2] == TbInstruction { TbOperator::Key, "my_key", (TbValueType) 0, 0, 0, false });
+        REQUIRE(instructions[3] == TbInstruction { TbOperator::Value, "hey", (TbValueType) 3, 0, 0, false });
+        REQUIRE(instructions[4] == TbInstruction { TbOperator::Key, "my_other_key", (TbValueType) 0, 0, 0, false });
         REQUIRE(instructions[5] == TbInstruction { TbOperator::Value, "1234", (TbValueType) 1, 1234, false });
-        REQUIRE(instructions[6] == TbInstruction { TbOperator::Key, "something", (TbValueType) 0, 0, false });
-        REQUIRE(instructions[7] == TbInstruction { TbOperator::Value, "false", (TbValueType) 2, 0, false });
-        REQUIRE(instructions[8] == TbInstruction { TbOperator::TableEnd, "", (TbValueType) 0, 0, false });
+        REQUIRE(instructions[6] == TbInstruction { TbOperator::Key, "something", (TbValueType) 0, 0, 0, false });
+        REQUIRE(instructions[7] == TbInstruction { TbOperator::Value, "false", (TbValueType) 2, 0, 0, false });
+        REQUIRE(instructions[8] == TbInstruction { TbOperator::TableEnd, "", (TbValueType) 0, 0, 0, false });
         // clang-format on
     }
 
@@ -224,24 +227,24 @@ TEST_CASE("parser") {
 
         // clang-format off
         REQUIRE(instructions.size() == 18);
-        REQUIRE(instructions[0] == TbInstruction { TbOperator::Key, "section", (TbValueType) 0, 0, false });
-        REQUIRE(instructions[1] == TbInstruction { TbOperator::TableStart, "from section", (TbValueType) 0, 0, false });
-        REQUIRE(instructions[2] == TbInstruction { TbOperator::Key, "my_key", (TbValueType) 0, 0, false });
-        REQUIRE(instructions[3] == TbInstruction { TbOperator::Value, "hey", (TbValueType) 3, 0, false });
-        REQUIRE(instructions[4] == TbInstruction { TbOperator::Key, "my_other_key", (TbValueType) 0, 0, false });
+        REQUIRE(instructions[0] == TbInstruction { TbOperator::Key, "section", (TbValueType) 0, 0, 0, false });
+        REQUIRE(instructions[1] == TbInstruction { TbOperator::TableStart, "from section", (TbValueType) 0, 0, 0, false });
+        REQUIRE(instructions[2] == TbInstruction { TbOperator::Key, "my_key", (TbValueType) 0, 0, 0, false });
+        REQUIRE(instructions[3] == TbInstruction { TbOperator::Value, "hey", (TbValueType) 3, 0, 0, false });
+        REQUIRE(instructions[4] == TbInstruction { TbOperator::Key, "my_other_key", (TbValueType) 0, 0, 0, false });
         REQUIRE(instructions[5] == TbInstruction { TbOperator::Value, "1234", (TbValueType) 1, 1234, false });
-        REQUIRE(instructions[6] == TbInstruction { TbOperator::Key, "something", (TbValueType) 0, 0, false });
-        REQUIRE(instructions[7] == TbInstruction { TbOperator::Value, "false", (TbValueType) 2, 0, false });
-        REQUIRE(instructions[8] == TbInstruction { TbOperator::TableEnd, "", (TbValueType) 0, 0, false });
-        REQUIRE(instructions[9] == TbInstruction { TbOperator::Key, "shapes", (TbValueType) 0, 0, false });
-        REQUIRE(instructions[10] == TbInstruction { TbOperator::TableStart, "from section", (TbValueType) 0, 0, false });
-        REQUIRE(instructions[11] == TbInstruction { TbOperator::Key, "apa", (TbValueType) 0, 0, false });
-        REQUIRE(instructions[12] == TbInstruction { TbOperator::Value, "apa", (TbValueType) 3, 0, false });
-        REQUIRE(instructions[13] == TbInstruction { TbOperator::Key, "bepa", (TbValueType) 0, 0, false });
-        REQUIRE(instructions[14] == TbInstruction { TbOperator::Value, "0", (TbValueType) 1, 0, false });
-        REQUIRE(instructions[15] == TbInstruction { TbOperator::Key, "cepa", (TbValueType) 0, 0, false });
-        REQUIRE(instructions[16] == TbInstruction { TbOperator::Value, "off", (TbValueType) 2, 0, false });
-        REQUIRE(instructions[17] == TbInstruction { TbOperator::TableEnd, "", (TbValueType) 0, 0, false });
+        REQUIRE(instructions[6] == TbInstruction { TbOperator::Key, "something", (TbValueType) 0, 0, 0, false });
+        REQUIRE(instructions[7] == TbInstruction { TbOperator::Value, "false", (TbValueType) 2, 0, 0, false });
+        REQUIRE(instructions[8] == TbInstruction { TbOperator::TableEnd, "", (TbValueType) 0, 0, 0, false });
+        REQUIRE(instructions[9] == TbInstruction { TbOperator::Key, "shapes", (TbValueType) 0, 0, 0, false });
+        REQUIRE(instructions[10] == TbInstruction { TbOperator::TableStart, "from section", (TbValueType) 0, 0, 0, false });
+        REQUIRE(instructions[11] == TbInstruction { TbOperator::Key, "apa", (TbValueType) 0, 0, 0, false });
+        REQUIRE(instructions[12] == TbInstruction { TbOperator::Value, "apa", (TbValueType) 3, 0, 0, false });
+        REQUIRE(instructions[13] == TbInstruction { TbOperator::Key, "bepa", (TbValueType) 0, 0, 0, false });
+        REQUIRE(instructions[14] == TbInstruction { TbOperator::Value, "0", (TbValueType) 1, 0, 0, false });
+        REQUIRE(instructions[15] == TbInstruction { TbOperator::Key, "cepa", (TbValueType) 0, 0, 0, false });
+        REQUIRE(instructions[16] == TbInstruction { TbOperator::Value, "off", (TbValueType) 2, 0, 0, false });
+        REQUIRE(instructions[17] == TbInstruction { TbOperator::TableEnd, "", (TbValueType) 0, 0, 0, false });
         // clang-format on
     }
 
@@ -262,27 +265,27 @@ TEST_CASE("parser") {
         // dump_instructions(instructions);
         // clang-format off
         REQUIRE(instructions.size() == 21);
-        REQUIRE(instructions[ 0] == TbInstruction { TbOperator::Key, "section", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 1] == TbInstruction { TbOperator::TableStart, "from section", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 2] == TbInstruction {   TbOperator::Key, "my_key", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 3] == TbInstruction {   TbOperator::ArrayStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 4] == TbInstruction {     TbOperator::Value, "1", TbValueType::Int, 1, false });
-        REQUIRE(instructions[ 5] == TbInstruction {     TbOperator::Value, "2", TbValueType::Int, 2, false });
-        REQUIRE(instructions[ 6] == TbInstruction {     TbOperator::Value, "3", TbValueType::Int, 3, false });
-        REQUIRE(instructions[ 7] == TbInstruction {     TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 8] == TbInstruction {   TbOperator::Key, "my_other_key", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 9] == TbInstruction {   TbOperator::ArrayStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[10] == TbInstruction {     TbOperator::Value, "one", TbValueType::String, 0, false });
-        REQUIRE(instructions[11] == TbInstruction {     TbOperator::Value, "two", TbValueType::String, 0, false });
-        REQUIRE(instructions[12] == TbInstruction {     TbOperator::Value, "three", TbValueType::String, 0, false });
-        REQUIRE(instructions[13] == TbInstruction {     TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[14] == TbInstruction {   TbOperator::Key, "something", TbValueType::None, 0, false });
-        REQUIRE(instructions[15] == TbInstruction {   TbOperator::ArrayStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[16] == TbInstruction {     TbOperator::Value, "true", TbValueType::Bool, 0, true });
-        REQUIRE(instructions[17] == TbInstruction {     TbOperator::Value, "on", TbValueType::Bool, 0, true });
-        REQUIRE(instructions[18] == TbInstruction {     TbOperator::Value, "off", TbValueType::Bool, 0, false });
-        REQUIRE(instructions[19] == TbInstruction {     TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[20] == TbInstruction {   TbOperator::TableEnd, "", TbValueType::None, 0, false });
+        REQUIRE(instructions[ 0] == TbInstruction { TbOperator::Key, "section", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 1] == TbInstruction { TbOperator::TableStart, "from section", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 2] == TbInstruction {   TbOperator::Key, "my_key", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 3] == TbInstruction {   TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 4] == TbInstruction {     TbOperator::Value, "1", TbValueType::Int, 1, 0, false });
+        REQUIRE(instructions[ 5] == TbInstruction {     TbOperator::Value, "2", TbValueType::Int, 2, 0, false });
+        REQUIRE(instructions[ 6] == TbInstruction {     TbOperator::Value, "3", TbValueType::Int, 3, 0, false });
+        REQUIRE(instructions[ 7] == TbInstruction {     TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 8] == TbInstruction {   TbOperator::Key, "my_other_key", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 9] == TbInstruction {   TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[10] == TbInstruction {     TbOperator::Value, "one", TbValueType::String, 0, 0, false });
+        REQUIRE(instructions[11] == TbInstruction {     TbOperator::Value, "two", TbValueType::String, 0, 0, false });
+        REQUIRE(instructions[12] == TbInstruction {     TbOperator::Value, "three", TbValueType::String, 0, 0, false });
+        REQUIRE(instructions[13] == TbInstruction {     TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[14] == TbInstruction {   TbOperator::Key, "something", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[15] == TbInstruction {   TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[16] == TbInstruction {     TbOperator::Value, "true", TbValueType::Bool, 0, 0, true });
+        REQUIRE(instructions[17] == TbInstruction {     TbOperator::Value, "on", TbValueType::Bool, 0, 0, true });
+        REQUIRE(instructions[18] == TbInstruction {     TbOperator::Value, "off", TbValueType::Bool, 0, 0, false });
+        REQUIRE(instructions[19] == TbInstruction {     TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[20] == TbInstruction {   TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
         // clang-format on
     }
 
@@ -318,33 +321,33 @@ TEST_CASE("parser") {
 
         // clang-format off
         REQUIRE(instructions.size() == 27);
-        REQUIRE(instructions[ 0] == TbInstruction { TbOperator::Comment, " comment", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 1] == TbInstruction { TbOperator::Key, "section", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 2] == TbInstruction { TbOperator::TableStart, "from section", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 3] == TbInstruction {   TbOperator::Comment, " comment", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 4] == TbInstruction {   TbOperator::Key, "my_key", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 5] == TbInstruction {   TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 6] == TbInstruction {     TbOperator::Key, "a", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 7] == TbInstruction {     TbOperator::Value, "a", TbValueType::String, 0, false });
-        REQUIRE(instructions[ 8] == TbInstruction {     TbOperator::Comment, " another comment", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 9] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[10] == TbInstruction {   TbOperator::Key, "my_other_key", TbValueType::None, 0, false });
-        REQUIRE(instructions[11] == TbInstruction {   TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[12] == TbInstruction {     TbOperator::Key, "a", TbValueType::None, 0, false });
+        REQUIRE(instructions[ 0] == TbInstruction { TbOperator::Comment, " comment", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 1] == TbInstruction { TbOperator::Key, "section", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 2] == TbInstruction { TbOperator::TableStart, "from section", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 3] == TbInstruction {   TbOperator::Comment, " comment", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 4] == TbInstruction {   TbOperator::Key, "my_key", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 5] == TbInstruction {   TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 6] == TbInstruction {     TbOperator::Key, "a", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 7] == TbInstruction {     TbOperator::Value, "a", TbValueType::String, 0, 0, false });
+        REQUIRE(instructions[ 8] == TbInstruction {     TbOperator::Comment, " another comment", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 9] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[10] == TbInstruction {   TbOperator::Key, "my_other_key", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[11] == TbInstruction {   TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[12] == TbInstruction {     TbOperator::Key, "a", TbValueType::None, 0, 0, false });
         REQUIRE(instructions[13] == TbInstruction {     TbOperator::Value, "1", TbValueType::Int, 1, false });
-        REQUIRE(instructions[14] == TbInstruction {     TbOperator::Key, "b", TbValueType::None, 0, false });
-        REQUIRE(instructions[15] == TbInstruction {     TbOperator::Value, "false", TbValueType::Bool, 0, false });
-        REQUIRE(instructions[16] == TbInstruction {     TbOperator::Key, "c", TbValueType::None, 0, false });
-        REQUIRE(instructions[17] == TbInstruction {     TbOperator::Value, "test", TbValueType::String, 0, false });
-        REQUIRE(instructions[18] == TbInstruction {     TbOperator::Key, "d", TbValueType::None, 0, false });
-        REQUIRE(instructions[19] == TbInstruction {     TbOperator::ArrayStart, "", TbValueType::None, 0, false });
+        REQUIRE(instructions[14] == TbInstruction {     TbOperator::Key, "b", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[15] == TbInstruction {     TbOperator::Value, "false", TbValueType::Bool, 0, 0, false });
+        REQUIRE(instructions[16] == TbInstruction {     TbOperator::Key, "c", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[17] == TbInstruction {     TbOperator::Value, "test", TbValueType::String, 0, 0, false });
+        REQUIRE(instructions[18] == TbInstruction {     TbOperator::Key, "d", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[19] == TbInstruction {     TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
         REQUIRE(instructions[20] == TbInstruction {       TbOperator::Value, "1", TbValueType::Int, 1, false });
-        REQUIRE(instructions[21] == TbInstruction {       TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[22] == TbInstruction {     TbOperator::Comment, " final comment", TbValueType::None, 0, false });
-        REQUIRE(instructions[23] == TbInstruction {     TbOperator::Comment, " it wasn't", TbValueType::None, 0, false });
-        REQUIRE(instructions[24] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[25] == TbInstruction {   TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[26] == TbInstruction { TbOperator::TableEnd, "", TbValueType::None, 0, false });
+        REQUIRE(instructions[21] == TbInstruction {       TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[22] == TbInstruction {     TbOperator::Comment, " final comment", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[23] == TbInstruction {     TbOperator::Comment, " it wasn't", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[24] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[25] == TbInstruction {   TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[26] == TbInstruction { TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
         // clang-format on
     }
 
@@ -397,116 +400,116 @@ TEST_CASE("parser") {
 
         // clang-format off
         REQUIRE(instructions.size() == 110);
-        REQUIRE(instructions[  0] == TbInstruction { TbOperator::Comment, " comment 1", TbValueType::None, 0, false });
-        REQUIRE(instructions[  1] == TbInstruction { TbOperator::Comment, " comment 2", TbValueType::None, 0, false });
-        REQUIRE(instructions[  2] == TbInstruction { TbOperator::Key, "section_1", TbValueType::None, 0, false });
-        REQUIRE(instructions[  3] == TbInstruction { TbOperator::TableStart, "from section", TbValueType::None, 0, false });
-        REQUIRE(instructions[  4] == TbInstruction {   TbOperator::Comment, " hello", TbValueType::None, 0, false });
-        REQUIRE(instructions[  5] == TbInstruction {   TbOperator::Key, "arr", TbValueType::None, 0, false });
-        REQUIRE(instructions[  6] == TbInstruction {   TbOperator::Comment, " comment 3", TbValueType::None, 0, false });
-        REQUIRE(instructions[  7] == TbInstruction {   TbOperator::ArrayStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[  8] == TbInstruction {     TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[  9] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 10] == TbInstruction {     TbOperator::Comment, " comment 4", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 11] == TbInstruction {     TbOperator::Comment, " comment 5", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 12] == TbInstruction {     TbOperator::ArrayStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 13] == TbInstruction {       TbOperator::ArrayStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 14] == TbInstruction {         TbOperator::Comment, " comment 6", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 15] == TbInstruction {       TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 16] == TbInstruction {       TbOperator::Comment, " comment 7", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 17] == TbInstruction {     TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 18] == TbInstruction {     TbOperator::Comment, " comment 8", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 19] == TbInstruction {   TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 20] == TbInstruction {   TbOperator::Key, "arr2", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 21] == TbInstruction {   TbOperator::ArrayStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 22] == TbInstruction {     TbOperator::ArrayStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 23] == TbInstruction {     TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 24] == TbInstruction {     TbOperator::ArrayStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 25] == TbInstruction {     TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 26] == TbInstruction {     TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 27] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 28] == TbInstruction {     TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 29] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 30] == TbInstruction {     TbOperator::Comment, " comment 9", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 31] == TbInstruction {   TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 32] == TbInstruction {   TbOperator::Key, "dict1", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 33] == TbInstruction {   TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 34] == TbInstruction {     TbOperator::Key, "dict2", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 35] == TbInstruction {     TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 36] == TbInstruction {       TbOperator::Key, "arr3", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 37] == TbInstruction {       TbOperator::ArrayStart, "", TbValueType::None, 0, false });
+        REQUIRE(instructions[  0] == TbInstruction { TbOperator::Comment, " comment 1", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[  1] == TbInstruction { TbOperator::Comment, " comment 2", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[  2] == TbInstruction { TbOperator::Key, "section_1", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[  3] == TbInstruction { TbOperator::TableStart, "from section", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[  4] == TbInstruction {   TbOperator::Comment, " hello", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[  5] == TbInstruction {   TbOperator::Key, "arr", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[  6] == TbInstruction {   TbOperator::Comment, " comment 3", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[  7] == TbInstruction {   TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[  8] == TbInstruction {     TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[  9] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 10] == TbInstruction {     TbOperator::Comment, " comment 4", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 11] == TbInstruction {     TbOperator::Comment, " comment 5", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 12] == TbInstruction {     TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 13] == TbInstruction {       TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 14] == TbInstruction {         TbOperator::Comment, " comment 6", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 15] == TbInstruction {       TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 16] == TbInstruction {       TbOperator::Comment, " comment 7", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 17] == TbInstruction {     TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 18] == TbInstruction {     TbOperator::Comment, " comment 8", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 19] == TbInstruction {   TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 20] == TbInstruction {   TbOperator::Key, "arr2", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 21] == TbInstruction {   TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 22] == TbInstruction {     TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 23] == TbInstruction {     TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 24] == TbInstruction {     TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 25] == TbInstruction {     TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 26] == TbInstruction {     TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 27] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 28] == TbInstruction {     TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 29] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 30] == TbInstruction {     TbOperator::Comment, " comment 9", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 31] == TbInstruction {   TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 32] == TbInstruction {   TbOperator::Key, "dict1", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 33] == TbInstruction {   TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 34] == TbInstruction {     TbOperator::Key, "dict2", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 35] == TbInstruction {     TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 36] == TbInstruction {       TbOperator::Key, "arr3", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 37] == TbInstruction {       TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
         REQUIRE(instructions[ 38] == TbInstruction {         TbOperator::Value, "1", TbValueType::Int, 1, false });
         REQUIRE(instructions[ 39] == TbInstruction {         TbOperator::Value, "2", TbValueType::Int, 2, false });
-        REQUIRE(instructions[ 40] == TbInstruction {       TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 41] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 42] == TbInstruction {     TbOperator::Comment, " comment 10", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 43] == TbInstruction {   TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 44] == TbInstruction {   TbOperator::Key, "apa", TbValueType::None, 0, false });
+        REQUIRE(instructions[ 40] == TbInstruction {       TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 41] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 42] == TbInstruction {     TbOperator::Comment, " comment 10", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 43] == TbInstruction {   TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 44] == TbInstruction {   TbOperator::Key, "apa", TbValueType::None, 0, 0, false });
         REQUIRE(instructions[ 45] == TbInstruction {   TbOperator::Value, "6", TbValueType::Int, 6, false });
-        REQUIRE(instructions[ 46] == TbInstruction {   TbOperator::Comment, " // comment 11", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 47] == TbInstruction {   TbOperator::Key, "bepa", TbValueType::None, 0, false });
+        REQUIRE(instructions[ 46] == TbInstruction {   TbOperator::Comment, " // comment 11", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 47] == TbInstruction {   TbOperator::Key, "bepa", TbValueType::None, 0, 0, false });
         REQUIRE(instructions[ 48] == TbInstruction {   TbOperator::Value, "2", TbValueType::Int, 2, false });
-        REQUIRE(instructions[ 49] == TbInstruction {   TbOperator::Comment, " // comment 12", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 50] == TbInstruction { TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 51] == TbInstruction { TbOperator::Key, "section_2", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 52] == TbInstruction { TbOperator::TableStart, "from section", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 53] == TbInstruction {   TbOperator::Comment, " comment 13", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 54] == TbInstruction {   TbOperator::Key, "apa", TbValueType::None, 0, false });
+        REQUIRE(instructions[ 49] == TbInstruction {   TbOperator::Comment, " // comment 12", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 50] == TbInstruction { TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 51] == TbInstruction { TbOperator::Key, "section_2", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 52] == TbInstruction { TbOperator::TableStart, "from section", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 53] == TbInstruction {   TbOperator::Comment, " comment 13", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 54] == TbInstruction {   TbOperator::Key, "apa", TbValueType::None, 0, 0, false });
         REQUIRE(instructions[ 55] == TbInstruction {   TbOperator::Value, "1", TbValueType::Int, 1, false });
-        REQUIRE(instructions[ 56] == TbInstruction {   TbOperator::Comment, " comment 14", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 57] == TbInstruction { TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 58] == TbInstruction { TbOperator::Key, "section_3", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 59] == TbInstruction { TbOperator::TableStart, "from section", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 60] == TbInstruction {   TbOperator::Comment, " comment 15", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 61] == TbInstruction {   TbOperator::Key, "depa", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 62] == TbInstruction {   TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 63] == TbInstruction {     TbOperator::Key, "a", TbValueType::None, 0, false });
+        REQUIRE(instructions[ 56] == TbInstruction {   TbOperator::Comment, " comment 14", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 57] == TbInstruction { TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 58] == TbInstruction { TbOperator::Key, "section_3", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 59] == TbInstruction { TbOperator::TableStart, "from section", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 60] == TbInstruction {   TbOperator::Comment, " comment 15", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 61] == TbInstruction {   TbOperator::Key, "depa", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 62] == TbInstruction {   TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 63] == TbInstruction {     TbOperator::Key, "a", TbValueType::None, 0, 0, false });
         REQUIRE(instructions[ 64] == TbInstruction {     TbOperator::Value, "1", TbValueType::Int, 1, false });
-        REQUIRE(instructions[ 65] == TbInstruction {     TbOperator::Key, "b", TbValueType::None, 0, false });
+        REQUIRE(instructions[ 65] == TbInstruction {     TbOperator::Key, "b", TbValueType::None, 0, 0, false });
         REQUIRE(instructions[ 66] == TbInstruction {     TbOperator::Value, "2", TbValueType::Int, 2, false });
-        REQUIRE(instructions[ 67] == TbInstruction {   TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 68] == TbInstruction {   TbOperator::Key, "bepa", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 69] == TbInstruction {   TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 70] == TbInstruction {     TbOperator::Key, "c", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 71] == TbInstruction {     TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 72] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 73] == TbInstruction {     TbOperator::Key, "d", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 74] == TbInstruction {     TbOperator::ArrayStart, "", TbValueType::None, 0, false });
+        REQUIRE(instructions[ 67] == TbInstruction {   TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 68] == TbInstruction {   TbOperator::Key, "bepa", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 69] == TbInstruction {   TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 70] == TbInstruction {     TbOperator::Key, "c", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 71] == TbInstruction {     TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 72] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 73] == TbInstruction {     TbOperator::Key, "d", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 74] == TbInstruction {     TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
         REQUIRE(instructions[ 75] == TbInstruction {       TbOperator::Value, "1", TbValueType::Int, 1, false });
-        REQUIRE(instructions[ 76] == TbInstruction {       TbOperator::Comment, " comment 16", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 77] == TbInstruction {       TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 78] == TbInstruction {       TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 79] == TbInstruction {       TbOperator::ArrayStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 80] == TbInstruction {       TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 81] == TbInstruction {       TbOperator::ArrayStart, "", TbValueType::None, 0, false });
+        REQUIRE(instructions[ 76] == TbInstruction {       TbOperator::Comment, " comment 16", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 77] == TbInstruction {       TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 78] == TbInstruction {       TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 79] == TbInstruction {       TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 80] == TbInstruction {       TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 81] == TbInstruction {       TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
         REQUIRE(instructions[ 82] == TbInstruction {         TbOperator::Value, "2", TbValueType::Int, 2, false });
         REQUIRE(instructions[ 83] == TbInstruction {         TbOperator::Value, "3", TbValueType::Int, 3, false });
-        REQUIRE(instructions[ 84] == TbInstruction {       TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 85] == TbInstruction {       TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 86] == TbInstruction {         TbOperator::Key, "nested", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 87] == TbInstruction {         TbOperator::ArrayStart, "", TbValueType::None, 0, false });
+        REQUIRE(instructions[ 84] == TbInstruction {       TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 85] == TbInstruction {       TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 86] == TbInstruction {         TbOperator::Key, "nested", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 87] == TbInstruction {         TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
         REQUIRE(instructions[ 88] == TbInstruction {           TbOperator::Value, "4", TbValueType::Int, 4, false });
         REQUIRE(instructions[ 89] == TbInstruction {           TbOperator::Value, "5", TbValueType::Int, 5, false });
-        REQUIRE(instructions[ 90] == TbInstruction {         TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 91] == TbInstruction {       TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 92] == TbInstruction {     TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 93] == TbInstruction {     TbOperator::Key, "e", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 94] == TbInstruction {     TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 95] == TbInstruction {       TbOperator::Key, "y", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 96] == TbInstruction {       TbOperator::ArrayStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[ 97] == TbInstruction {         TbOperator::Value, "true", TbValueType::Bool, 0, true });
-        REQUIRE(instructions[ 98] == TbInstruction {         TbOperator::Value, "false", TbValueType::Bool, 0, false });
-        REQUIRE(instructions[ 99] == TbInstruction {         TbOperator::Value, "on", TbValueType::Bool, 0, true });
-        REQUIRE(instructions[100] == TbInstruction {         TbOperator::Value, "off", TbValueType::Bool, 0, false });
-        REQUIRE(instructions[101] == TbInstruction {         TbOperator::Value, "", TbValueType::String, 0, false });
-        REQUIRE(instructions[102] == TbInstruction {       TbOperator::ArrayEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[103] == TbInstruction {       TbOperator::Key, "f", TbValueType::None, 0, false });
-        REQUIRE(instructions[104] == TbInstruction {       TbOperator::TableStart, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[105] == TbInstruction {         TbOperator::Comment, " comment 17", TbValueType::None, 0, false });
-        REQUIRE(instructions[106] == TbInstruction {       TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[107] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[108] == TbInstruction {   TbOperator::TableEnd, "", TbValueType::None, 0, false });
-        REQUIRE(instructions[109] == TbInstruction { TbOperator::TableEnd, "", TbValueType::None, 0, false });
+        REQUIRE(instructions[ 90] == TbInstruction {         TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 91] == TbInstruction {       TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 92] == TbInstruction {     TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 93] == TbInstruction {     TbOperator::Key, "e", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 94] == TbInstruction {     TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 95] == TbInstruction {       TbOperator::Key, "y", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 96] == TbInstruction {       TbOperator::ArrayStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[ 97] == TbInstruction {         TbOperator::Value, "true", TbValueType::Bool, 0, 0, true });
+        REQUIRE(instructions[ 98] == TbInstruction {         TbOperator::Value, "false", TbValueType::Bool, 0, 0, false });
+        REQUIRE(instructions[ 99] == TbInstruction {         TbOperator::Value, "on", TbValueType::Bool, 0, 0, true });
+        REQUIRE(instructions[100] == TbInstruction {         TbOperator::Value, "off", TbValueType::Bool, 0, 0, false });
+        REQUIRE(instructions[101] == TbInstruction {         TbOperator::Value, "", TbValueType::String, 0, 0, false });
+        REQUIRE(instructions[102] == TbInstruction {       TbOperator::ArrayEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[103] == TbInstruction {       TbOperator::Key, "f", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[104] == TbInstruction {       TbOperator::TableStart, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[105] == TbInstruction {         TbOperator::Comment, " comment 17", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[106] == TbInstruction {       TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[107] == TbInstruction {     TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[108] == TbInstruction {   TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
+        REQUIRE(instructions[109] == TbInstruction { TbOperator::TableEnd, "", TbValueType::None, 0, 0, false });
         // clang-format on
     }
 }
@@ -572,11 +575,11 @@ TEST_CASE("value-lookup") {
         }
 
         {
-            auto v = Value{2};
+            auto v = Value{2.0f};
             root.set_value_at("cepa.depa", v);
 
             auto result = root.lookup_value_by_path("cepa.depa");
-            REQUIRE(result->get().as_int() == 2);
+            REQUIRE((int)result->get().as_float() == 2);
         }
     }
 }

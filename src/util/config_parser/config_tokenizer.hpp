@@ -33,16 +33,15 @@ const TokenId TokenId_Hashtag      = 1 << 9;
 const TokenId TokenId_Comma        = 1 << 10;
 const TokenId TokenId_Backslash    = 1 << 11;
 const TokenId TokenId_Doubleslash  = 1 << 12;
-// TODO: '.', '/'
-// No '.', '+', '-'. We want them for floats I guess.
 const TokenId TokenId_Boolean      = 1 << 13;
 const TokenId TokenId_Integer      = 1 << 14;
-const TokenId TokenId_String       = 1 << 15;
-const TokenId TokenId_Identifier   = 1 << 16;
-const TokenId TokenId_Comment      = 1 << 17;
-const TokenId TokenId_Terminator   = 1 << 18;
+const TokenId TokenId_Float        = 1 << 15;
+const TokenId TokenId_String       = 1 << 16;
+const TokenId TokenId_Identifier   = 1 << 17;
+const TokenId TokenId_Comment      = 1 << 18;
+const TokenId TokenId_Terminator   = 1 << 19;
 
-const TokenId TokenId_FirstOnLine  = 1 << 19; // Only whitespace before this token
+const TokenId TokenId_FirstOnLine  = 1 << 20; // Only whitespace before this token
 
 const TokenId TokenId_MetaValue = TokenId_Boolean | TokenId_Integer | TokenId_String;
 const TokenId TokenId_MetaObject = TokenId_OpenCurly | TokenId_OpenBracket | TokenId_MetaValue;
@@ -62,6 +61,7 @@ struct Token {
 
     bool token_boolean_arg = false;
     int token_int_arg = 0;
+    float token_float_arg = 0;
 
     const std::string
     str_from(const std::string line) const {

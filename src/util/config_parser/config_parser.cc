@@ -404,6 +404,9 @@ diffy::cfg_parse(const std::string& input_data,
                                    } else if (token.id & TokenId_Integer) {
                                        ins.oparg2_type = TbValueType::Int;
                                        ins.oparg2_int = token.token_int_arg;
+                                    } else if (token.id & TokenId_Float) {
+                                       ins.oparg2_type = TbValueType::Float;
+                                       ins.oparg2_float = token.token_float_arg;
                                    } else if (token.id & TokenId_String) {
                                        ins.oparg2_type = TbValueType::String;
                                    } else {
@@ -783,6 +786,8 @@ diffy::repr(Value& v) {
         return "Array";
     } else if (v.is_int()) {
         return fmt::format("Integer<{}>", v.as_int());
+    } else if (v.is_float()) {
+        return fmt::format("Float<{}>", v.as_int());
     } else if (v.is_bool()) {
         return fmt::format("Boolean<{}>", v.as_bool());
     } else if (v.is_string()) {
