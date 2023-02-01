@@ -42,12 +42,12 @@ struct TokenDescriptor {
         //   "String | EmptyString" or "String | Integer"...
         { "Boolean",      TokenId_Boolean,       std::nullopt , std::nullopt        , std::nullopt    },
         { "Integer",      TokenId_Integer,       std::nullopt , std::nullopt        , std::nullopt    },
-        { "Float",        TokenId_Float,       std::nullopt , std::nullopt        , std::nullopt    },
+        { "Float",        TokenId_Float,         std::nullopt , std::nullopt        , std::nullopt    },
         { "String",       TokenId_String,        std::nullopt , std::nullopt        , std::nullopt    },
         { "Identifier",   TokenId_Identifier,    std::nullopt , std::nullopt        , std::nullopt    },
         { "Comment",      TokenId_Comment,       std::nullopt , std::nullopt        , std::nullopt    },
         { "Terminator",   TokenId_Terminator,    std::nullopt , std::nullopt        , std::nullopt    },
-        { "FirstOnLine",  TokenId_FirstOnLine,    std::nullopt , std::nullopt        , std::nullopt    },
+        { "FirstOnLine",  TokenId_FirstOnLine,   std::nullopt , std::nullopt        , std::nullopt    },
     }};
 // clang-format on
 

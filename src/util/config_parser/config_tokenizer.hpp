@@ -7,8 +7,6 @@
     I guess it's a bit of a lexer? It should make parsing easier anyway.
 
     TODO: Handle escape sequences, https://en.wikipedia.org/wiki/INI_file#Escape_characters
-          Also \0<octa/> \x<unicode> etc
-          Support unicode. Just use it when advancing and measuring strings I guess.
 */
 
 #include <cstdint>
