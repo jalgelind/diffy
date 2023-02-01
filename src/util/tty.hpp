@@ -2,8 +2,6 @@
 
 namespace diffy {
 
-// TODO: Rename this to something suitable for both this, and for
-//       Theme::compatible_with.
 enum class TerminalColorCapability {
     None = 0,
     Ansi4bit,   // 16 color codes

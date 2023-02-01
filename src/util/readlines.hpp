@@ -21,7 +21,7 @@ struct Line {
 
     bool
     operator<(const Line& other) const {
-        return checksum < other.checksum;  // TODO: wut. I guess it's for std::map
+        return checksum < other.checksum;
     }
 
     bool

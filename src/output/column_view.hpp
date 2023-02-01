@@ -24,8 +24,8 @@ struct ColumnViewState {
 
 void
 column_view_diff(const DiffInput<diffy::Line>& diff_input,
-                  const std::vector<AnnotatedHunk>& hunks,
-                  ColumnViewState& config,  // TODO: make const
-                  int64_t width);
+                 const std::vector<AnnotatedHunk>& hunks,
+                 ColumnViewState& config,
+                 int64_t width);
 
 }  // namespace diffy

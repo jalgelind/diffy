@@ -54,11 +54,10 @@ struct Patience : public Algorithm<Unit> {
         struct record {
             std::uint16_t a_count = 0;
             std::uint16_t b_count = 0;
-            int64_t a_index = 0;  // TODO: uint16_t if possible
+            int64_t a_index = 0;
             int64_t b_index = 0;
         };
 
-        // TODO: hash_t
         std::unordered_map<uint32_t, record> records;
 
         for (auto i = s.a_low; i < s.a_high; i++) {
@@ -121,7 +120,6 @@ struct Patience : public Algorithm<Unit> {
         auto unique_lines = index_unique_lines(in_slice);
         auto* match = patience_sort(unique_lines);
         if (!match) {
-            // TODO: Dear future self. Don't do APIs like this.
             std::vector<Edit> edits;
             auto a_count = in_slice.a_high - in_slice.a_low;
             auto b_count = in_slice.b_high - in_slice.b_low;

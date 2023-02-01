@@ -31,7 +31,6 @@ namespace diffy {
 uint32_t inline utf8_decode(uint32_t* state, uint32_t* codep, uint32_t byte);
 
 // Count code points inside given range.
-// TODO: Report error if end is inside a codepoint?
 int64_t
 utf8_len(const std::string& s, std::string::size_type start, std::string::size_type end);
 

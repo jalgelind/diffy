@@ -24,7 +24,7 @@ find_hunk_ranges(const std::vector<Edit>& edit_sequence) {
         } else if (in_hunk) {
             curr.end = static_cast<int>(i);
             if (etype == EditType::Common) {
-                curr.end -= 1;  // TODO: what?
+                curr.end -= 1;
                 hunk_ranges.push_back({-1, -1});
             }
         }
@@ -45,7 +45,6 @@ std::vector<HunkRange>
 extend_hunk_ranges(const std::vector<Edit>& edit_sequence,
                    const std::vector<HunkRange>& hunk_ranges,
                    const int64_t context_size) {
-    // TODO: Don't do in-place removal.
     std::vector<HunkRange> context_ranges = hunk_ranges;
     for (size_t i = 0; i < context_ranges.size(); i++) {
         const size_t context_ranges_index_max = context_ranges.size() - 1;

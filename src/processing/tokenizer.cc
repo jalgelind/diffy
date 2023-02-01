@@ -55,7 +55,6 @@ diffy::tokenize(const std::string& text) {
     auto maxlen = text.size() - 1;
     std::size_t seeker = 0;
 
-    // TODO: Recognize leading or trailing whitespace.
     do {
         auto start_idx = seeker;
         char c = text[start_idx];
@@ -90,7 +89,7 @@ diffy::tokenize(const std::string& text) {
             };
         }
 
-        // HACK: Combine CR+LF into single token.
+        // Combine CR+LF into single token.
         bool combine_crlf =
             (token_flags & TokenFlagLF) && !result.empty() && result.back().flags & TokenFlagCR;
         if (combine_crlf) {

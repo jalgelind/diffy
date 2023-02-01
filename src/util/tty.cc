@@ -10,9 +10,7 @@
 
 using namespace diffy;
 
-// TODO: Something smarter; see e.g:
-// https://gist.github.com/jtriley/1108174
-// TODO: Error handling
+// TODO: Something smarter; see e.g: https://gist.github.com/jtriley/1108174
 void
 diffy::get_term_size(int* rows, int* cols) {
 #ifdef DIFFY_PLATFORM_POSIX

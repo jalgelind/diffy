@@ -28,7 +28,6 @@ TermColor TermColor::kReset   = TermColor {TermColor::Kind::Reset, 0, 0, 0};
 TermColor TermColor::kDefault = TermColor {TermColor::Kind::DefaultColor, 39, 49, 0};
 
 // Color identifiers for 4 bit terminals.
-// TODO: sync the names to this? https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
 TermColor TermColor::kBlack        = TermColor { TermColor::Kind::Color4bit, 30,  40, 0 };
 TermColor TermColor::kRed          = TermColor { TermColor::Kind::Color4bit, 31,  41, 0 };
 TermColor TermColor::kGreen        = TermColor { TermColor::Kind::Color4bit, 32,  42, 0 };

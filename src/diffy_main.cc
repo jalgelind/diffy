@@ -333,8 +333,6 @@ Side by side options:
     auto hunks = diffy::compose_hunks(result.edit_sequence, opts.context_lines);
 
     if (opts.debug) {
-        // TODO: Dump hunks?
-        (void) hunks;
         fmt::print("input (N/M: {}/{})\n", diff_input.A.size(), diff_input.B.size());
         fmt::print("edit_sequence (size: {})\n", result.edit_sequence.size());
         diffy::dump_diff_edits(diff_input, result);

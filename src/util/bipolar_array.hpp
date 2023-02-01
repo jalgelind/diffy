@@ -12,7 +12,7 @@ struct BipolarArray {
     int64_t min_;
     int64_t max_;
     std::size_t capacity_;
-    std::unique_ptr<Type[]> arr_;  // TODO(opt): Align to 16 byte boundary for faster copies?
+    std::unique_ptr<Type[]> arr_;
 
     BipolarArray(int64_t min, int64_t max)
         : min_(min), max_(max), capacity_(static_cast<std::size_t>(max - min + 1) /* +1 for zero */) {
