@@ -171,7 +171,7 @@ std::string TermStyle::to_ansi() {
     const std::string kESC = "\033";
     const std::string kESC1 = "\\";
 
-    std::vector<std::vector<int>> escseqs;
+    std::vector<int> escseq;
 
     auto apply_color = [&](TermColor& color, bool is_fg) {
         switch (color.kind) {
@@ -180,11 +180,11 @@ std::string TermStyle::to_ansi() {
             // ESC[48;2;{r};{g};{b}m	Set background color as RGB.
             case TermColor::Kind::Color24bit: {
                 if (is_fg) {
-                    escseqs.back().insert(escseqs.back().end(), {38, 2});
+                    escseq.insert(escseq.end(), {38, 2});
                 } else {
-                    escseqs.back().insert(escseqs.back().end(), {48, 2});
+                    escseq.insert(escseq.end(), {48, 2});
                 }
-                escseqs.back().insert(escseqs.back().end(), {color.r, color.g, color.b});
+                escseq.insert(escseq.end(), {color.r, color.g, color.b});
             } break;
 
             // 256 color palette (unsupported)
@@ -198,9 +198,9 @@ std::string TermStyle::to_ansi() {
             case TermColor::Kind::Reset:
             case TermColor::Kind::Color4bit: {
                 if (is_fg) {
-                    escseqs.back().insert(escseqs.back().end(), { color.r /* fg id */ });
+                    escseq.insert(escseq.end(), { color.r /* fg id */ });
                 } else {
-                    escseqs.back().insert(escseqs.back().end(), { color.g /* bg id */ });
+                    escseq.insert(escseq.end(), { color.g /* bg id */ });
                 }
             } break;
             case TermColor::Kind::Ignore: {
@@ -209,28 +209,23 @@ std::string TermStyle::to_ansi() {
         }
     };
 
-    escseqs.push_back({});
     apply_color(fg, true);
-    escseqs.push_back({});
     for (const auto& [attr_flag, attr_name, attr_code] : kAttributes) {
         if ((uint16_t) attr & (uint16_t) attr_flag) {
-           escseqs.back().insert(escseqs.back().end(), { attr_code });
+           escseq.insert(escseq.end(), { attr_code });
         }
     }
-    escseqs.push_back({});
     apply_color(bg, false);
 
-    for (const auto& seq : escseqs) {
-        if (seq.empty()) continue;
-        result += kESC + "[";
-        for (const int code : seq) {
-            result += fmt::format("{};", code);
-        }
-        if (result.back() == ';') {
-            result.pop_back();
-        }
-        result += "m";
+    if (escseq.empty()) return result;
+    result += kESC + "[";
+    for (const int code : escseq) {
+        result += fmt::format("{};", code);
     }
+    if (result.back() == ';') {
+        result.pop_back();
+    }
+    result += "m";
     return result;
 }
 
