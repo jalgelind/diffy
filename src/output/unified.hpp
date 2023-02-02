@@ -7,6 +7,6 @@
 namespace diffy {
 
 std::vector<std::string>
-get_unified_diff(const DiffInput<Line>& diff_input, const std::vector<Hunk>& hunks);
+unified_diff_render(const DiffInput<Line>& diff_input, const std::vector<Hunk>& hunks);
 
 }  // namespace diffy

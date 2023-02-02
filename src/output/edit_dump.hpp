@@ -6,6 +6,6 @@
 namespace diffy {
 
 void
-dump_diff_edits(const DiffInput<Line>& diff_input, const DiffResult& result);
+edit_dump_diff_render(const DiffInput<Line>& diff_input, const DiffResult& result);
 
 }  // namespace diffy

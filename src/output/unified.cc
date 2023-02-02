@@ -48,7 +48,7 @@ get_file_timestamp(const std::string& path, char timestamp[256]) {
 }  // namespace
 
 std::vector<std::string>
-diffy::get_unified_diff(const DiffInput<Line>& diff_input, const std::vector<Hunk>& hunks) {
+diffy::unified_diff_render(const DiffInput<Line>& diff_input, const std::vector<Hunk>& hunks) {
     std::vector<std::string> udiff;
 
     char timestamp[2][256];

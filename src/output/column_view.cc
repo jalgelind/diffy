@@ -473,10 +473,10 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
 }  // namespace
 
 void
-diffy::column_view_diff(const DiffInput<diffy::Line>& diff_input,
-                         const std::vector<AnnotatedHunk>& hunks,
-                         ColumnViewState& config,
-                         int64_t width) {
+diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
+                               const std::vector<AnnotatedHunk>& hunks,
+                               ColumnViewState& config,
+                               int64_t width) {
     if (hunks.size() == 0) {
         // TODO: Should return some sort of failure?
         return;

@@ -2,8 +2,8 @@
 #include "algorithms/myers_linear.hpp"
 #include "algorithms/patience.hpp"
 #include "config/config.hpp"
-#include "output/edit_dump.hpp"
 #include "output/column_view.hpp"
+#include "output/edit_dump.hpp"
 #include "output/unified.hpp"
 #include "processing/diff_hunk.hpp"
 #include "processing/diff_hunk_annotate.hpp"
@@ -166,18 +166,18 @@ Side by side options:
                     return true;
                 case '1': {
                     auto cap = diffy::tty_get_capabilities();
-                        if (cap & diffy::TermColorSupport_Ansi4bit) {
-                            puts("Found support for 16 color palette");
-                        }
-                        if (cap & diffy::TermColorSupport_Ansi8bit) {
-                            puts("Found support for 256 color palette");
-                        }
-                        if (cap & diffy::TermColorSupport_Ansi24bit) {
-                            puts("Found support for true color");
-                        }
-                        if (cap & diffy::TermColorSupport_None) {
-                            puts("Found nothing. You have a terrible terminal, or the detection code is bad.");
-                        }
+                    if (cap & diffy::TermColorSupport_Ansi4bit) {
+                        puts("Found support for 16 color palette");
+                    }
+                    if (cap & diffy::TermColorSupport_Ansi8bit) {
+                        puts("Found support for 256 color palette");
+                    }
+                    if (cap & diffy::TermColorSupport_Ansi24bit) {
+                        puts("Found support for true color");
+                    }
+                    if (cap & diffy::TermColorSupport_None) {
+                        puts("Found nothing. You have a terrible terminal, or the detection code is bad.");
+                    }
                     puts("");
                     diffy::color_dump();
                     exit(0);
@@ -290,7 +290,8 @@ Side by side options:
     diffy::config_apply_options(opts);
 
     diffy::ColumnViewState sbs_ui_opts;
-    diffy::config_apply_theme(opts.theme, sbs_ui_opts.chars, sbs_ui_opts.settings, sbs_ui_opts.style_config, sbs_ui_opts.style);
+    diffy::config_apply_theme(opts.theme, sbs_ui_opts.chars, sbs_ui_opts.settings, sbs_ui_opts.style_config,
+                              sbs_ui_opts.style);
 
     if (!parse_args(argc, argv)) {
         return -1;
@@ -331,15 +332,15 @@ Side by side options:
     if (opts.debug) {
         fmt::print("input (N/M: {}/{})\n", diff_input.A.size(), diff_input.B.size());
         fmt::print("edit_sequence (size: {})\n", result.edit_sequence.size());
-        diffy::dump_diff_edits(diff_input, result);
+        diffy::edit_dump_diff_render(diff_input, result);
     } else if (opts.column_view) {
         const auto& annotated_hunks = annotate_hunks(
             diff_input, hunks,
             opts.line_granularity ? diffy::EditGranularity::Line : diffy::EditGranularity::Token,
             opts.ignore_whitespace);
-        diffy::column_view_diff(diff_input, annotated_hunks, sbs_ui_opts, opts.width);
+        diffy::column_view_diff_render(diff_input, annotated_hunks, sbs_ui_opts, opts.width);
     } else if (opts.unified) {
-        auto unified_lines = diffy::get_unified_diff(diff_input, hunks);
+        auto unified_lines = diffy::unified_diff_render(diff_input, hunks);
         for (const auto& line : unified_lines) {
             if (line[line.size() - 1] == '\n')
                 printf("%s", line.c_str());

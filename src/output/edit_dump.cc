@@ -5,7 +5,7 @@
 using namespace diffy;
 
 void
-diffy::dump_diff_edits(const DiffInput<diffy::Line>& diff_input, const DiffResult& result) {
+diffy::edit_dump_diff_render(const DiffInput<diffy::Line>& diff_input, const DiffResult& result) {
     for (auto e : result.edit_sequence) {
         std::string text;
         if (e.type == EditType::Insert)
