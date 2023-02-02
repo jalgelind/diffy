@@ -128,12 +128,8 @@ struct Patience : public Algorithm<Unit> {
 
             DiffInput<Unit> algo_input{A.subspan(in_slice.a_low, a_count), B.subspan(in_slice.b_low, b_count),
                                        "A", "B"};
-            MyersLinear<Unit> diffctx{algo_input};
-            auto result = diffctx.compute();
+            auto result = MyersLinear<Unit>{algo_input}.compute();
 
-            // TODO: This should be properly done by the diff algo.
-            // TODO: Line contains line number. use that instead of tracking this shit?
-            //       Other Units must implement index number too.
             for (auto& e : result.edit_sequence) {
                 e.a_index.value += static_cast<uint64_t>(in_slice.a_low);
                 e.b_index.value += static_cast<uint64_t>(in_slice.b_low);

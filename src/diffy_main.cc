@@ -49,16 +49,13 @@ compute_diff(diffy::Algo algorithm,
              diffy::DiffResult* result) {
     switch (algorithm) {
         case diffy::Algo::kMyersGreedy: {
-            diffy::MyersGreedy<diffy::Line> mgdiff(diff_input);
-            *result = mgdiff.compute();
+            *result = diffy::MyersGreedy<diffy::Line>(diff_input).compute();
         } break;
         case diffy::Algo::kMyersLinear: {
-            diffy::MyersLinear<diffy::Line> mldiff(diff_input);
-            *result = mldiff.compute();
+            *result = diffy::MyersLinear<diffy::Line>(diff_input).compute();
         } break;
         case diffy::Algo::kPatience: {
-            diffy::Patience<diffy::Line> pdiff(diff_input);
-            *result = pdiff.compute();
+            *result = diffy::Patience<diffy::Line>(diff_input).compute();
         } break;
         case diffy::Algo::kInvalid:
             /* fall-through */

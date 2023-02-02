@@ -114,14 +114,9 @@ class Algorithm {
             result.status = DiffResultStatus::OK;
             return result;
         } else if (N == 0 && M == 0) {
-            // assert(0 && "TODO: Handle invalid input (M == N == 0)");
-            // TODO: this just means that both were empty...?
-            result.status = DiffResultStatus::Failed;
+            result.status = DiffResultStatus::OK; // Empty file; no diff.
             return result;
         }
-
-        // TODO: Look for common lines at start/end of both inputs
-        // to reduce some redundant work.
 
         return diff();
     }

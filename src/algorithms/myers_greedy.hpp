@@ -43,8 +43,6 @@ struct MyersGreedy : public Algorithm<Unit> {
 
         const int64_t max = N + M;
 
-        // TODO: check limits of IndexSizeType, limits of int64_t as used internally.
-
         trace.reserve(static_cast<std::size_t>(max));
         BipolarArray<IndexSizeType> v{-max, max};
 
@@ -167,7 +165,7 @@ struct MyersGreedy : public Algorithm<Unit> {
         } else if (N < u32_max && M < u32_max) {
             return diff_impl<uint32_t>();
         }
-        return diff_impl<int64_t>();  // TODO: Why not unsigned?
+        return diff_impl<uint64_t>();
     }
 };
 

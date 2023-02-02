@@ -136,7 +136,6 @@ annotate_tokens(const DiffInput<diffy::Line>& diff_input,
         std::vector<Edit>::size_type edit_iter = 0;
         std::size_t a_hunk_line_index = 0;
         std::size_t b_hunk_line_index = 0;
-        // TODO: We could deduplicate some code here
         for (; edit_iter < hunk.edit_units.size(); edit_iter++) {
             const auto& edit = hunk.edit_units[edit_iter];
             if (edit.a_index.valid) {
@@ -178,7 +177,6 @@ annotate_tokens(const DiffInput<diffy::Line>& diff_input,
         }
 
         DiffInput<TokenEdit> hunk_input{a, b, "left side", "right side"};
-        // TODO: Re-use the same diff_context?
         Patience<TokenEdit> diff_context(hunk_input);
         auto result = diff_context.compute();
         if (result.status != diffy::DiffResultStatus::OK) {

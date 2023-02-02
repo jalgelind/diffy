@@ -3,7 +3,8 @@ TODO
 
 Most probably happening at some point
 -------------------------------------
-* Improve color rendering to support 16 bit palettes and 24 bit color codes
+* Improve diff performance where A and B have a lot of common lines at the beginning and the end of the file
+* Improve color rendering to support 256 color palette
 * Investigate failing test cases (looks ok when checking manually; error in test runner?)
 
 Most likely not happening
