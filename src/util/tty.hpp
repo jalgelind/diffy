@@ -1,18 +1,18 @@
 #pragma once
 
+#include <cstdint>
+
 namespace diffy {
 
-enum class TerminalColorCapability {
-    None = 0,
-    Ansi4bit,   // 16 color codes
-    Ansi8bit,   // 256 color palette (216 24bit colors + 16 ansi + 24 gray)
-    Ansi24bit,  // 24 bit true color
-};
+const uint16_t TermColorSupport_None      = 0;
+const uint16_t TermColorSupport_Ansi4bit  = 1;  // 16 color palette
+const uint16_t TermColorSupport_Ansi8bit  = 2;  // 256 color palette (216 24bit colors + 16 ansi + 24 gray)
+const uint16_t TermColorSupport_Ansi24bit = 4;  // 24 bit true color
 
 void
-get_term_size(int* rows, int* cols);
+tty_get_term_size(int* rows, int* cols);
 
-TerminalColorCapability
-get_terminal_color_capability();
+uint16_t
+tty_get_capabilities();
 
 }  // namespace diffy

@@ -12,7 +12,7 @@ using namespace diffy;
 
 // TODO: Something smarter; see e.g: https://gist.github.com/jtriley/1108174
 void
-diffy::get_term_size(int* rows, int* cols) {
+diffy::tty_get_term_size(int* rows, int* cols) {
 #ifdef DIFFY_PLATFORM_POSIX
     // TODO: Clear errno where appropriate.
     struct winsize w;
@@ -46,8 +46,10 @@ diffy::get_term_size(int* rows, int* cols) {
 #endif
 }
 
-TerminalColorCapability
-diffy::get_terminal_color_capability() {
+uint16_t
+diffy::tty_get_capabilities() {
+    uint16_t compat = 0;
+
 #ifdef DIFFY_PLATFORM_WINDOWS
     // TODO: ?
 #else
@@ -60,7 +62,7 @@ diffy::get_terminal_color_capability() {
     //       redirecting to files.
     if (isatty(STDOUT_FILENO) == 0) {
         // TODO: clear errno
-        return TerminalColorCapability::None;
+        return TermColorSupport_None;
     }
 
     // The COLORTERM variable is usually available to indicate 24bit color support.
@@ -68,7 +70,7 @@ diffy::get_terminal_color_capability() {
     if (colorterm_var != nullptr) {
         const std::string& colorterm(colorterm_var);
         if (colorterm == "24bit" || colorterm == "truecolor") {
-            return TerminalColorCapability::Ansi24bit;
+            compat |= (uint16_t) TermColorSupport_Ansi24bit;
         }
     }
 
@@ -83,14 +85,14 @@ diffy::get_terminal_color_capability() {
             int colors = std::atoi(buffer);
             switch (colors) {
                 case 16:
-                    return TerminalColorCapability::Ansi4bit;
+                    compat |= TermColorSupport_Ansi4bit;
                 case 256:
-                    return TerminalColorCapability::Ansi8bit;
+                    compat |= (TermColorSupport_Ansi4bit | TermColorSupport_Ansi8bit);
                 default:
                     break;
             }
         }
     }
 #endif
-    return TerminalColorCapability::None;
+    return compat;
 }

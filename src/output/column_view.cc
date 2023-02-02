@@ -485,7 +485,7 @@ diffy::column_view_diff(const DiffInput<diffy::Line>& diff_input,
     int dummy_height = 0;
     if (width == 0) {
         int tmp_width = 0;
-        get_term_size(&dummy_height, &tmp_width);
+        tty_get_term_size(&dummy_height, &tmp_width);
         width = static_cast<int64_t>(tmp_width);
     }
 

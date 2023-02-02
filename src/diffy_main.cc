@@ -165,20 +165,19 @@ Side by side options:
                     opts.help = true;
                     return true;
                 case '1': {
-                    switch (diffy::get_terminal_color_capability()) {
-                        case diffy::TerminalColorCapability::Ansi4bit: {
+                    auto cap = diffy::tty_get_capabilities();
+                        if (cap & diffy::TermColorSupport_Ansi4bit) {
                             puts("Found support for 16 color palette");
-                        } break;
-                        case diffy::TerminalColorCapability::Ansi8bit: {
+                        }
+                        if (cap & diffy::TermColorSupport_Ansi8bit) {
                             puts("Found support for 256 color palette");
-                        } break;
-                        case diffy::TerminalColorCapability::Ansi24bit: {
+                        }
+                        if (cap & diffy::TermColorSupport_Ansi24bit) {
                             puts("Found support for true color");
-                        } break;
-                        case diffy::TerminalColorCapability::None: {
+                        }
+                        if (cap & diffy::TermColorSupport_None) {
                             puts("Found nothing. You have a terrible terminal, or the detection code is bad.");
-                        } break;
-                    }
+                        }
                     puts("");
                     diffy::color_dump();
                     exit(0);
