@@ -1,5 +1,5 @@
 //
-//  Half-assed hashmap wrapper where we can iterate through
+//  Hashmap wrapper where we can iterate through
 //  items in insertion-order.
 //
 
