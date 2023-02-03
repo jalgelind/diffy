@@ -47,4 +47,4 @@ if [[ "$*" == *"similarity index"* ]]; then
   exit 0;
 fi
 
-diffy -i -w -o "${OLD_NAME}" -n "${NEW_NAME}" "$2" "$5"
+diffy -o "${OLD_NAME}" -n "${NEW_NAME}" "$2" "$5"
