@@ -9,8 +9,17 @@ NEW_PATH="$5"
 NEW_SHA1="$6"
 NEW_MODE="$7"
 
-OLD_NAME="${OLD_PATH} (mode: ${OLD_MODE})"
-NEW_NAME="${NEW_PATH} (mode: ${NEW_MODE})"
+if [[ ${OLD_MODE} == "." ]]; then
+  OLD_NAME="unavailable"
+else
+  OLD_NAME="${OLD_PATH} (mode: ${OLD_MODE})"
+fi
+
+if [[ ${NEW_MODE} == "." ]]; then
+  NEW_NAME="unavailable"
+else
+  NEW_NAME="${NEW_PATH} (mode: ${NEW_MODE})"
+fi
 
 if [[ ${NEW_PATH} == "/tmp"* ]]; then
   NEW_NAME="${OLD_PATH} (mode: ${NEW_MODE})"
@@ -35,16 +44,6 @@ fi
 
 # Ignore renames
 if [[ "$*" == *"similarity index"* ]]; then
-  exit 0;
-fi
-
-# Deleted files (TODO: fixme!)
-if [[ "$5" == "/dev/null" ]]; then
-  exit 0;
-fi
-
-# New files (TODO: fixme!)
-if [[ "$2" == "/dev/null" ]]; then
   exit 0;
 fi
 

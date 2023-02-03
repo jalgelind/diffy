@@ -27,13 +27,19 @@
 #include <unordered_map>
 #include <vector>
 
+// TODO: What is it on windows? nul?
+const std::string PATH_NULL = "/dev/null";
+
 namespace {
 bool
-is_file_or_pipe_or_link(const std::string& path) {
+is_file_consumable(const std::string& path) {
 #ifdef DIFFY_PLATFORM_WINDOWS
     // TODO: We should at least check that it's a file.
     return true;
 #else
+    if (path == PATH_NULL) {
+        return true;
+    }
     struct stat st;
     if (stat(path.c_str(), &st) == -1) {
         return false;
@@ -270,8 +276,8 @@ Side by side options:
         }
 
         // TODO: Check if file is readable.
-        bool a_valid = is_file_or_pipe_or_link(opts.left_file);
-        bool b_valid = is_file_or_pipe_or_link(opts.right_file);
+        bool a_valid = is_file_consumable(opts.left_file);
+        bool b_valid = is_file_consumable(opts.right_file);
 
         if (!a_valid || !b_valid) {
             std::string err;
