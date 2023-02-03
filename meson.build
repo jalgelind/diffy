@@ -3,9 +3,6 @@ project('diffy', 'cpp', version : '0.90',
   'cpp_std=c++20',
 ])
 
-
-  #add_global_arguments(['--stdlib=libc++'], language : 'cpp')
-
 defines = []
 
 if get_option('buildtype') == 'debug'
@@ -22,9 +19,6 @@ else
 endif
 
 add_global_arguments(defines, language : 'cpp')
-
-# Do we only need to do this on Windows? We don't seem to get vectorization without
-# enabling it ourselves...
 
 add_global_arguments(['-std=c++20'], language : 'cpp')
 
