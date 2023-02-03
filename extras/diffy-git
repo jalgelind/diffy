@@ -47,4 +47,7 @@ if [[ "$*" == *"similarity index"* ]]; then
   exit 0;
 fi
 
-diffy -o "${OLD_NAME}" -n "${NEW_NAME}" "$2" "$5"
+if [[ -z "${DIFFY_GIT_BIN}" ]]; then
+  DIFFY_GIT_BIN="diffy"
+fi
+${DIFFY_GIT_BIN} -o "${OLD_NAME}" -n "${NEW_NAME}" "$2" "$5"
