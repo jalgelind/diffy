@@ -207,10 +207,10 @@ diffy::config_apply_options(diffy::ProgramOptions& program_options) {
 
 void
 diffy::config_apply_theme(const std::string& theme,
-                          diffy::ColumnViewCharacters& sbs_char_opts,
-                          diffy::ColumnViewSettings& sbs_view_opts,
-                          diffy::ColumnViewTextStyle& sbs_style_opts,
-                          diffy::ColumnViewTextStyleEscapeCodes& sbs_style_escape_codes) {
+                          diffy::ColumnViewCharacters& cv_char_opts,
+                          diffy::ColumnViewSettings& cv_view_opts,
+                          diffy::ColumnViewTextStyle& cv_style_opts,
+                          diffy::ColumnViewTextStyleEscapeCodes& cv_style_escape_codes) {
     const std::string config_file_name = fmt::format("{}.conf", theme);
     const std::string config_root = diffy::config_get_directory();
     const std::string config_path = fmt::format("{}/{}", config_root, config_file_name);
@@ -268,32 +268,32 @@ diffy::config_apply_theme(const std::string& theme,
     // clang-format off
     const OptionVector options = {
         // side-by-side settings
-        { "settings.word_wrap",                    ConfigVariableType::Bool, &sbs_view_opts.word_wrap},
-        { "settings.show_line_numbers",            ConfigVariableType::Bool, &sbs_view_opts.show_line_numbers},
-        { "settings.context_colored_line_numbers", ConfigVariableType::Bool, &sbs_view_opts.context_colored_line_numbers},
-        { "settings.line_number_align_right",      ConfigVariableType::Bool, &sbs_view_opts.line_number_align_right},
+        { "settings.word_wrap",                    ConfigVariableType::Bool, &cv_view_opts.word_wrap},
+        { "settings.show_line_numbers",            ConfigVariableType::Bool, &cv_view_opts.show_line_numbers},
+        { "settings.context_colored_line_numbers", ConfigVariableType::Bool, &cv_view_opts.context_colored_line_numbers},
+        { "settings.line_number_align_right",      ConfigVariableType::Bool, &cv_view_opts.line_number_align_right},
 
         // side-by-side theme
-        { "chars.column_separator",         ConfigVariableType::String, &sbs_char_opts.column_separator },
-        { "chars.edge_separator",           ConfigVariableType::String, &sbs_char_opts.edge_separator },
-        { "chars.tab_replacement",          ConfigVariableType::String, &sbs_char_opts.tab_replacement },
-        { "chars.cr_replacement",           ConfigVariableType::String, &sbs_char_opts.cr_replacement },
-        { "chars.lf_replacement",           ConfigVariableType::String, &sbs_char_opts.lf_replacement },
-        { "chars.crlf_replacement",         ConfigVariableType::String, &sbs_char_opts.crlf_replacement },
-        { "chars.space_replacement",        ConfigVariableType::String, &sbs_char_opts.space_replacement },
+        { "chars.column_separator",         ConfigVariableType::String, &cv_char_opts.column_separator },
+        { "chars.edge_separator",           ConfigVariableType::String, &cv_char_opts.edge_separator },
+        { "chars.tab_replacement",          ConfigVariableType::String, &cv_char_opts.tab_replacement },
+        { "chars.cr_replacement",           ConfigVariableType::String, &cv_char_opts.cr_replacement },
+        { "chars.lf_replacement",           ConfigVariableType::String, &cv_char_opts.lf_replacement },
+        { "chars.crlf_replacement",         ConfigVariableType::String, &cv_char_opts.crlf_replacement },
+        { "chars.space_replacement",        ConfigVariableType::String, &cv_char_opts.space_replacement },
 
         // side-by-side color style
-        { "style.header",                   ConfigVariableType::Color,  &sbs_style_opts.header },
-        { "style.delete_line",              ConfigVariableType::Color,  &sbs_style_opts.delete_line },
-        { "style.delete_token",             ConfigVariableType::Color,  &sbs_style_opts.delete_token },
-        { "style.delete_line_number",       ConfigVariableType::Color,  &sbs_style_opts.delete_line_number },
-        { "style.insert_line",              ConfigVariableType::Color,  &sbs_style_opts.insert_line },
-        { "style.insert_token",             ConfigVariableType::Color,  &sbs_style_opts.insert_token },
-        { "style.insert_line_number",       ConfigVariableType::Color,  &sbs_style_opts.insert_line_number },
-        { "style.common_line",              ConfigVariableType::Color,  &sbs_style_opts.common_line },
-        { "style.empty_line",               ConfigVariableType::Color,  &sbs_style_opts.empty_line },
-        { "style.common_line_number",       ConfigVariableType::Color,  &sbs_style_opts.common_line_number },
-        { "style.frame",                    ConfigVariableType::Color,  &sbs_style_opts.frame },
+        { "style.header",                   ConfigVariableType::Color,  &cv_style_opts.header },
+        { "style.delete_line",              ConfigVariableType::Color,  &cv_style_opts.delete_line },
+        { "style.delete_token",             ConfigVariableType::Color,  &cv_style_opts.delete_token },
+        { "style.delete_line_number",       ConfigVariableType::Color,  &cv_style_opts.delete_line_number },
+        { "style.insert_line",              ConfigVariableType::Color,  &cv_style_opts.insert_line },
+        { "style.insert_token",             ConfigVariableType::Color,  &cv_style_opts.insert_token },
+        { "style.insert_line_number",       ConfigVariableType::Color,  &cv_style_opts.insert_line_number },
+        { "style.common_line",              ConfigVariableType::Color,  &cv_style_opts.common_line },
+        { "style.empty_line",               ConfigVariableType::Color,  &cv_style_opts.empty_line },
+        { "style.common_line_number",       ConfigVariableType::Color,  &cv_style_opts.common_line_number },
+        { "style.frame",                    ConfigVariableType::Color,  &cv_style_opts.frame },
     };
     // clang-format on
 
@@ -301,17 +301,17 @@ diffy::config_apply_theme(const std::string& theme,
 
     // Set up escape code heper struct values
     const std::vector<std::tuple<TermStyle*, std::string*>> colors = {
-        {&sbs_style_opts.header, &sbs_style_escape_codes.header},
-        {&sbs_style_opts.delete_line, &sbs_style_escape_codes.delete_line},
-        {&sbs_style_opts.delete_token, &sbs_style_escape_codes.delete_token},
-        {&sbs_style_opts.delete_line_number, &sbs_style_escape_codes.delete_line_number},
-        {&sbs_style_opts.insert_line, &sbs_style_escape_codes.insert_line},
-        {&sbs_style_opts.insert_token, &sbs_style_escape_codes.insert_token},
-        {&sbs_style_opts.insert_line_number, &sbs_style_escape_codes.insert_line_number},
-        {&sbs_style_opts.common_line, &sbs_style_escape_codes.common_line},
-        {&sbs_style_opts.common_line_number, &sbs_style_escape_codes.common_line_number},
-        {&sbs_style_opts.frame, &sbs_style_escape_codes.frame},
-        {&sbs_style_opts.empty_line, &sbs_style_escape_codes.empty_line},
+        {&cv_style_opts.header, &cv_style_escape_codes.header},
+        {&cv_style_opts.delete_line, &cv_style_escape_codes.delete_line},
+        {&cv_style_opts.delete_token, &cv_style_escape_codes.delete_token},
+        {&cv_style_opts.delete_line_number, &cv_style_escape_codes.delete_line_number},
+        {&cv_style_opts.insert_line, &cv_style_escape_codes.insert_line},
+        {&cv_style_opts.insert_token, &cv_style_escape_codes.insert_token},
+        {&cv_style_opts.insert_line_number, &cv_style_escape_codes.insert_line_number},
+        {&cv_style_opts.common_line, &cv_style_escape_codes.common_line},
+        {&cv_style_opts.common_line_number, &cv_style_escape_codes.common_line_number},
+        {&cv_style_opts.frame, &cv_style_escape_codes.frame},
+        {&cv_style_opts.empty_line, &cv_style_escape_codes.empty_line},
     };
 
     for (const auto& [source_value, dest_string] : colors) {

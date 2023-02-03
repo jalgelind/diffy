@@ -150,9 +150,9 @@ config_apply_options(diffy::ProgramOptions& program_options);
 
 void
 config_apply_theme(const std::string& theme,
-                   diffy::ColumnViewCharacters& sbs_char_opts,
-                   diffy::ColumnViewSettings& sbs_view_opts,
-                   diffy::ColumnViewTextStyle& sbs_style_opts,
-                   diffy::ColumnViewTextStyleEscapeCodes& sbs_style_escape_codes);
+                   diffy::ColumnViewCharacters& cv_char_opts,
+                   diffy::ColumnViewSettings& cv_view_opts,
+                   diffy::ColumnViewTextStyle& cv_style_opts,
+                   diffy::ColumnViewTextStyleEscapeCodes& cv_style_escape_codes);
 
 }  // namespace diffy

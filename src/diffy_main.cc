@@ -289,9 +289,9 @@ Side by side options:
     // Load the global defaults before we override them with command line args
     diffy::config_apply_options(opts);
 
-    diffy::ColumnViewState sbs_ui_opts;
-    diffy::config_apply_theme(opts.theme, sbs_ui_opts.chars, sbs_ui_opts.settings, sbs_ui_opts.style_config,
-                              sbs_ui_opts.style);
+    diffy::ColumnViewState cv_ui_opts;
+    diffy::config_apply_theme(opts.theme, cv_ui_opts.chars, cv_ui_opts.settings, cv_ui_opts.style_config,
+                              cv_ui_opts.style);
 
     if (!parse_args(argc, argv)) {
         return -1;
@@ -338,7 +338,7 @@ Side by side options:
             diff_input, hunks,
             opts.line_granularity ? diffy::EditGranularity::Line : diffy::EditGranularity::Token,
             opts.ignore_whitespace);
-        diffy::column_view_diff_render(diff_input, annotated_hunks, sbs_ui_opts, opts.width);
+        diffy::column_view_diff_render(diff_input, annotated_hunks, cv_ui_opts, opts.width);
     } else if (opts.unified) {
         auto unified_lines = diffy::unified_diff_render(diff_input, hunks);
         for (const auto& line : unified_lines) {
