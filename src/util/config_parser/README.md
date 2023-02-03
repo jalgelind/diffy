@@ -23,6 +23,8 @@ value).
 Example code and output
 -----------------------
 
+Example snippet:
+
     std::string cfg_tmp = R"foo(
     # 1 (above section)
     [section] # 2 (next to section)
@@ -49,7 +51,6 @@ Example code and output
     fmt::print("{}", cfg_dump_value_object(obj));
 
     fmt::print("re-serialized:\n{}\n", cfg_serialize(obj));
-    fmt::print("TODO: remove section indentation and trailing empty lines\n");
 
     if (auto tmp = obj.lookup_value_by_path({"section", "something", "apa"}); tmp != std::nullopt) {
             fmt::print("1 Found: {}\n", repr(*tmp));
@@ -62,7 +63,7 @@ Example code and output
     if (auto tmp = obj.lookup_value_by_path("section.something.apa"); tmp != std::nullopt) {
             fmt::print("3 Found: {}\n", repr(*tmp));
             if (tmp->get().is_string()) {
-            fmt::print("It's a string: {}\n", tmp->get().as_string());
+                fmt::print("It's a string: {}\n", tmp->get().as_string());
             }
     }
 
@@ -71,7 +72,7 @@ Example code and output
     }
 
 
-Outputs
+Output:
 
     original:
 
@@ -86,7 +87,7 @@ Outputs
             # 9 (below apa, last item in table)
     } # 10 (next to something-close-brace)
     # 11 (trailing comment)
-    
+        
     0 | 0 Comment  1 (above section) 
     1 | 0 Key section 
     2 | 0 TableStart from section 
@@ -110,49 +111,46 @@ Outputs
     20 | 0 TableEnd  
     tree:
     Comments:
-    V:  1 (above section)
+        V:  1 (above section)
     Value:
     Table {
-    Key: section
-    Comments:
+        Key: 'section'
+        Comments:
             V:  2 (next to section)
-    Value:
+        Value:
             Table {
-            Key: key
-            Comments:
+            Key: 'key'
+                Comments:
                     K:  3 (above key, below parent section)
                     V:  4 (next to "value")
-            Value:
-            'value'
+                Value:
+                'value'
 
-            Key: something
-            Comments:
+            Key: 'something'
+                Comments:
                     K:  5 (above something, after key)
                     V:  6 (next to something)
-            Value:
-            Table {
-                    Key: apa
+                Value:
+                Table {
+                    Key: 'apa'
                     Comments:
-                    K:  7 (below parent something, before apa)
-                    V:  8 (next to "bepa")
+                        K:  7 (below parent something, before apa)
+                        V:  8 (next to "bepa")
                     Value:
-                    'bepa'
+                        'bepa'
 
+                }
             }
-
-            }
-
     }
     re-serialized:
-    # 1 (above section)
+    1 (above section)
     [section] # 2 (next to section)
 
-    # 3 (above key, below parent section)
+    3 (above key, below parent section)
     key = 'value' # 4 (next to "value")
-
-    # 5 (above something, after key)
+    5 (above something, after key)
     something = { # 6 (next to something)
 
-    # 7 (below parent something, before apa)
+    7 (below parent something, before apa)
     apa = 'bepa' # 8 (next to "bepa")
     }
