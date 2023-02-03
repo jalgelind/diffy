@@ -75,28 +75,34 @@ std::unordered_map<std::string, diffy::TermColor> k16Colors = k16DefaultColors;
 std::optional<TermColor>
 TermColor::from_hex(const std::string& s) {
     // Hex code parser that supports '#FFF' and '#FE83EE'
-    if ((s.size() == 4 || s.size() == 7) && s[0] == '#') {
-        switch (s.size()) {
-            // '#ABC'
-            case 4: {
-                // TODO: validate
-                long color24 = strtol(&s[1], nullptr, 16);
-                uint8_t r = ((color24 >> 8) & 0x0F) * 17;
-                uint8_t g = ((color24 >> 4) & 0x0F) * 17;
-                uint8_t b = ((color24 >> 0) & 0x0F) * 17;
-                return TermColor(TermColor::Kind::Color24bit,
-                    (r | r << 8), (g | g << 4), (b | b << 0));
-            } break;
-            // '#AABBCC'
-            case 7: {
-                // TODO: validate
-                long color24 = strtol(&s[1], nullptr, 16);
-                uint8_t r = (color24 >> 16) & 0xFF;
-                uint8_t g = (color24 >>  8) & 0xFF;
-                uint8_t b = (color24 >>  0) & 0xFF;
-                return TermColor(TermColor::Kind::Color24bit, r, g, b);
-            } break;
+    if (!((s.size() == 4 || s.size() == 7) && s[0] == '#')) {
+        return {};
+    }
+    
+    for (int i = 1; i < s.size(); i++) {
+        if (!std::isxdigit(s[i])) {
+            return {};
         }
+    }
+
+    switch (s.size()) {
+        // '#ABC'
+        case 4: {
+            long color24 = strtol(&s[1], nullptr, 16);
+            uint8_t r = ((color24 >> 8) & 0x0F) * 17;
+            uint8_t g = ((color24 >> 4) & 0x0F) * 17;
+            uint8_t b = ((color24 >> 0) & 0x0F) * 17;
+            return TermColor(TermColor::Kind::Color24bit,
+                (r | r << 8), (g | g << 4), (b | b << 0));
+        } break;
+        // '#AABBCC'
+        case 7: {
+            long color24 = strtol(&s[1], nullptr, 16);
+            uint8_t r = (color24 >> 16) & 0xFF;
+            uint8_t g = (color24 >>  8) & 0xFF;
+            uint8_t b = (color24 >>  0) & 0xFF;
+            return TermColor(TermColor::Kind::Color24bit, r, g, b);
+        } break;
     }
     return {};
 }
