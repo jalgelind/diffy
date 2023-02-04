@@ -110,7 +110,7 @@ Options:
     -s, -S [context_lines]     show side-by-side column output, optional context line count
 
     -o, --old-file             custom name to give the old-file (left)
-    -n, --new-file             custom name to give the old-file (left)
+    -n, --new-file             custom name to give the old-file (right)
 
     -i, --ignore-line-endings  ignore changes to line endings
     -w, --ignore-whitespace    ignore all changes to whitespace
