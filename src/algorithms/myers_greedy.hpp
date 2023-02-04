@@ -155,9 +155,9 @@ struct MyersGreedy : public Algorithm<Unit> {
     DiffResult
     diff() {
         // Run diff implementation with smaller data type for faster memcpy operations.
-        constexpr auto u8_max = std::numeric_limits<uint8_t>::max();
-        constexpr auto u16_max = std::numeric_limits<uint16_t>::max();
-        constexpr auto u32_max = std::numeric_limits<uint32_t>::max();
+        constexpr auto u8_max = std::numeric_limits<uint8_t>::max() / 2;
+        constexpr auto u16_max = std::numeric_limits<uint16_t>::max() / 2;
+        constexpr auto u32_max = std::numeric_limits<uint32_t>::max() / 2;
         if (N < u8_max && M < u8_max) {
             return diff_impl<uint8_t>();
         } else if (N < u16_max && M < u16_max) {

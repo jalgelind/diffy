@@ -7,9 +7,10 @@
             "request": "launch",
             "program": "${workspaceFolder}/out/debug/diffy",
             "args": [
-                "-S3",
-                "tests/test_cases/stb_vorbis/stb_vorbis.c_0_1ee679c-70136cd_a",
-                "tests/test_cases/stb_vorbis/stb_vorbis.c_0_1ee679c-70136cd_b"
+                "-a",
+                "mg",
+                "tests/test_cases/failing/init.c_72_9cc8fc0d-9af61d06_a",
+                "tests/test_cases/failing/init.c_72_9cc8fc0d-9af61d06_b"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
