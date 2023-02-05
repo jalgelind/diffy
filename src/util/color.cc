@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <tuple>
 #include <unordered_map>
 #include <vector>
@@ -113,9 +114,19 @@ TermColor::parse_string(const std::string& s) {
         return {};
     }
 
-    // Is it a palette color?
+    // Is it a color in the default color palette?
     if (k16Colors.find(s) != k16Colors.end()) {
         return k16Colors.at(s);
+    }
+
+    // Is it a 256color palette index?
+    if (s[0] == 'P' || s[0] == 'p') {
+        int palette_index;
+        auto result = std::from_chars(s.data()+1, s.data() + s.size(), palette_index);
+        if (result.ec == std::errc::invalid_argument) {
+            return {};
+        }
+        return TermColor(TermColor::Kind::Color8bit, palette_index, 0, 0);
     }
 
     // Try to parse it as hex 🤷‍♂️
@@ -200,6 +211,14 @@ std::string TermStyle::to_ansi() {
             // 256 color palette (unsupported)
             // ESC[38;5;{ID}m	Set foreground color.
             // ESC[48;5;{ID}m	Set background color.
+            case TermColor::Kind::Color8bit: {
+                if (is_fg) {
+                    escseq.insert(escseq.end(), {38, 5});
+                } else {
+                    escseq.insert(escseq.end(), {48, 5});
+                }
+                escseq.insert(escseq.end(), {color.r});
+            } break;
 
             // 16 color palette ('4 bit')
             // ESC=\033

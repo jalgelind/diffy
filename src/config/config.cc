@@ -24,10 +24,15 @@ static std::string config_doc_theme = R"foo(# Theme configuration
 # or changing the color style of each specific theme item.
 #
 # You can re-map these colors in `color_map` below. Supported
-# values are the palette names below, and hex RGB colors:
+# values are the palette names are as follow:
+#
+# RGB hex colors:
 #   '#RGB' and '#RRGGBB'. I.e '#F00' or '#FF0000' for bright red.
 #
-# Available color names (16 color palette SGR colors):
+# 256 color palette (see https://www.ditig.com/256-colors-cheat-sheet):
+#   'P<palette-index>', I.e 'P196' for the color known as "Red1"
+#
+# 16 color palette SGR colors:
 #   black, red, green, yellow, blue, magenta, cyan, light_gray,
 #   dark_gray, light_red, light_green, light_yellow, light_blue,
 #   light_magenta, light_cyan, white

@@ -13,6 +13,7 @@ namespace diffy {
 struct TermColor {
     enum class Kind : uint8_t {
         Color4bit = 0,
+        Color8bit,
         Color24bit,
         DefaultColor,
         Ignore,
