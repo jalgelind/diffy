@@ -371,7 +371,7 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
         display_commands.push_back(DisplayCommand::unstyled(config.chars.edge_separator));
         if (config.settings.show_line_numbers) {
             std::string style = "";
-            if (config.settings.word_wrap) {
+            if (config.settings.context_colored_line_numbers) {
                 switch (left.type) {
                     case EditType::Insert:
                         style = config.style.insert_line_number;
