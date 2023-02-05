@@ -1,5 +1,9 @@
 TODO
 ----
+* Allow arbitrary color names in config?
+* Look into color issues when using the 256 color palette
+  `echo "\U0000001b[38;5;0;48;5;160maoeu"` yields different results
+    in vscode (xtermjs) and iIerm2/Terminal
 
 Most probably happening at some point
 -------------------------------------
@@ -7,8 +11,8 @@ Most probably happening at some point
 
 Most likely not happening
 -------------------------
-* annotate_tokens can be threaded to compute the token diff used for the columne view
-* feed the annotated diff hunks to the output renderer on-the-go instead of precomputing upfront
+* Annotate_tokens can be threaded to compute the token diff used for the column view
+* Feed the annotated diff hunks to the output renderer on-the-go instead of precomputing upfront
 * Config does not handle comment serialization correctly (some are lost)
 * Fix rendering issues in Windows cmd (implement DisplayCommand renderer using the win32 api? ugh)
 * Compare patience algorithm with `git diff --patience`
