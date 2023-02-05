@@ -42,11 +42,17 @@ struct TermColor {
 
     // Parse color from configuration table value
     static std::optional<TermColor>
-    from_value(Value value);
+    parse_value(Value value);
+
+    // Parse color string; i.e:
+    //   "#rgb", "#rrggbb"
+    //   "green"
+    static std::optional<TermColor>
+    parse_string(const std::string& value);
 
     // #rgb, #rrggbb
     static std::optional<TermColor>
-    from_hex(const std::string& value);
+    parse_hex(const std::string& value);
 
     // 
     static TermColor kNone;
@@ -112,7 +118,7 @@ struct TermStyle {
 
     // Parse style from configuration table value
     static std::optional<TermStyle>
-    from_value(Value::Table table);
+    parse_value(Value::Table table);
 
     Value
     to_value();

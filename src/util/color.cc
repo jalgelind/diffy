@@ -73,7 +73,7 @@ const std::unordered_map<std::string, diffy::TermColor> k16DefaultColors = {
 std::unordered_map<std::string, diffy::TermColor> k16Colors = k16DefaultColors;
 
 std::optional<TermColor>
-TermColor::from_hex(const std::string& s) {
+TermColor::parse_hex(const std::string& s) {
     // Hex code parser that supports '#FFF' and '#FE83EE'
     if (!((s.size() == 4 || s.size() == 7) && s[0] == '#')) {
         return {};
@@ -107,15 +107,9 @@ TermColor::from_hex(const std::string& s) {
     return {};
 }
 
-// Parse color from configuration table value
 std::optional<TermColor>
-TermColor::from_value(Value value) {
-    if (!value.is_string()) {
-        return {};
-    }
-
-    auto s = value.as_string();
-    if (s.empty()) {
+TermColor::parse_string(const std::string& s) {
+        if (s.empty()) {
         return {};
     }
 
@@ -125,7 +119,17 @@ TermColor::from_value(Value value) {
     }
 
     // Try to parse it as hex 🤷‍♂️
-    return from_hex(s);
+    return parse_hex(s);
+}
+
+// Parse color from configuration table value
+std::optional<TermColor>
+TermColor::parse_value(Value value) {
+    if (!value.is_string()) {
+        return {};
+    }
+
+    return parse_string(value.as_string());
 }
 
 std::string
@@ -238,8 +242,8 @@ std::string TermStyle::to_ansi() {
 #if 0
 struct render_test {
     render_test() {
-       auto fg = *TermColor::from_hex("#f00");
-       auto bg = *TermColor::from_hex("#000");
+       auto fg = *TermColor::parse_hex("#f00");
+       auto bg = *TermColor::parse_hex("#000");
        //auto bg = TermColor::kDefault;
        TermStyle tmp(fg, bg, TermStyle::Attribute::Bold);
 
@@ -257,7 +261,7 @@ static render_test render_testaaaa;
 #endif
 
 std::optional<TermStyle>
-TermStyle::from_value(Value::Table table) {
+TermStyle::parse_value(Value::Table table) {
     TermStyle c;
 
     auto attr_value_array = table["attr"];
@@ -269,14 +273,14 @@ TermStyle::from_value(Value::Table table) {
     c.attr = color_encode_attributes(attributes);
 
     if (table.contains("fg")) {
-        auto color = TermColor::from_value(table["fg"]);
+        auto color = TermColor::parse_value(table["fg"]);
         if (color) {
             c.fg = *color;
         }
     }
 
     if (table.contains("fg")) {
-        auto color = TermColor::from_value(table["bg"]);
+        auto color = TermColor::parse_value(table["bg"]);
         if (color) {
             c.bg = *color;
         }
@@ -314,7 +318,7 @@ diffy::color_map_set(std::string color_name, diffy::TermColor color) {
 void
 diffy::color_dump() {
     auto reset = TermStyle { TermColor::kReset, TermColor::kReset };
-    auto rgb = TermStyle { *TermColor::from_hex("#ff0000"), TermColor::kNone };
+    auto rgb = TermStyle { *TermColor::parse_hex("#ff0000"), TermColor::kNone };
     fmt::print("{}{}{}", rgb.to_ansi(), "#RRGGBB test\n", reset.to_ansi());
     
     for (int i = 0; i < 255; i += 4) {

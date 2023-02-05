@@ -122,7 +122,7 @@ config_apply_options(diffy::Value& config, const OptionVector& options) {
                     *((std::string*) ptr) = stored_value->get().as_string();
                 } break;
                 case ConfigVariableType::Color: {
-                    auto style = diffy::TermStyle::from_value(stored_value->get().as_table());
+                    auto style = diffy::TermStyle::parse_value(stored_value->get().as_table());
                     if (style) {
                         *((diffy::TermStyle*) ptr) = *style;
                     }
@@ -255,7 +255,7 @@ diffy::config_apply_theme(const std::string& theme,
         for (const auto& color : palette_color_names) {
             if (color_values.contains(color)) {
                 auto& v = color_values[color];
-                auto term_color = TermColor::from_value(v);
+                auto term_color = TermColor::parse_value(v);
                 if (term_color) {
                     color_map_set(color, *term_color);
                 }
