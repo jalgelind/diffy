@@ -80,7 +80,7 @@ TermColor::parse_hex(const std::string& s) {
         return {};
     }
     
-    for (int i = 1; i < s.size(); i++) {
+    for (std::string::size_type i = 1; i < s.size(); i++) {
         if (!std::isxdigit(s[i])) {
             return {};
         }
@@ -121,7 +121,7 @@ TermColor::parse_string(const std::string& s) {
 
     // Is it a 256color palette index?
     if (s[0] == 'P' || s[0] == 'p') {
-        int palette_index;
+        int palette_index = 0;
         auto result = std::from_chars(s.data()+1, s.data() + s.size(), palette_index);
         if (result.ec == std::errc::invalid_argument) {
             return {};

@@ -62,7 +62,7 @@ struct Token {
     float token_float_arg = 0;
 
     const std::string
-    str_from(const std::string line) const {
+    str_from(const std::string& line) const {
         return line.substr(this->start, this->length);
     }
 };

@@ -331,13 +331,13 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
             token.id = TokenId_Boolean;
             token.token_boolean_arg = tmp_bool;
         } else {
-            int tmp_int;
+            int tmp_int = 0;
             auto result = std::from_chars(token_str.data(), token_str.data() + token_str.size(), tmp_int);
             if (result.ec != std::errc::invalid_argument) {
                 token.id = TokenId_Integer;
                 token.token_int_arg = tmp_int;
             } else {
-                int tmp_float;
+                int tmp_float = 0.0f;
                 auto result = std::from_chars(token_str.data(), token_str.data() + token_str.size(), tmp_float);
                 if (result.ec != std::errc::invalid_argument) {
                     token.id = TokenId_Float;
