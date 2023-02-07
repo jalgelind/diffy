@@ -1,9 +1,6 @@
 TODO
 ----
 * Allow arbitrary color names in config?
-* Look into color issues when using the 256 color palette
-  `echo "\U0000001b[38;5;0;48;5;160maoeu"` yields different results
-    in vscode (xtermjs) and iIerm2/Terminal
 
 Most probably happening at some point
 -------------------------------------
