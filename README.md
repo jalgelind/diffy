@@ -22,7 +22,7 @@ On POSIX platforms you can use the `make` wrapper to invoke `meson` and `ninja`.
 
 On Windows you can generate a Visual Studio solution.
 
-    > meson setup --vsenv --backend vs2022 --buildtype=debug out/vs-debug
+    $ meson setup --vsenv --backend vs2022 --buildtype=debug out/vs-debug
 
 Testing
 -------
@@ -52,7 +52,7 @@ Copy `extras/diffy-git` to somewhere in your `$PATH`.
 
 Invoke git with:
 
-    GIT_EXTERNAL_DIFF=diffy-git git diff
+    $ GIT_EXTERNAL_DIFF=diffy-git git diff
 
 Or configure git to use it:
 
