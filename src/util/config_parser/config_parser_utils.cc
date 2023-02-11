@@ -129,7 +129,7 @@ serialize_obj(Value& value, int depth, std::string& output, bool is_last_element
             } else {
                 output += "{";
                 for (auto& comment : value.value_comments) {
-                    output += " #" + comment + "\n";
+                    output += " " + comment + "\n";
                 }
                 output += "\n" + indent(depth);
                 table.for_each([&](auto k, auto& v) {
@@ -162,21 +162,21 @@ serialize_obj(Value& value, int depth, std::string& output, bool is_last_element
         if (!is_last_element)
             output += ", ";
         for (auto& comment : value.value_comments) {
-            output += " #" + comment;
+            output += " " + comment;
         }
     } else if (value.is_bool()) {
         output += fmt::format("{}", value.as_bool());
         if (!is_last_element)
             output += ", ";
         for (auto& comment : value.value_comments) {
-            output += " #" + comment;
+            output += " " + comment;
         }
     } else if (value.is_string()) {
         output += fmt::format("'{}'", value.as_string());
         if (!is_last_element)
             output += ", ";
         for (auto& comment : value.value_comments) {
-            output += " #" + comment;
+            output += " " + comment;
         }
     }
 }
@@ -198,7 +198,7 @@ serialize_section(Value& value, int depth, std::string& output) {
             }
             output += "[" + k + "]";
             for (auto& comment : v.value_comments) {
-                output += " #" + comment + "\n";
+                output += " " + comment + "\n";
             }
             // tweak depth for indentation of section keys
             output += "\n";
