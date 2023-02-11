@@ -363,7 +363,7 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
         // push header_background or content_background?
 
         // Left side
-        display_commands.push_back(DisplayCommand::with_style(config.style.empty_line,
+        display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell,
             config.chars.edge_separator));
         if (config.settings.show_line_numbers) {
             std::string style = "";
@@ -379,7 +379,7 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
                         style = config.style.common_line_number;
                         break;
                     case EditType::Meta:
-                        style = config.style.empty_line;
+                        style = config.style.empty_cell;
                         break;
                     default:
                         break;
@@ -388,7 +388,7 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
             display_commands.push_back(DisplayCommand::with_style(
                 style, format_line_number(left.line_number, config.line_number_digits_count,
                                           config.settings.line_number_align_right)));
-            display_commands.push_back(DisplayCommand::with_style(config.style.empty_line, " "));
+            display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell, " "));
         }
 
         render_display_line(config, &display_commands, left);
@@ -402,7 +402,7 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
             display_commands.push_back(
                 DisplayCommand::with_style(config.style.frame, config.chars.column_separator));
         } else {
-            display_commands.push_back(DisplayCommand::with_style(config.style.empty_line,
+            display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell,
                 config.chars.column_separator));
         }
 
@@ -422,7 +422,7 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
                         style = config.style.common_line_number;
                         break;
                     case EditType::Meta:
-                        style = config.style.empty_line;
+                        style = config.style.empty_cell;
                         break;
                     default:
                         break;
@@ -431,7 +431,7 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
             display_commands.push_back(DisplayCommand::with_style(
                 style, format_line_number(right.line_number, config.line_number_digits_count,
                                           config.settings.line_number_align_right)));
-            display_commands.push_back(DisplayCommand::with_style(config.style.empty_line, " "));
+            display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell, " "));
         }
 
         render_display_line(config, &display_commands, right);
@@ -440,7 +440,7 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
         display_commands.push_back(DisplayCommand::with_style(
             config.style.common_line, std::string(config.max_row_length - right.line_length, ' ')));
 
-        display_commands.push_back(DisplayCommand::with_style(config.style.empty_line,
+        display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell,
             config.chars.edge_separator));
 
         std::string full;

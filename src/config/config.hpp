@@ -102,9 +102,9 @@ struct ColumnViewTextStyle {
         TermStyle::Attribute::None
     };
 
-    TermStyle empty_line = TermStyle {
-        TermColor::kWhite,
-        TermColor::kLightGray,
+    TermStyle empty_cell = TermStyle {
+        TermColor::kNone,
+        TermColor::kNone,
         TermStyle::Attribute::None
     };
     // clang-format on
@@ -121,7 +121,7 @@ struct ColumnViewTextStyleEscapeCodes {
     std::string common_line;
     std::string common_line_number;
     std::string frame;
-    std::string empty_line;
+    std::string empty_cell;
 };
 
 struct ColumnViewCharacters {

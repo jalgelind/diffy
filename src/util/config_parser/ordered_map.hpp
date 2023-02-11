@@ -49,6 +49,16 @@ struct OrderedMap {
         insert(pair);
     }
 
+    bool
+    remove(const T& key) {
+        if (contains(key)) {
+            keys_.erase(std::remove(keys_.begin(), keys_.end(), key), keys_.end());
+            m_.erase(key);
+            return true;
+        }
+        return false;
+    }
+
     OrderedMap&
     operator=(const OrderedMap& other) {
         this->m_ = other.m_;

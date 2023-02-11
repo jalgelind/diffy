@@ -205,7 +205,9 @@ diffy::config_apply_options(diffy::ProgramOptions& program_options) {
 
     // Write the configuration to disk with default settings
     if (flush_config_to_disk) {
-        config_file_table_value["general"].key_comments.push_back(config_doc_general);
+        if (config_file_table_value["general"].key_comments.empty()) {
+            config_file_table_value["general"].key_comments.push_back(config_doc_general);
+        }
         config_save(config_root, config_path, config_file_table_value);
     }
 }
@@ -241,6 +243,14 @@ diffy::config_apply_theme(const std::string& theme,
 
     if (!config_file_table_value.lookup_value_by_path("settings")) {
         config_file_table_value["settings"] = {Value::Table{}};
+    }
+
+    if (auto value = config_file_table_value.lookup_value_by_path("style.empty_line"); value != std::nullopt) {
+        config_file_table_value.set_value_at("style.empty_cell", *value);
+        config_file_table_value["style"]["empty_cell"].key_comments.push_back(
+            "// 1.11 migration: 'style.empty_line' renamed to 'style.empty_cell'");
+        config_file_table_value["style"].as_table().remove("empty_line");
+        flush_config_to_disk = true;
     }
 
     // Update the color table
@@ -296,7 +306,7 @@ diffy::config_apply_theme(const std::string& theme,
         { "style.insert_token",             ConfigVariableType::Color,  &cv_style_opts.insert_token },
         { "style.insert_line_number",       ConfigVariableType::Color,  &cv_style_opts.insert_line_number },
         { "style.common_line",              ConfigVariableType::Color,  &cv_style_opts.common_line },
-        { "style.empty_line",               ConfigVariableType::Color,  &cv_style_opts.empty_line },
+        { "style.empty_cell",               ConfigVariableType::Color,  &cv_style_opts.empty_cell },
         { "style.common_line_number",       ConfigVariableType::Color,  &cv_style_opts.common_line_number },
         { "style.frame",                    ConfigVariableType::Color,  &cv_style_opts.frame },
     };
@@ -316,7 +326,7 @@ diffy::config_apply_theme(const std::string& theme,
         {&cv_style_opts.common_line, &cv_style_escape_codes.common_line},
         {&cv_style_opts.common_line_number, &cv_style_escape_codes.common_line_number},
         {&cv_style_opts.frame, &cv_style_escape_codes.frame},
-        {&cv_style_opts.empty_line, &cv_style_escape_codes.empty_line},
+        {&cv_style_opts.empty_cell, &cv_style_escape_codes.empty_cell},
     };
 
     for (const auto& [source_value, dest_string] : colors) {
@@ -325,7 +335,9 @@ diffy::config_apply_theme(const std::string& theme,
 
     // Write the configuration to disk with default settings
     if (flush_config_to_disk) {
-        config_file_table_value["settings"].key_comments.push_back(config_doc_theme);
+        if (config_file_table_value["settings"].key_comments.empty()) {
+            config_file_table_value["settings"].key_comments.push_back(config_doc_theme);
+        }
         config_save(config_root, config_path, config_file_table_value);
     }
 }
