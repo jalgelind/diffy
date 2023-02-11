@@ -281,7 +281,11 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
                 // fmt::print("rejecting token {}\n", repr(tok.id));
             }
 
-            cursor += tok.length;
+            if (((tok.id & TokenId_Doubleslash) || tok.id & TokenId_Hashtag)) {
+                // Keep the comment tokens for '# comment' and '// comment'   
+            } else {
+                cursor += tok.length;
+            }
             continue;
         }
 
