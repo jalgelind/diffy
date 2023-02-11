@@ -162,21 +162,21 @@ serialize_obj(Value& value, int depth, std::string& output, bool is_last_element
         if (!is_last_element)
             output += ", ";
         for (auto& comment : value.value_comments) {
-            output += " " + comment;
+            output += " " + comment + "\n";
         }
     } else if (value.is_bool()) {
         output += fmt::format("{}", value.as_bool());
         if (!is_last_element)
             output += ", ";
         for (auto& comment : value.value_comments) {
-            output += " " + comment;
+            output += " " + comment + "\n";
         }
     } else if (value.is_string()) {
         output += fmt::format("'{}'", value.as_string());
         if (!is_last_element)
             output += ", ";
         for (auto& comment : value.value_comments) {
-            output += " " + comment;
+            output += " " + comment + "\n";
         }
     }
 }
