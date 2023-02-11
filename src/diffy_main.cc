@@ -156,8 +156,7 @@ Side by side options:
                                                {"list-colors", no_argument, 0, '1'},
                                                {0, 0, 0, 0}};
         int c = 0, option_index = 0;
-        while ((c = getopt_long(in_argc, in_argv, "a:dhlsS:uU:W:o:n:iw", long_options, &option_index)) >=
-               0) {
+        while ((c = getopt_long(in_argc, in_argv, "a:dhlsS:uU:W:o:n:iw", long_options, &option_index)) >= 0) {
             switch (c) {
                 case 'v':
                     fmt::print("version: {}\n", DIFFY_VERSION);
