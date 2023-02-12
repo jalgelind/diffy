@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <charconv>
 #include <optional>
+#include <unordered_map>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -65,11 +66,15 @@ std::string
 token_display(Token token, const std::string& input_text) {
     auto original = token.str_from(input_text);
     std::string sanitized;
+
+    const std::unordered_map<char, std::string> replacement_table {
+        { '\n', "\\n" },
+        { '"', "\\\"" },
+    };
+
     for (auto& c : original) {
-        if (c == '\n') {
-            sanitized += "\\n";
-        } else if (c == '"') {
-            sanitized += "\\\"";
+        if (auto i = replacement_table.find(c); i != replacement_table.end()) {
+            sanitized += (*i).second;
         } else {
             sanitized += c;
         }
