@@ -239,14 +239,14 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
                             result.tokens.size(),
                             captured_string_id_tag};
 
-                bool reject_token = false;
-                if (options.strip_comments && (token.id & TokenId_Comment)) {
-                    reject_token = true;
-                }
-
                 // Annotate tokens that start on a new line
                 if (capture_string_start_idx == 0 || is_first_token_on_line(capture_string_start_idx - 1)) {
                     token.id |= TokenId_FirstOnLine;
+                }
+
+                bool reject_token = false;
+                if (options.strip_comments && (token.id & TokenId_Comment)) {
+                    reject_token = true;
                 }
 
                 if (!reject_token) {
@@ -263,8 +263,8 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
         }
 
         // we might have a token where our current cursor is (start_idx)
-        if (auto maybe_tok = find_token(start_idx, text); maybe_tok) {
-            auto tok = *maybe_tok;
+        if (auto next_token = find_token(start_idx, text); next_token) {
+            auto tok = *next_token;
             auto tok_desc_opt = as_token_desc(tok.id);
             auto tok_desc = *tok_desc_opt;
 
