@@ -357,7 +357,7 @@ diffy::cfg_parse(const std::string& input_data,
                                    emit_ins(TbInstruction::Key(key));
                                }));
 
-                emit_ins(TbInstruction::TableStart("from section"));
+                emit_ins(TbInstruction::TableStart());
 
                 // Expect ]
                 PARSER_EXPECT_AND_ADVANCE(TokenId_CloseBracket);

@@ -159,7 +159,7 @@ TEST_CASE("parser") {
         // clang-format off
         REQUIRE(instructions.size() == 3);
         REQUIRE(instructions[  0] == TbInstruction::Key("section"));
-        REQUIRE(instructions[  1] == TbInstruction::TableStart("from section"));
+        REQUIRE(instructions[  1] == TbInstruction::TableStart());
         REQUIRE(instructions[  2] == TbInstruction::TableEnd());
         // clang-format on
     }
@@ -179,7 +179,7 @@ TEST_CASE("parser") {
         // clang-format off
         REQUIRE(instructions.size() == 3);
         REQUIRE(instructions[  0] == TbInstruction::Key("section"));
-        REQUIRE(instructions[  1] == TbInstruction::TableStart("from section"));
+        REQUIRE(instructions[  1] == TbInstruction::TableStart());
         REQUIRE(instructions[  2] == TbInstruction::TableEnd());
         // clang-format on
     }
@@ -203,7 +203,7 @@ TEST_CASE("parser") {
         REQUIRE(instructions[  0] == TbInstruction::Comment("# first comment"));
         REQUIRE(instructions[  1] == TbInstruction::Comment("// second comment"));
         REQUIRE(instructions[  2] == TbInstruction::Key("section"));
-        REQUIRE(instructions[  3] == TbInstruction::TableStart("from section"));
+        REQUIRE(instructions[  3] == TbInstruction::TableStart());
         REQUIRE(instructions[  4] == TbInstruction::TableEnd());
         // clang-format on
     }
@@ -224,7 +224,7 @@ TEST_CASE("parser") {
         // clang-format off
         REQUIRE(instructions.size() == 5);
         REQUIRE(instructions[  0] == TbInstruction::Key("section"));
-        REQUIRE(instructions[  1] == TbInstruction::TableStart("from section"));
+        REQUIRE(instructions[  1] == TbInstruction::TableStart());
         REQUIRE(instructions[  2] ==   TbInstruction::Key("my_key"));
         REQUIRE(instructions[  3] ==   TbInstruction::Value("hey"));
         REQUIRE(instructions[  4] == TbInstruction::TableEnd());
@@ -252,7 +252,7 @@ TEST_CASE("parser") {
         // clang-format off
         REQUIRE(instructions.size() == 9);
         REQUIRE(instructions[  0] == TbInstruction::Key("section"));
-        REQUIRE(instructions[  1] == TbInstruction::TableStart("from section"));
+        REQUIRE(instructions[  1] == TbInstruction::TableStart());
         REQUIRE(instructions[  2] ==   TbInstruction::Key("my_key"));
         REQUIRE(instructions[  3] ==   TbInstruction::Value("hey"));
         REQUIRE(instructions[  4] ==   TbInstruction::Key("my_other_key"));
@@ -286,7 +286,7 @@ TEST_CASE("parser") {
         // clang-format off
         REQUIRE(instructions.size() == 18);
         REQUIRE(instructions[  0] == TbInstruction::Key("section"));
-        REQUIRE(instructions[  1] == TbInstruction::TableStart("from section"));
+        REQUIRE(instructions[  1] == TbInstruction::TableStart());
         REQUIRE(instructions[  2] ==   TbInstruction::Key("my_key"));
         REQUIRE(instructions[  3] ==   TbInstruction::Value("hey"));
         REQUIRE(instructions[  4] ==   TbInstruction::Key("my_other_key"));
@@ -295,7 +295,7 @@ TEST_CASE("parser") {
         REQUIRE(instructions[  7] ==   TbInstruction::Value(false));
         REQUIRE(instructions[  8] == TbInstruction::TableEnd());
         REQUIRE(instructions[  9] == TbInstruction::Key("shapes"));
-        REQUIRE(instructions[ 10] == TbInstruction::TableStart("from section"));
+        REQUIRE(instructions[ 10] == TbInstruction::TableStart());
         REQUIRE(instructions[ 11] ==   TbInstruction::Key("apa"));
         REQUIRE(instructions[ 12] ==   TbInstruction::Value("apa"));
         REQUIRE(instructions[ 13] ==   TbInstruction::Key("bepa"));
@@ -324,7 +324,7 @@ TEST_CASE("parser") {
         // clang-format off
         REQUIRE(instructions.size() == 21);
         REQUIRE(instructions[  0] == TbInstruction::Key("section"));
-        REQUIRE(instructions[  1] == TbInstruction::TableStart("from section"));
+        REQUIRE(instructions[  1] == TbInstruction::TableStart());
         REQUIRE(instructions[  2] ==   TbInstruction::Key("my_key"));
         REQUIRE(instructions[  3] ==   TbInstruction::ArrayStart());
         REQUIRE(instructions[  4] ==     TbInstruction::Value(1));
@@ -381,7 +381,7 @@ TEST_CASE("parser") {
         REQUIRE(instructions.size() == 27);
         REQUIRE(instructions[  0] == TbInstruction::Comment("// comment"));
         REQUIRE(instructions[  1] == TbInstruction::Key("section"));
-        REQUIRE(instructions[  2] == TbInstruction::TableStart("from section"));
+        REQUIRE(instructions[  2] == TbInstruction::TableStart());
         REQUIRE(instructions[  3] ==   TbInstruction::Comment("// comment"));
         REQUIRE(instructions[  4] ==   TbInstruction::Key("my_key"));
         REQUIRE(instructions[  5] ==   TbInstruction::TableStart());
@@ -461,7 +461,7 @@ TEST_CASE("parser") {
         REQUIRE(instructions[  0] == TbInstruction::Comment("// comment 1"));
         REQUIRE(instructions[  1] == TbInstruction::Comment("// comment 2"));
         REQUIRE(instructions[  2] == TbInstruction::Key("section_1"));
-        REQUIRE(instructions[  3] == TbInstruction::TableStart("from section"));
+        REQUIRE(instructions[  3] == TbInstruction::TableStart());
         REQUIRE(instructions[  4] ==   TbInstruction::Comment("// hello"));
         REQUIRE(instructions[  5] ==   TbInstruction::Key("arr"));
         REQUIRE(instructions[  6] ==   TbInstruction::Comment("// comment 3"));
@@ -510,14 +510,14 @@ TEST_CASE("parser") {
         REQUIRE(instructions[ 49] ==   TbInstruction::Comment("// // comment 12"));
         REQUIRE(instructions[ 50] == TbInstruction::TableEnd());
         REQUIRE(instructions[ 51] == TbInstruction::Key("section_2"));
-        REQUIRE(instructions[ 52] == TbInstruction::TableStart("from section"));
+        REQUIRE(instructions[ 52] == TbInstruction::TableStart());
         REQUIRE(instructions[ 53] ==   TbInstruction::Comment("// comment 13"));
         REQUIRE(instructions[ 54] ==   TbInstruction::Key("apa"));
         REQUIRE(instructions[ 55] ==   TbInstruction::Value(1));
         REQUIRE(instructions[ 56] ==   TbInstruction::Comment("// comment 14"));
         REQUIRE(instructions[ 57] == TbInstruction::TableEnd());
         REQUIRE(instructions[ 58] == TbInstruction::Key("section_3"));
-        REQUIRE(instructions[ 59] == TbInstruction::TableStart("from section"));
+        REQUIRE(instructions[ 59] == TbInstruction::TableStart());
         REQUIRE(instructions[ 60] ==   TbInstruction::Comment("// comment 15"));
         REQUIRE(instructions[ 61] ==   TbInstruction::Key("depa"));
         REQUIRE(instructions[ 62] ==   TbInstruction::TableStart());

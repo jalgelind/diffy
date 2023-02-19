@@ -82,34 +82,30 @@ struct TbInstruction {
     }
 
     static TbInstruction
-    ArrayStart(const std::string optional_comment = "") {
+    ArrayStart() {
         TbInstruction ins;
         ins.op = TbOperator::ArrayStart;
-        ins.oparg_string = optional_comment;
         return ins;
     }
 
     static TbInstruction
-    ArrayEnd(const std::string optional_comment = "") {
+    ArrayEnd() {
         TbInstruction ins;
         ins.op = TbOperator::ArrayEnd;
-        ins.oparg_string = optional_comment;
         return ins;
     }
 
     static TbInstruction
-    TableStart(const std::string optional_comment = "") {
+    TableStart() {
         TbInstruction ins;
         ins.op = TbOperator::TableStart;
-        ins.oparg_string = optional_comment;
         return ins;
     }
 
     static TbInstruction
-    TableEnd(const std::string optional_comment = "") {
+    TableEnd() {
         TbInstruction ins;
         ins.op = TbOperator::TableEnd;
-        ins.oparg_string = optional_comment;
         return ins;
     }
 
