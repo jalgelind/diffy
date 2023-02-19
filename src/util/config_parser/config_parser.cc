@@ -796,3 +796,46 @@ diffy::repr(Value& v) {
         return "NOT IMPLEMENTED";
     }
 }
+
+std::string
+diffy::repr(TbValueType vt) {
+    std::string result = "";
+    std::vector<std::tuple<TbValueType, std::string>> lut = {
+        {TbValueType::Bool, "Bool"},
+        {TbValueType::Int, "Int"},
+        {TbValueType::String, "String"},
+        {TbValueType::None, "None"},
+    };
+
+    for (const auto& [op, value] : lut) {
+        if (op == vt) {
+            return "\033[1;36m" + value + "\033[0m";
+        }
+    }
+
+    assert(false && "unknown value type");
+    return "";
+}
+
+std::string
+diffy::repr(TbOperator s) {
+    std::string result = "";
+    std::vector<std::tuple<diffy::TbOperator, std::string>> lut = {
+        {diffy::TbOperator::Key, "Key"},
+        {diffy::TbOperator::Value, "Value"},
+        {diffy::TbOperator::ArrayStart, "ArrayStart"},
+        {diffy::TbOperator::ArrayEnd, "ArrayEnd"},
+        {diffy::TbOperator::TableStart, "TableStart"},
+        {diffy::TbOperator::TableEnd, "TableEnd"},
+        {diffy::TbOperator::Comment, "Comment"},
+    };
+
+    for (const auto& [state, value] : lut) {
+        if (state == s) {
+            return "\033[1;34m" + value + "\033[0m";
+        }
+    }
+
+    assert(false && "missing implementation of added enum");
+    return "";
+}

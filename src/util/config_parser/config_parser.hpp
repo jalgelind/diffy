@@ -296,4 +296,10 @@ cfg_parse_collect(const std::string& input_data,
                   ParseResult& result,
                   std::vector<TbInstruction>& instructions);
 
+std::string
+repr(TbOperator s);
+
+std::string
+repr(TbValueType vt);
+
 }  // namespace diffy

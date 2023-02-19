@@ -23,12 +23,6 @@ cfg_load_file(const std::string& file_path,
 // Debug / formatting utilities
 //
 
-std::string
-repr(TbOperator s);
-
-std::string
-repr(TbValueType vt);
-
 void
 cfg_dump_instructions(std::vector<TbInstruction>& inst);
 
