@@ -167,8 +167,8 @@ struct TbInstruction {
     }
 
     TbOperator op;
-    std::string oparg_string; // also used for oparg2_string
     TbValueType oparg_type = TbValueType::None;
+    std::string oparg_string;
     int oparg_int = 0;
     bool oparg_bool = false;
     float oparg_float = 0.f;
