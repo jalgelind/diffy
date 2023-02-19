@@ -292,14 +292,14 @@ diffy::cfg_dump_instructions(std::vector<TbInstruction>& inst) {
         std::string indent;
         for (int i = 0; i < depth; i++)
             indent += "    ";
-        auto vt = ins.oparg2_type == TbValueType::None ? "" : repr(ins.oparg2_type);
-        fmt::print("{:>3} |{:>2}{} {} {} {}", ins_idx, depth, indent, repr(ins.op), ins.oparg1, vt);
-        switch (ins.oparg2_type) {
+        auto vt = ins.oparg_type == TbValueType::None ? "" : repr(ins.oparg_type);
+        fmt::print("{:>3} |{:>2}{} {} {} {}", ins_idx, depth, indent, repr(ins.op), ins.oparg_string, vt);
+        switch (ins.oparg_type) {
             case TbValueType::Bool: {
-                fmt::print(" {}\n", ins.oparg2_bool);
+                fmt::print(" {}\n", ins.oparg_bool);
             } break;
             case TbValueType::Int: {
-                fmt::print(" {}\n", ins.oparg2_int);
+                fmt::print(" {}\n", ins.oparg_int);
             } break;
             default: {
                 fmt::print("\n");

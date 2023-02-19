@@ -77,7 +77,7 @@ struct TbInstruction {
     Comment(const std::string& comment) {
         TbInstruction ins;
         ins.op = TbOperator::Comment;
-        ins.oparg1 = comment;
+        ins.oparg_string = comment;
         return ins;
     }
 
@@ -85,7 +85,7 @@ struct TbInstruction {
     ArrayStart(const std::string optional_comment = "") {
         TbInstruction ins;
         ins.op = TbOperator::ArrayStart;
-        ins.oparg1 = optional_comment;
+        ins.oparg_string = optional_comment;
         return ins;
     }
 
@@ -93,7 +93,7 @@ struct TbInstruction {
     ArrayEnd(const std::string optional_comment = "") {
         TbInstruction ins;
         ins.op = TbOperator::ArrayEnd;
-        ins.oparg1 = optional_comment;
+        ins.oparg_string = optional_comment;
         return ins;
     }
 
@@ -101,7 +101,7 @@ struct TbInstruction {
     TableStart(const std::string optional_comment = "") {
         TbInstruction ins;
         ins.op = TbOperator::TableStart;
-        ins.oparg1 = optional_comment;
+        ins.oparg_string = optional_comment;
         return ins;
     }
 
@@ -109,7 +109,7 @@ struct TbInstruction {
     TableEnd(const std::string optional_comment = "") {
         TbInstruction ins;
         ins.op = TbOperator::TableEnd;
-        ins.oparg1 = optional_comment;
+        ins.oparg_string = optional_comment;
         return ins;
     }
 
@@ -117,7 +117,7 @@ struct TbInstruction {
     Key(const std::string& key) {
         TbInstruction ins;
         ins.op = TbOperator::Key;
-        ins.oparg1 = key;
+        ins.oparg_string = key;
         return ins;
     }
 
@@ -125,8 +125,8 @@ struct TbInstruction {
     Value(const char* value) {
         TbInstruction ins;
         ins.op = TbOperator::Value;
-        ins.oparg2_type = TbValueType::String;
-        ins.oparg1 = value;
+        ins.oparg_type = TbValueType::String;
+        ins.oparg_string = value;
         return ins;
     }
 
@@ -134,8 +134,8 @@ struct TbInstruction {
     Value(const std::string& value) {
         TbInstruction ins;
         ins.op = TbOperator::Value;
-        ins.oparg2_type = TbValueType::String;
-        ins.oparg1 = value;
+        ins.oparg_type = TbValueType::String;
+        ins.oparg_string = value;
         return ins;
     }
 
@@ -143,8 +143,8 @@ struct TbInstruction {
     Value(const int value) {
         TbInstruction ins;
         ins.op = TbOperator::Value;
-        ins.oparg2_type = TbValueType::Int;
-        ins.oparg2_int = value;
+        ins.oparg_type = TbValueType::Int;
+        ins.oparg_int = value;
         return ins;
     }
 
@@ -152,8 +152,8 @@ struct TbInstruction {
     Value(const bool value) {
         TbInstruction ins;
         ins.op = TbOperator::Value;
-        ins.oparg2_type = TbValueType::Bool;
-        ins.oparg2_bool = value;
+        ins.oparg_type = TbValueType::Bool;
+        ins.oparg_bool = value;
         return ins;
     }
 
@@ -161,18 +161,17 @@ struct TbInstruction {
     Value(const float value) {
         TbInstruction ins;
         ins.op = TbOperator::Value;
-        ins.oparg2_type = TbValueType::Float;
-        ins.oparg2_float = value;
+        ins.oparg_type = TbValueType::Float;
+        ins.oparg_float = value;
         return ins;
     }
 
     TbOperator op;
-    std::string oparg1; // also used for oparg2_string
-    TbValueType oparg2_type = TbValueType::None;
-    int oparg2_int = 0;
-    bool oparg2_bool = false;
-    
-    float oparg2_float = 0.f;
+    std::string oparg_string; // also used for oparg2_string
+    TbValueType oparg_type = TbValueType::None;
+    int oparg_int = 0;
+    bool oparg_bool = false;
+    float oparg_float = 0.f;
 
     // HACK(ja): Extra flag used to determine comment context
     bool first_on_line = false;
@@ -189,12 +188,12 @@ struct TbInstruction {
 
     bool
     operator==(const TbInstruction& other) {
-        return op == other.op && oparg2_type == other.oparg2_type && (
-            (oparg2_type == TbValueType::String && oparg1 == other.oparg1) ||
-            (oparg2_type == TbValueType::Int && oparg2_int == other.oparg2_int) ||
-            (oparg2_type == TbValueType::Float && (std::abs(oparg2_float - other.oparg2_float) < 0.0000001)) || // TODO: good enough?
-            (oparg2_type == TbValueType::Bool && oparg2_bool == other.oparg2_bool) ||
-            (oparg2_type == TbValueType::None)
+        return op == other.op && oparg_type == other.oparg_type && (
+            (oparg_type == TbValueType::String && oparg_string == other.oparg_string) ||
+            (oparg_type == TbValueType::Int && oparg_int == other.oparg_int) ||
+            (oparg_type == TbValueType::Float && (std::abs(oparg_float - other.oparg_float) < 0.0000001)) || // TODO: good enough?
+            (oparg_type == TbValueType::Bool && oparg_bool == other.oparg_bool) ||
+            (oparg_type == TbValueType::None)
         );
     }
 };

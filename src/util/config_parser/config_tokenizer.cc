@@ -139,6 +139,8 @@ diffy::config_tokenizer::token_dump(std::vector<Token> tokens, const std::string
     }
 }
 
+// TODO: use the same style of state machine as in the parser?
+
 bool
 diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& options, ParseResult& result) {
     result.ok = false;

@@ -24,8 +24,8 @@ dump_test_case(std::vector<TbInstruction> instructions) {
         fmt::print(
             "REQUIRE(instructions[{:2}] == TbInstruction {{ {}TbOperator::{}, \"{}\", TbValueType::{}, {}, "
             "{} }});\n",
-            index, std::string(depth < 0 ? 0 : depth * 2, ' '), repr(ins.op), ins.oparg1,
-            repr(ins.oparg2_type), ins.oparg2_int, ins.oparg2_bool);
+            index, std::string(depth < 0 ? 0 : depth * 2, ' '), repr(ins.op), ins.oparg_string,
+            repr(ins.oparg_type), ins.oparg_int, ins.oparg_bool);
 
         if (ins.op == TbOperator::TableStart || ins.op == TbOperator::ArrayStart)
             depth++;

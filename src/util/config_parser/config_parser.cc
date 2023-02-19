@@ -278,7 +278,7 @@ diffy::cfg_parse(const std::string& input_data,
     auto emit_ins = [&](TbInstruction ins, bool first_on_line = false) {
         static int cnt = 0;
         cnt++;
-        TRACE("* Emit[{}] {} {}\n", cnt, repr(ins.op), ins.oparg1);
+        TRACE("* Emit[{}] {} {}\n", cnt, repr(ins.op), ins.oparg_string);
         ins.first_on_line = first_on_line;
         emit_cb(ins);
     };
@@ -400,19 +400,19 @@ diffy::cfg_parse(const std::string& input_data,
                 PARSER_CONSUME(TokenId_MetaValue, ([&](const std::string& value) {
                                    TbInstruction ins = {TbOperator::Value, value};
                                    if (token.id & TokenId_Boolean) {
-                                       ins.oparg2_type = TbValueType::Bool;
-                                       ins.oparg2_bool = token.token_boolean_arg;
+                                       ins.oparg_type = TbValueType::Bool;
+                                       ins.oparg_bool = token.token_boolean_arg;
                                    } else if (token.id & TokenId_Integer) {
-                                       ins.oparg2_type = TbValueType::Int;
-                                       ins.oparg2_int = token.token_int_arg;
+                                       ins.oparg_type = TbValueType::Int;
+                                       ins.oparg_int = token.token_int_arg;
                                     } else if (token.id & TokenId_Float) {
-                                       ins.oparg2_type = TbValueType::Float;
-                                       ins.oparg2_float = token.token_float_arg;
+                                       ins.oparg_type = TbValueType::Float;
+                                       ins.oparg_float = token.token_float_arg;
                                    } else if (token.id & TokenId_String) {
-                                       ins.oparg2_type = TbValueType::String;
+                                       ins.oparg_type = TbValueType::String;
                                    } else {
                                        assert(false && "Not reached");
-                                       ins.oparg2_type = TbValueType::String;
+                                       ins.oparg_type = TbValueType::String;
                                    }
                                    emit_ins(ins);
                                }));
@@ -624,10 +624,10 @@ diffy::cfg_parse_value_tree(const std::string& input_data, diffy::ParseResult& r
         switch (ins.op) {
             case TbOperator::Comment: {
                 if (comment_context_value != nullptr) {
-                    comment_context_value->value_comments.push_back(ins.oparg1);
+                    comment_context_value->value_comments.push_back(ins.oparg_string);
                     comment_context_value = nullptr;
                 } else {
-                    comments.push_back(ins.oparg1);
+                    comments.push_back(ins.oparg_string);
                 }
             } break;
             case TbOperator::TableStart: {
@@ -657,20 +657,20 @@ diffy::cfg_parse_value_tree(const std::string& input_data, diffy::ParseResult& r
 
             } break;
             case TbOperator::Key: {
-                last_key = ins.oparg1;
+                last_key = ins.oparg_string;
                 comment_context_value = nullptr;
             } break;
             case TbOperator::Value: {
                 Value value;
 
-                if (ins.oparg2_type == TbValueType::Int) {
-                    value = make_value(Value{Value::Int{ins.oparg2_int}});
-                } else if (ins.oparg2_type == TbValueType::Bool) {
-                    value = make_value(Value{Value::Bool{ins.oparg2_bool}});
-                } else if (ins.oparg2_type == TbValueType::Float) {
-                    value = make_value(Value{Value::Float{ins.oparg2_float}});
+                if (ins.oparg_type == TbValueType::Int) {
+                    value = make_value(Value{Value::Int{ins.oparg_int}});
+                } else if (ins.oparg_type == TbValueType::Bool) {
+                    value = make_value(Value{Value::Bool{ins.oparg_bool}});
+                } else if (ins.oparg_type == TbValueType::Float) {
+                    value = make_value(Value{Value::Float{ins.oparg_float}});
                 } else {
-                    value = make_value(Value{Value::String{ins.oparg1}});
+                    value = make_value(Value{Value::String{ins.oparg_string}});
                 }
 
                 auto& top_value = value_stack.top().get();

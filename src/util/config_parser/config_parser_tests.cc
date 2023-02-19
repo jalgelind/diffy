@@ -25,49 +25,49 @@ dump_instructions(std::vector<TbInstruction> instructions) {
         switch (ins.op) {
             case TbOperator::Comment: {
                 ctor_name = "Comment";
-                ctor_args = "\"" + ins.oparg1 + "\"";
+                ctor_args = "\"" + ins.oparg_string + "\"";
             } break;
             case TbOperator::Key: {
                 ctor_name = "Key";
-                ctor_args = "\"" + ins.oparg1 + "\"";
+                ctor_args = "\"" + ins.oparg_string + "\"";
             } break;
             case TbOperator::TableStart: {
                 ctor_name = "TableStart";
-                ctor_args = "\"" + ins.oparg1 + "\"";
+                ctor_args = "\"" + ins.oparg_string + "\"";
             } break;
             case TbOperator::TableEnd: {
                 ctor_name = "TableEnd";
-                ctor_args = "\"" + ins.oparg1 + "\"";
+                ctor_args = "\"" + ins.oparg_string + "\"";
             } break;
             case TbOperator::ArrayStart: {
                 ctor_name = "ArrayStart";
-                ctor_args = "\"" + ins.oparg1 + "\"";
+                ctor_args = "\"" + ins.oparg_string + "\"";
             } break;
             case TbOperator::ArrayEnd: {
                 ctor_name = "ArrayEnd";
-                ctor_args = "\"" + ins.oparg1 + "\"";
+                ctor_args = "\"" + ins.oparg_string + "\"";
             } break;
             case TbOperator::Value: {
-                switch (ins.oparg2_type) {
+                switch (ins.oparg_type) {
                     case TbValueType::None: {
                     ctor_name = "Value";
                     ctor_args = "we don't have None values?";
                     } break;
                     case TbValueType::Int: {
                         ctor_name = "Value";
-                        ctor_args = fmt::format("{}", ins.oparg2_int);
+                        ctor_args = fmt::format("{}", ins.oparg_int);
                     } break;
                     case TbValueType::Bool: {
                         ctor_name = "Value";
-                        ctor_args = fmt::format("{}", ins.oparg2_bool);
+                        ctor_args = fmt::format("{}", ins.oparg_bool);
                     } break;
                     case TbValueType::String: {
                         ctor_name = "Value";
-                        ctor_args = fmt::format("\"{}\"", ins.oparg1);
+                        ctor_args = fmt::format("\"{}\"", ins.oparg_string);
                     } break;
                     case TbValueType::Float: {
                         ctor_name = "Value";
-                        ctor_args = fmt::format("{}", ins.oparg2_float);
+                        ctor_args = fmt::format("{}", ins.oparg_float);
                     } break;
                 }
             } break;
