@@ -1,5 +1,6 @@
 #include "config_parser.hpp"
 #include "config_parser_utils.hpp"
+#include "config_serializer.hpp"
 
 #include <doctest.h>
 

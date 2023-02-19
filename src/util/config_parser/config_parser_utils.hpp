@@ -19,15 +19,6 @@ cfg_load_file(const std::string& file_path,
               ParseResult& result,
               std::function<void(TbInstruction)> consume_instruction);
 
-// Serialize all entries in the given Value. We output [section] headers
-// for the keys in the root table. The input Value must hold a Value::Table.
-std::string
-cfg_serialize(Value& value, int depth = 0);
-
-// Serialize any value. Does not output sections.
-std::string
-cfg_serialize_obj(Value& value);
-
 //
 // Debug / formatting utilities
 //

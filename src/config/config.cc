@@ -4,6 +4,7 @@
 #include <processing/tokenizer.hpp>
 #include <util/color.hpp>
 #include <util/config_parser/config_parser.hpp>
+#include <util/config_parser/config_serializer.hpp>
 #include <util/config_parser/config_parser_utils.hpp>
 
 #include <fmt/format.h>
