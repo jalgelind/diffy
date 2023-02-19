@@ -63,27 +63,47 @@ as_token_desc(TokenId id) {
     return std::nullopt;
 }
 
-std::string
-token_display(Token token, const std::string& input_text) {
-    auto original = token.str_from(input_text);
+}  // namespace
+
+const std::string
+Token::str_display_from(const std::string& input_text) const {
+    auto original = str_from(input_text);
     std::string sanitized;
-
-    const std::unordered_map<char, std::string> replacement_table {
-        { '\n', "\\n" },
-        { '"', "\\\"" },
-    };
-
     for (auto& c : original) {
-        if (auto i = replacement_table.find(c); i != replacement_table.end()) {
-            sanitized += (*i).second;
-        } else {
-            sanitized += c;
+        switch (c) {
+        case '\"':
+            sanitized += "\\\"";
+            break;
+        case '\'':
+            sanitized += "\\\'";
+            break;
+        case '\\':
+            sanitized += "\\\\";
+            break;
+        case '\a':
+            sanitized += "\\a";
+            break;
+        case '\b':
+            sanitized += "\\b";
+            break;
+        case '\n':
+            sanitized += "\\n";
+            break;
+        case '\t':
+            sanitized += "\\t";
+            break;
+        // and so on
+        default:
+            if (iscntrl(c)) {
+                sanitized += fmt::format("{:03o}", c);
+            }
+            else {
+                sanitized += c;
+            }
         }
     }
     return sanitized;
 }
-
-}  // namespace
 
 bool
 diffy::config_tokenizer::is_whitespace(char c) {
@@ -115,7 +135,7 @@ diffy::config_tokenizer::token_dump(std::vector<Token> tokens, const std::string
     for (auto& r : tokens) {
         fmt::print("{:02} [line: {:02}, col: {:02}, off: {:03}, len: {:2}, seq: {:2}]: {:18}    {}\n", j++,
                    r.line, r.column, r.start, r.length, r.sequence_index,
-                   "'" + token_display(r, source_text) + "'", repr(r.id));
+                   "'" + r.str_display_from(source_text) + "'", repr(r.id));
     }
 }
 
