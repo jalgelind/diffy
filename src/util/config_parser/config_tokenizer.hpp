@@ -68,7 +68,6 @@ struct Token {
 
     const std::string
     str_display_from(const std::string& line) const;
-
 };
 
 struct ParseOptions {

@@ -6,9 +6,9 @@
 #include <cctype>
 #include <charconv>
 #include <optional>
-#include <unordered_map>
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
 using namespace diffy;
@@ -71,35 +71,34 @@ Token::str_display_from(const std::string& input_text) const {
     std::string sanitized;
     for (auto& c : original) {
         switch (c) {
-        case '\"':
-            sanitized += "\\\"";
-            break;
-        case '\'':
-            sanitized += "\\\'";
-            break;
-        case '\\':
-            sanitized += "\\\\";
-            break;
-        case '\a':
-            sanitized += "\\a";
-            break;
-        case '\b':
-            sanitized += "\\b";
-            break;
-        case '\n':
-            sanitized += "\\n";
-            break;
-        case '\t':
-            sanitized += "\\t";
-            break;
-        // and so on
-        default:
-            if (iscntrl(c)) {
-                sanitized += fmt::format("{:03o}", c);
-            }
-            else {
-                sanitized += c;
-            }
+            case '\"':
+                sanitized += "\\\"";
+                break;
+            case '\'':
+                sanitized += "\\\'";
+                break;
+            case '\\':
+                sanitized += "\\\\";
+                break;
+            case '\a':
+                sanitized += "\\a";
+                break;
+            case '\b':
+                sanitized += "\\b";
+                break;
+            case '\n':
+                sanitized += "\\n";
+                break;
+            case '\t':
+                sanitized += "\\t";
+                break;
+            // and so on
+            default:
+                if (iscntrl(c)) {
+                    sanitized += fmt::format("{:03o}", c);
+                } else {
+                    sanitized += c;
+                }
         }
     }
     return sanitized;
@@ -224,7 +223,7 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
                         result.ok = false;
                         result.error =
                             fmt::format("Unterminated string encountered newline (line {}, col {})",
-                                        current_line_number + 1 , cursor - last_new_line_offset + 1);
+                                        current_line_number + 1, cursor - last_new_line_offset + 1);
                         return result.ok;
                     }
                 }
@@ -310,7 +309,7 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
             }
 
             if (((tok.id & TokenId_Doubleslash) || tok.id & TokenId_Hashtag)) {
-                // Keep the comment tokens for '# comment' and '// comment'   
+                // Keep the comment tokens for '# comment' and '// comment'
             } else {
                 cursor += tok.length;
             }
@@ -370,7 +369,8 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
                 token.token_int_arg = tmp_int;
             } else {
                 int tmp_float = 0.0f;
-                auto result = std::from_chars(token_str.data(), token_str.data() + token_str.size(), tmp_float);
+                auto result =
+                    std::from_chars(token_str.data(), token_str.data() + token_str.size(), tmp_float);
                 if (result.ec != std::errc::invalid_argument) {
                     token.id = TokenId_Float;
                     token.token_float_arg = tmp_float;

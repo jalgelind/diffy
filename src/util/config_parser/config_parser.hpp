@@ -184,13 +184,13 @@ struct TbInstruction {
 
     bool
     operator==(const TbInstruction& other) {
-        return op == other.op && oparg_type == other.oparg_type && (
-            (oparg_type == TbValueType::String && oparg_string == other.oparg_string) ||
-            (oparg_type == TbValueType::Int && oparg_int == other.oparg_int) ||
-            (oparg_type == TbValueType::Float && (std::abs(oparg_float - other.oparg_float) < 0.0000001)) ||
-            (oparg_type == TbValueType::Bool && oparg_bool == other.oparg_bool) ||
-            (oparg_type == TbValueType::None)
-        );
+        return op == other.op && oparg_type == other.oparg_type &&
+               ((oparg_type == TbValueType::String && oparg_string == other.oparg_string) ||
+                (oparg_type == TbValueType::Int && oparg_int == other.oparg_int) ||
+                (oparg_type == TbValueType::Float &&
+                 (std::abs(oparg_float - other.oparg_float) < 0.0000001)) ||
+                (oparg_type == TbValueType::Bool && oparg_bool == other.oparg_bool) ||
+                (oparg_type == TbValueType::None));
     }
 };
 
@@ -265,8 +265,7 @@ repr(Value& v);
 // clang-format off
 enum class ParseErrorKind {
     None         = 1 << 0,
-    File         = 1 << 1, // File related, kinda catch-all for now.
-                           // TODO: check file permissions and file presence separately
+    File         = 1 << 1, // File related, could be made more granular
     Tokenization = 1 << 2,
     Parsing      = 1 << 3,
     Other        = 1 << 4,

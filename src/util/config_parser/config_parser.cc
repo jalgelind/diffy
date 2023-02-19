@@ -33,14 +33,17 @@ str_split2(const std::string_view s, char delimiter) {
 }
 
 bool
-tokenize(const std::string& input_data, std::vector<config_tokenizer::Token>& tokens, diffy::ParseResult& result) {
+tokenize(const std::string& input_data,
+         std::vector<config_tokenizer::Token>& tokens,
+         diffy::ParseResult& result) {
     diffy::config_tokenizer::ParseOptions config_tokenizer_options;
     config_tokenizer_options.strip_newlines = true;
     config_tokenizer_options.strip_spaces = true;
     config_tokenizer_options.strip_quotes = true;                   // drop "'" and '"'
     config_tokenizer_options.strip_annotated_string_tokens = true;  // drop '#' and '//' from comments
     config_tokenizer_options.strip_comments = false;
-    config_tokenizer_options.append_terminator = true;  // Append termination token to avoid some bounds checking
+    config_tokenizer_options.append_terminator =
+        true;  // Append termination token to avoid some bounds checking
 
     diffy::config_tokenizer::ParseResult config_tokenizer_result;
     if (!diffy::config_tokenizer::tokenize(input_data, config_tokenizer_options, config_tokenizer_result)) {
@@ -115,7 +118,7 @@ Value::set_value_at(const std::string_view dotted_path, Value value) {
             iter = &(*iter)[key];
             continue;
         }
-        
+
         (*iter)[std::string(key)] = value;
         return true;
     }
@@ -193,7 +196,7 @@ diffy::cfg_parse(const std::string& input_data,
 
     std::size_t cursor = 0;
 
-// clang-format off
+    // clang-format off
     #define PARSER_NEXT_STATE() {                   \
         continue;                                   \
     }
@@ -319,9 +322,8 @@ diffy::cfg_parse(const std::string& input_data,
                 }
 
                 // Maybe we're parsing something like `key = value`?
-                if (state_selection_tokens.size() > 2 &&
-                        state_selection_tokens[0].id & TokenId_Identifier &&
-                        state_selection_tokens[1].id & TokenId_Assign) {
+                if (state_selection_tokens.size() > 2 && state_selection_tokens[0].id & TokenId_Identifier &&
+                    state_selection_tokens[1].id & TokenId_Assign) {
                     scope_stack.push(Scope::Table);
                     emit_ins(TbInstruction{TbOperator::TableStart});
                     state = State::ParseKey;
@@ -353,9 +355,8 @@ diffy::cfg_parse(const std::string& input_data,
                 scope_stack.push(Scope::Section);
                 TRACE("* Pushing stack (section) {}\n", repr(scope_stack.top()));
 
-                PARSER_CONSUME(TokenId_Identifier, ([&](const std::string& key) {
-                                   emit_ins(TbInstruction::Key(key));
-                               }));
+                PARSER_CONSUME(TokenId_Identifier,
+                               ([&](const std::string& key) { emit_ins(TbInstruction::Key(key)); }));
 
                 emit_ins(TbInstruction::TableStart());
 
@@ -372,9 +373,8 @@ diffy::cfg_parse(const std::string& input_data,
             case State::ParseKey: {
                 // Consume ´key´ in ´key = ...´
                 PARSER_EXPECT(TokenId_Identifier);
-                PARSER_CONSUME(TokenId_Identifier, ([&](const std::string& key) {
-                                   emit_ins(TbInstruction::Key(key));
-                               }));
+                PARSER_CONSUME(TokenId_Identifier,
+                               ([&](const std::string& key) { emit_ins(TbInstruction::Key(key)); }));
 
                 PARSER_EAT_COMMENTS();
 
@@ -398,21 +398,21 @@ diffy::cfg_parse(const std::string& input_data,
             } break;
             case State::ParseValue: {
                 PARSER_CONSUME(TokenId_MetaValue, ([&](const std::string& value) {
-                    TbInstruction ins;
-                    if (token.id & TokenId_Boolean) {
-                        ins = TbInstruction::Value(token.token_boolean_arg);
-                    } else if (token.id & TokenId_Integer) {
-                        ins = TbInstruction::Value(token.token_int_arg);
-                    } else if (token.id & TokenId_Float) {
-                        ins = TbInstruction::Value(token.token_float_arg);
-                    } else if (token.id & TokenId_String) {
-                        ins = TbInstruction::Value(token.str_from(input_data));
-                    } else {
-                        assert(false && "Not reached");
-                        ins.oparg_type = TbValueType::String;
-                    }
-                    emit_ins(ins);
-                }));
+                                   TbInstruction ins;
+                                   if (token.id & TokenId_Boolean) {
+                                       ins = TbInstruction::Value(token.token_boolean_arg);
+                                   } else if (token.id & TokenId_Integer) {
+                                       ins = TbInstruction::Value(token.token_int_arg);
+                                   } else if (token.id & TokenId_Float) {
+                                       ins = TbInstruction::Value(token.token_float_arg);
+                                   } else if (token.id & TokenId_String) {
+                                       ins = TbInstruction::Value(token.str_from(input_data));
+                                   } else {
+                                       assert(false && "Not reached");
+                                       ins.oparg_type = TbValueType::String;
+                                   }
+                                   emit_ins(ins);
+                               }));
 
                 PARSER_EAT_COMMENTS();
 
@@ -485,9 +485,8 @@ diffy::cfg_parse(const std::string& input_data,
 
                 // Consume ´key´ in ´key = ...´
                 PARSER_EXPECT(TokenId_Identifier);
-                PARSER_CONSUME(TokenId_Identifier, ([&](const std::string& key) {
-                                   emit_ins(TbInstruction::Key(key));
-                               }));
+                PARSER_CONSUME(TokenId_Identifier,
+                               ([&](const std::string& key) { emit_ins(TbInstruction::Key(key)); }));
 
                 PARSER_EAT_COMMENTS();
 

@@ -50,8 +50,8 @@ dump_instructions(std::vector<TbInstruction> instructions) {
             case TbOperator::Value: {
                 switch (ins.oparg_type) {
                     case TbValueType::None: {
-                    ctor_name = "Value";
-                    ctor_args = "we don't have None values?";
+                        ctor_name = "Value";
+                        ctor_args = "we don't have None values?";
                     } break;
                     case TbValueType::Int: {
                         ctor_name = "Value";
@@ -79,9 +79,8 @@ dump_instructions(std::vector<TbInstruction> instructions) {
         }
 
         auto sdepth = std::string(depth < 0 ? 0 : depth * 2, ' ');
-        fmt::print(
-            "REQUIRE(instructions[{:>3}] == {}TbInstruction::{}({}));\n",
-            index, sdepth, ctor_name, ctor_args);
+        fmt::print("REQUIRE(instructions[{:>3}] == {}TbInstruction::{}({}));\n", index, sdepth, ctor_name,
+                   ctor_args);
 
         if (ins.op == TbOperator::TableStart || ins.op == TbOperator::ArrayStart)
             depth++;
@@ -102,7 +101,7 @@ TEST_CASE("parser") {
         }
 
         REQUIRE(result.is_ok());
-        //dump_instructions(instructions);
+        // dump_instructions(instructions);
         // clang-format off
         REQUIRE(instructions.size() == 10);
         REQUIRE(instructions[  0] == TbInstruction::TableStart());
@@ -127,7 +126,7 @@ TEST_CASE("parser") {
             printf("%s\n", result.error.c_str());
         }
         REQUIRE(result.is_ok());
-        //dump_instructions(instructions);
+        // dump_instructions(instructions);
         // clang-format off
         REQUIRE(instructions.size() == 10);
         REQUIRE(instructions[  0] == TbInstruction::TableStart());
@@ -154,7 +153,7 @@ TEST_CASE("parser") {
             printf("%s\n", result.error.c_str());
         }
         REQUIRE(result.is_ok());
-        //dump_instructions(instructions);
+        // dump_instructions(instructions);
 
         // clang-format off
         REQUIRE(instructions.size() == 3);
@@ -175,7 +174,7 @@ TEST_CASE("parser") {
             printf("%s\n", result.error.c_str());
         }
         REQUIRE(result.is_ok());
-        //dump_instructions(instructions);
+        // dump_instructions(instructions);
         // clang-format off
         REQUIRE(instructions.size() == 3);
         REQUIRE(instructions[  0] == TbInstruction::Key("section"));
@@ -197,7 +196,7 @@ TEST_CASE("parser") {
             printf("%s\n", result.error.c_str());
         }
         REQUIRE(result.is_ok());
-        //dump_instructions(instructions);
+        // dump_instructions(instructions);
         // clang-format off
         REQUIRE(instructions.size() == 5);
         REQUIRE(instructions[  0] == TbInstruction::Comment("# first comment"));
@@ -220,7 +219,7 @@ TEST_CASE("parser") {
             printf("%s\n", result.error.c_str());
         }
         REQUIRE(result.is_ok());
-        //dump_instructions(instructions);
+        // dump_instructions(instructions);
         // clang-format off
         REQUIRE(instructions.size() == 5);
         REQUIRE(instructions[  0] == TbInstruction::Key("section"));
@@ -245,10 +244,10 @@ TEST_CASE("parser") {
             printf("%s\n", result.error.c_str());
         }
 
-        //cfg_dump_instructions(instructions)
+        // cfg_dump_instructions(instructions)
 
         REQUIRE(result.is_ok());
-        //dump_instructions(instructions);
+        // dump_instructions(instructions);
         // clang-format off
         REQUIRE(instructions.size() == 9);
         REQUIRE(instructions[  0] == TbInstruction::Key("section"));
@@ -281,7 +280,7 @@ TEST_CASE("parser") {
             printf("%s\n", result.error.c_str());
         }
         REQUIRE(result.is_ok());
-        //dump_instructions(instructions);
+        // dump_instructions(instructions);
 
         // clang-format off
         REQUIRE(instructions.size() == 18);
@@ -320,7 +319,7 @@ TEST_CASE("parser") {
             printf("%s\n", result.error.c_str());
         }
         REQUIRE(result.is_ok());
-        //dump_instructions(instructions);
+        // dump_instructions(instructions);
         // clang-format off
         REQUIRE(instructions.size() == 21);
         REQUIRE(instructions[  0] == TbInstruction::Key("section"));
@@ -375,7 +374,7 @@ TEST_CASE("parser") {
             printf("%s\n", result.error.c_str());
         }
         REQUIRE(result.is_ok());
-        //dump_instructions(instructions);
+        // dump_instructions(instructions);
 
         // clang-format off
         REQUIRE(instructions.size() == 27);
@@ -454,7 +453,7 @@ TEST_CASE("parser") {
             printf("%s\n", result.error.c_str());
         }
         REQUIRE(result.is_ok());
-        //dump_instructions(instructions);
+        // dump_instructions(instructions);
 
         // clang-format off
         REQUIRE(instructions.size() == 110);
@@ -637,7 +636,7 @@ TEST_CASE("value-lookup") {
             root.set_value_at("cepa.depa", v);
 
             auto result = root.lookup_value_by_path("cepa.depa");
-            REQUIRE((int)result->get().as_float() == 2);
+            REQUIRE((int) result->get().as_float() == 2);
         }
     }
 }

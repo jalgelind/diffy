@@ -28,10 +28,8 @@ indent(int count) {
 
 void
 dump_value_object(Value& v, std::string& s, int depth) {
-    auto INDENT = [](int x) {
-        return std::string((x) *2, ' ');
-    };
-    
+    auto INDENT = [](int x) { return std::string((x) *2, ' '); };
+
     s += fmt::format("{}", INDENT(depth));
     s += fmt::format("Comments:\n");
     for (auto& comment : v.key_comments) {
@@ -209,7 +207,7 @@ serialize_section(Value& value, int depth, std::string& output) {
                 }
                 output += indent(depth) + k1 + " = ";
                 serialize_obj(v1, depth + 1, output, true, true);
-                //output += "\n";
+                // output += "\n";
                 output += "\n";
             });
             output += "\n";
