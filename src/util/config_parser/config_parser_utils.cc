@@ -94,32 +94,48 @@ bool
 cfg_load_file(const std::string& file_path,
               ParseResult& result,
               std::function<void(TbInstruction)> consume_instruction) {
-    std::ifstream ifs;
-    ifs.open(file_path, std::ios::in | std::ios::binary);
-    if (!ifs.is_open()) {
+    if (!std::filesystem::exists(file_path)) {
         result.kind = ParseErrorKind::File;
-        result.error = "Failed to open file for reading";
+        result.error = "File does not exist";
         return false;
     }
 
-    std::stringstream buffer;
-    buffer << ifs.rdbuf();
+    auto status = std::filesystem::status(file_path);
+    if (!std::filesystem::is_regular_file(status)) {
+        result.kind = ParseErrorKind::File;
+        result.error = "File is not a regular file";
+        return false;
+    }
+    if ((status.permissions() & std::filesystem::perms::owner_read) != std::filesystem::perms::owner_read) {
+        result.kind = ParseErrorKind::File;
+        result.error = "File does not have read permission";
+        return false;
+    }
 
-    return cfg_parse(buffer.str(), result, consume_instruction);
-}
+    std::ifstream ifs;
+    try {
+        ifs.open(file_path, std::ios::in | std::ios::binary);
+        if (!ifs.is_open()) {
+            result.kind = ParseErrorKind::File;
+            result.error = "Failed to open file for reading";
+            return false;
+        }
 
-std::string
-diffy::cfg_serialize_obj(Value& value) {
-    std::string output;
-    internal::serialize_obj(value, 1, output, true, false);
-    return output;
-}
+        std::stringstream buffer;
+        buffer << ifs.rdbuf();
 
-std::string
-diffy::cfg_serialize(Value& value, int depth) {
-    std::string output;
-    internal::serialize_section(value, depth, output);
-    return output;
+        if (buffer.str().empty()) {
+            result.kind = ParseErrorKind::File;
+            result.error = "File is empty";
+            return false;
+        }
+
+        return cfg_parse(buffer.str(), result, consume_instruction);
+    } catch (std::exception& e) {
+        result.kind = ParseErrorKind::File;
+        result.error = "Failed to load file: " + std::string(e.what());
+        return false;
+    }
 }
 
 //
