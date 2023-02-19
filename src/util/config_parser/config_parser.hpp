@@ -187,7 +187,7 @@ struct TbInstruction {
         return op == other.op && oparg_type == other.oparg_type && (
             (oparg_type == TbValueType::String && oparg_string == other.oparg_string) ||
             (oparg_type == TbValueType::Int && oparg_int == other.oparg_int) ||
-            (oparg_type == TbValueType::Float && (std::abs(oparg_float - other.oparg_float) < 0.0000001)) || // TODO: good enough?
+            (oparg_type == TbValueType::Float && (std::abs(oparg_float - other.oparg_float) < 0.0000001)) ||
             (oparg_type == TbValueType::Bool && oparg_bool == other.oparg_bool) ||
             (oparg_type == TbValueType::None)
         );
