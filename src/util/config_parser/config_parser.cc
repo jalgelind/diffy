@@ -666,6 +666,8 @@ diffy::cfg_parse_value_tree(const std::string& input_data, diffy::ParseResult& r
                     value = make_value(Value{Value::Int{ins.oparg2_int}});
                 } else if (ins.oparg2_type == TbValueType::Bool) {
                     value = make_value(Value{Value::Bool{ins.oparg2_bool}});
+                } else if (ins.oparg2_type == TbValueType::Float) {
+                    value = make_value(Value{Value::Float{ins.oparg2_float}});
                 } else {
                     value = make_value(Value{Value::String{ins.oparg1}});
                 }
