@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <functional>
 #include <optional>
@@ -84,9 +85,13 @@ struct TbInstruction {
 
     bool
     operator==(const TbInstruction& other) {
-        return op == other.op && oparg1 == other.oparg1 && oparg2_type == other.oparg2_type &&
-               oparg2_int == other.oparg2_int && oparg2_float == other.oparg2_float &&
-               oparg2_bool == other.oparg2_bool;
+        return op == other.op && oparg2_type == other.oparg2_type && (
+            (oparg2_type == TbValueType::String && oparg1 == other.oparg1) ||
+            (oparg2_type == TbValueType::Int && oparg2_int == other.oparg2_int) ||
+            (oparg2_type == TbValueType::Float && (std::abs(oparg2_float - other.oparg2_float) < 0.0000001)) || // TODO: good enough?
+            (oparg2_type == TbValueType::Bool && oparg2_bool == other.oparg2_bool) ||
+            (oparg2_type == TbValueType::None)
+        );
     }
 };
 
