@@ -261,8 +261,9 @@ diffy::cfg_parse(const std::string& input_data,
 
     #define PARSER_EAT_COMMENTS() {                                         \
         while (token.id & config_tokenizer::TokenId_Comment) {              \
-            emit_ins({TbOperator::Comment, token.str_from(input_data)},     \
-                         token.id & config_tokenizer::TokenId_FirstOnLine); \
+            auto ins = TbInstruction::Comment(token.str_from(input_data)); \
+            ins.set_first_on_line(token.id & config_tokenizer::TokenId_FirstOnLine); \
+            emit_ins(ins); \
             PARSER_NEXT_TOKEN();                                            \
         }                                                                   \
     }

@@ -3,6 +3,7 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <optional>
 #include <unordered_map>

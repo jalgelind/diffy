@@ -73,15 +73,119 @@ enum class TbOperator {
 
 // Tree builder instruction
 struct TbInstruction {
+    static TbInstruction
+    Comment(const std::string& comment) {
+        TbInstruction ins;
+        ins.op = TbOperator::Comment;
+        ins.oparg1 = comment;
+        return ins;
+    }
+
+    static TbInstruction
+    ArrayStart(const std::string optional_comment = "") {
+        TbInstruction ins;
+        ins.op = TbOperator::ArrayStart;
+        ins.oparg1 = optional_comment;
+        return ins;
+    }
+
+    static TbInstruction
+    ArrayEnd(const std::string optional_comment = "") {
+        TbInstruction ins;
+        ins.op = TbOperator::ArrayEnd;
+        ins.oparg1 = optional_comment;
+        return ins;
+    }
+
+    static TbInstruction
+    TableStart(const std::string optional_comment = "") {
+        TbInstruction ins;
+        ins.op = TbOperator::TableStart;
+        ins.oparg1 = optional_comment;
+        return ins;
+    }
+
+    static TbInstruction
+    TableEnd(const std::string optional_comment = "") {
+        TbInstruction ins;
+        ins.op = TbOperator::TableEnd;
+        ins.oparg1 = optional_comment;
+        return ins;
+    }
+
+    static TbInstruction
+    Key(const std::string& key) {
+        TbInstruction ins;
+        ins.op = TbOperator::Key;
+        ins.oparg1 = key;
+        return ins;
+    }
+
+    static TbInstruction
+    Value(const char* value) {
+        TbInstruction ins;
+        ins.op = TbOperator::Value;
+        ins.oparg2_type = TbValueType::String;
+        ins.oparg1 = value;
+        return ins;
+    }
+
+    static TbInstruction
+    Value(const std::string& value) {
+        TbInstruction ins;
+        ins.op = TbOperator::Value;
+        ins.oparg2_type = TbValueType::String;
+        ins.oparg1 = value;
+        return ins;
+    }
+
+    static TbInstruction
+    Value(const int value) {
+        TbInstruction ins;
+        ins.op = TbOperator::Value;
+        ins.oparg2_type = TbValueType::Int;
+        ins.oparg2_int = value;
+        return ins;
+    }
+
+    static TbInstruction
+    Value(const bool value) {
+        TbInstruction ins;
+        ins.op = TbOperator::Value;
+        ins.oparg2_type = TbValueType::Bool;
+        ins.oparg2_bool = value;
+        return ins;
+    }
+
+    static TbInstruction
+    Value(const float value) {
+        TbInstruction ins;
+        ins.op = TbOperator::Value;
+        ins.oparg2_type = TbValueType::Float;
+        ins.oparg2_float = value;
+        return ins;
+    }
+
     TbOperator op;
-    std::string oparg1;
+    std::string oparg1; // also used for oparg2_string
     TbValueType oparg2_type = TbValueType::None;
     int oparg2_int = 0;
-    float oparg2_float = 0.f;
     bool oparg2_bool = false;
+    
+    float oparg2_float = 0.f;
 
     // HACK(ja): Extra flag used to determine comment context
     bool first_on_line = false;
+
+    void
+    set_first_on_line(bool first_on_line) {
+        this->first_on_line = first_on_line;
+    }
+
+    bool
+    get_first_on_line(bool first_on_line) const {
+        return this->first_on_line;
+    }
 
     bool
     operator==(const TbInstruction& other) {
