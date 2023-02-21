@@ -1,0 +1,24 @@
+#!/bin/sh
+GITPAGER=$(git config --get core.pager)
+
+if [ -z "$GITPAGER" ]; then
+  GITPAGER="${PAGER:-less}"
+fi
+
+if [ "${GITPAGER%% *}" = "more" ] || [ "${GITPAGER%% *}" = "less" ]; then
+  GITPAGER="$GITPAGER -R"
+fi
+
+if [[ "$1" =~ ^-[0-9]+$ ]]; then
+    ARGS="HEAD~${1#-}"
+elif [[ -z "$1" ]]; then
+    ARGS="HEAD"
+else
+  ARGS="$*"
+fi
+
+if [[ -z "${DIFFY_GIT_BIN}" ]]; then
+  DIFFY_GIT_BIN="diffy"
+fi
+
+git difftool --no-prompt --extcmd="${DIFFY_GIT_BIN}" "$ARGS" | $GITPAGER

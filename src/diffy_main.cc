@@ -19,6 +19,7 @@
 #include <fmt/format.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <gsl/span>
 #include <iostream>
@@ -91,7 +92,7 @@ compute_diff(diffy::Algo algorithm,
 }  // namespace
 
 int
-main(int argc, char* argv[]) {
+main(int argc, char* argv[], char * environ[]) {
     diffy::ProgramOptions opts;
 
     auto show_help = [&](const std::string& optional_error_message) {
@@ -266,7 +267,11 @@ Side by side options:
         opts.left_file = argv[optind];
         opts.right_file = argv[optind + 1];
 
-        if (opts.left_file_name.empty()) {
+        auto git_prefix = getenv("GIT_PREFIX");
+        if (git_prefix != nullptr) {
+            auto git_base = getenv("BASE");
+            opts.left_file_name = git_base;
+        } else if (opts.left_file_name.empty()) {
             opts.left_file_name = opts.left_file;
         }
 
