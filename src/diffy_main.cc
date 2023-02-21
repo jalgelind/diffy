@@ -268,8 +268,8 @@ Side by side options:
         opts.right_file = argv[optind + 1];
 
         auto git_prefix = getenv("GIT_PREFIX");
-        if (git_prefix != nullptr) {
-            auto git_base = getenv("BASE");
+        auto git_base = getenv("BASE");
+        if (git_prefix != nullptr && git_base != nullptr) {
             opts.left_file_name = git_base;
         } else if (opts.left_file_name.empty()) {
             opts.left_file_name = opts.left_file;
