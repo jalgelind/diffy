@@ -20,6 +20,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <gsl/span>
 #include <iostream>
@@ -28,25 +29,59 @@
 #include <unordered_map>
 #include <vector>
 
-// TODO: What is it on windows? nul?
-const std::string PATH_NULL = "/dev/null";
+namespace fs = std::filesystem;
 
-namespace {
-bool
-is_file_consumable(const std::string& path) {
-#ifdef DIFFY_PLATFORM_WINDOWS
-    // TODO: We should at least check that it's a file.
-    return true;
-#else
-    if (path == PATH_NULL) {
-        return true;
+namespace diffy {
+
+enum class FileStatus {
+    kOk,
+    kNullPath,
+    kFileDoesNotExist,
+    kFileNotReadable,
+    kNoPermission,
+};
+
+FileStatus
+check_file_status(const std::string& path) {
+    if (path.empty() || path == "/dev/null" || path == "nul") {
+        return FileStatus::kNullPath;
     }
-    struct stat st;
-    if (stat(path.c_str(), &st) == -1) {
-        return false;
+
+    fs::path file_path(path);
+
+    if (!fs::exists(file_path)) {
+        return FileStatus::kFileDoesNotExist;
     }
-    return S_ISREG(st.st_mode) || S_ISFIFO(st.st_mode) || S_ISLNK(st.st_mode);
-#endif
+
+    if (!(fs::is_regular_file(file_path) || fs::is_fifo(file_path) || fs::is_symlink(file_path))) {
+        return FileStatus::kFileNotReadable;
+    }
+
+    auto perms = fs::status(path).permissions();
+    if (((perms & fs::perms::owner_read) == fs::perms::none) &&
+        ((perms & fs::perms::group_read) == fs::perms::none)) {
+        return FileStatus::kNoPermission;
+    }
+
+    return FileStatus::kOk;
+}
+
+std::string
+to_string(const FileStatus error_code) {
+    switch (error_code) {
+        case FileStatus::kOk:
+            return "Success";
+        case FileStatus::kFileDoesNotExist:
+            return "File does not exist";
+        case FileStatus::kFileNotReadable:
+            return "File is not readable (invalid file)";
+        case FileStatus::kNoPermission:
+            return "File is not readable (no permission)";
+        case FileStatus::kNullPath:
+            return "Null path";
+        default:
+            return "Unknown error";
+    }
 }
 
 bool
@@ -266,9 +301,6 @@ Side by side options:
             return false;
         }
 
-        opts.left_file = argv[optind];
-        opts.right_file = argv[optind + 1];
-
         if (0)
         {
             char** envp = environ;
@@ -285,9 +317,11 @@ Side by side options:
             }
         }
 
-        auto git_base = getenv("BASE");
-        if (invoked_as_git_tool && git_base != nullptr) {
-            opts.left_file_name = git_base;
+        opts.left_file = argv[optind];
+        opts.right_file = argv[optind + 1];
+
+        if (opts.right_file_name.empty()) {
+            opts.right_file_name = opts.right_file;
         } else if (opts.left_file_name.empty()) {
             opts.left_file_name = opts.left_file;
         }
@@ -296,34 +330,39 @@ Side by side options:
             opts.right_file_name = opts.right_file;
         }
 
-        // TODO: Check if file is readable.
-        bool a_valid = is_file_consumable(opts.left_file);
-        bool b_valid = is_file_consumable(opts.right_file);
+        auto a_status = diffy::check_file_status(opts.left_file);
+        auto b_status = diffy::check_file_status(opts.right_file);
         
-        // The left file is deleted
+        // When invoked as a ´git difftool´, try to handle cases where one of
+        // mhen a file is deleted or created.
+        // TODO: we should show if file permission flags changed
         if (invoked_as_git_tool) {
-            bool git_base_exists = std::filesystem::exists(git_base);
-            if (!git_base_exists) {
-                if (b_valid && opts.right_file != PATH_NULL) {
-                    fmt::print("'{}' was renamed to '{}'\n", git_base, opts.right_file);
-                    return true;
-                } else {
-                    fmt::print("'{}' was deleted\n", git_base);
-                    return true;
-                }
+            auto git_base = getenv("BASE");
+            if (a_status == diffy::FileStatus::kOk && b_status == diffy::FileStatus::kNullPath) {
+                opts.right_file_name = "";
+                opts.left_file_name = git_base;
+            } else if (a_status == diffy::FileStatus::kNullPath && b_status == diffy::FileStatus::kOk) {
+                opts.left_file_name = "";
+                opts.right_file_name = git_base;
+            } else if (a_status == diffy::FileStatus::kOk && b_status == diffy::FileStatus::kOk) {
+                opts.left_file_name = git_base;
+                opts.right_file_name = git_base;
             }
+        } else {
+            // Null paths will be readable (TODO: test on windows)
+            auto a_valid = a_status == diffy::FileStatus::kOk || a_status == diffy::FileStatus::kNullPath;
+            auto b_valid = b_status == diffy::FileStatus::kOk || b_status == diffy::FileStatus::kNullPath;
+            if (!a_valid || !b_valid) {
+                std::string err;
+                if (!a_valid)
+                    err += fmt::format("{}: {}\n", opts.left_file, diffy::to_string(a_status));
+                if (!b_valid)
+                    err += fmt::format("{}: {}\n", opts.right_file, diffy::to_string(b_status));
+                show_help(err);
+                return false;
+            }
+            return true;
         }
-
-        if (!a_valid || !b_valid) {
-            std::string err;
-            if (!a_valid)
-                err += fmt::format("{}: No such file\n", opts.left_file);
-            if (!b_valid)
-                err += fmt::format("{}: No such file\n", opts.right_file);
-            show_help(err);
-            return false;
-        }
-
         return true;
     };
 

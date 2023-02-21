@@ -1,9 +1,7 @@
 TODO
 ----
 * Allow arbitrary color names in config?
-* diffy-git + side-by-side view won't show changes to permissions
-  it just displays a line saying "No changes." when diffy doesn't see any content changes
-  maybe do what `git-icdiff` does instead of trying to get diffy-git to work
+* git-diffy does not show changes to permissions
 
 Most probably happening at some point
 -------------------------------------

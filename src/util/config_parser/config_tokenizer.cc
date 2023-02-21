@@ -303,9 +303,6 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
                 tok.column = start_idx - last_new_line_offset;
                 tok.sequence_index = result.tokens.size();
                 result.tokens.push_back(tok);
-                // fmt::print("accepting token {}\n", repr(tok.id));
-            } else {
-                // fmt::print("rejecting token {}\n", repr(tok.id));
             }
 
             if (((tok.id & TokenId_Doubleslash) || tok.id & TokenId_Hashtag)) {
