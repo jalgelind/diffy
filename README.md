@@ -43,21 +43,12 @@ You can create new ones with
 
 The side-by-side view has mostly been tested visually.
 
-
-
 Using diffy with git
 --------------------
+Copy `extras/diffy-git` to somewhere in your `$PATH`. This wrapper script invokes
+`diffy` as a difftool. It allows negative numbers similar to `git show -2`.
 
-Copy `extras/diffy-git` to somewhere in your `$PATH`.
-
-Invoke git with:
-
-    $ GIT_EXTERNAL_DIFF=diffy-git git diff
-
-Or configure git to use it:
-
-    $ git config [--global] diff.external diffy-git
-
+    $ git diffy -2
 
 
 References
