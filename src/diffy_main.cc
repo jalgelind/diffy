@@ -93,6 +93,8 @@ compute_diff(diffy::Algo algorithm,
 
 int
 main(int argc, char* argv[], char * environ[]) {
+    bool invoked_as_git_tool = getenv("GIT_PREFIX") != nullptr;
+
     diffy::ProgramOptions opts;
 
     auto show_help = [&](const std::string& optional_error_message) {
@@ -267,9 +269,24 @@ Side by side options:
         opts.left_file = argv[optind];
         opts.right_file = argv[optind + 1];
 
-        auto git_prefix = getenv("GIT_PREFIX");
+        if (0)
+        {
+            char** envp = environ;
+            while (*envp != NULL) {
+                printf("%s\n", *envp);
+                envp++;
+            }
+        }
+
+        if (0)
+        {
+            for (int i = optind; i < argc; i++) {
+                printf("arg %d: %s\n", i, argv[i]);
+            }
+        }
+
         auto git_base = getenv("BASE");
-        if (git_prefix != nullptr && git_base != nullptr) {
+        if (invoked_as_git_tool && git_base != nullptr) {
             opts.left_file_name = git_base;
         } else if (opts.left_file_name.empty()) {
             opts.left_file_name = opts.left_file;
@@ -282,6 +299,20 @@ Side by side options:
         // TODO: Check if file is readable.
         bool a_valid = is_file_consumable(opts.left_file);
         bool b_valid = is_file_consumable(opts.right_file);
+        
+        // The left file is deleted
+        if (invoked_as_git_tool) {
+            bool git_base_exists = std::filesystem::exists(git_base);
+            if (!git_base_exists) {
+                if (b_valid && opts.right_file != PATH_NULL) {
+                    fmt::print("'{}' was renamed to '{}'\n", git_base, opts.right_file);
+                    return true;
+                } else {
+                    fmt::print("'{}' was deleted\n", git_base);
+                    return true;
+                }
+            }
+        }
 
         if (!a_valid || !b_valid) {
             std::string err;
@@ -329,9 +360,10 @@ Side by side options:
     if (result.status == diffy::DiffResultStatus::NoChanges) {
         // In order to be compatible with 'diff', don't output this
         // helpful message in unified output mode.
-        if (!opts.unified)
+        if (!opts.unified && !invoked_as_git_tool) {
             puts("No changes.");
-        return 0;
+            return 0;
+        }
     } else if (result.status != diffy::DiffResultStatus::OK) {
         puts("Diff compute failed");
         return 1;
