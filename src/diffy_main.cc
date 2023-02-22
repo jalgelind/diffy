@@ -320,16 +320,6 @@ Side by side options:
         opts.left_file = argv[optind];
         opts.right_file = argv[optind + 1];
 
-        if (opts.right_file_name.empty()) {
-            opts.right_file_name = opts.right_file;
-        } else if (opts.left_file_name.empty()) {
-            opts.left_file_name = opts.left_file;
-        }
-
-        if (opts.right_file_name.empty()) {
-            opts.right_file_name = opts.right_file;
-        }
-
         auto a_status = diffy::check_file_status(opts.left_file);
         auto b_status = diffy::check_file_status(opts.right_file);
         
@@ -349,6 +339,13 @@ Side by side options:
                 opts.right_file_name = git_base;
             }
         } else {
+            if (opts.left_file_name.empty()) {
+                opts.left_file_name = opts.left_file;
+            }
+
+            if (opts.right_file_name.empty()) {
+                opts.right_file_name = opts.right_file;
+            }
             // Null paths will be readable (TODO: test on windows)
             auto a_valid = a_status == diffy::FileStatus::kOk || a_status == diffy::FileStatus::kNullPath;
             auto b_valid = b_status == diffy::FileStatus::kOk || b_status == diffy::FileStatus::kNullPath;
