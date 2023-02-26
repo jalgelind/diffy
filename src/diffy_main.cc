@@ -3,7 +3,6 @@
 #include "algorithms/patience.hpp"
 #include "config/config.hpp"
 #include "output/column_view.hpp"
-#include "output/edit_dump.hpp"
 #include "output/unified.hpp"
 #include "processing/diff_hunk.hpp"
 #include "processing/diff_hunk_annotate.hpp"
@@ -161,13 +160,6 @@ Side by side options:
 )"),
                                        argv[0], diffy::config_get_directory());
 
-#ifdef DIFFY_DEBUG
-        help += R"(
-    -d                         debug output
-    -t                         dump test case code
-        )";
-#endif
-
         help += "\n";
 
         help += "Config directory:\n    " + diffy::config_get_directory() + "\n\n";
@@ -179,8 +171,7 @@ Side by side options:
     };
 
     auto parse_args = [&](int in_argc, char* in_argv[]) {
-        static struct option long_options[] = {{"debug", no_argument, 0, 'd'},
-                                               {"help", no_argument, 0, 'h'},
+        static struct option long_options[] = {{"help", no_argument, 0, 'h'},
                                                {"side-by-side", optional_argument, 0, 'S'},
                                                {"line", optional_argument, 0, 'l'},
                                                {"unified", optional_argument, 0, 'U'},
@@ -194,16 +185,11 @@ Side by side options:
                                                {"list-colors", no_argument, 0, '1'},
                                                {0, 0, 0, 0}};
         int c = 0, option_index = 0;
-        while ((c = getopt_long(in_argc, in_argv, "a:dhlsS:uU:W:o:n:iw", long_options, &option_index)) >= 0) {
+        while ((c = getopt_long(in_argc, in_argv, "a:hlsS:uU:W:o:n:iw", long_options, &option_index)) >= 0) {
             switch (c) {
                 case 'v':
                     fmt::print("version: {}\n", DIFFY_VERSION);
                     exit(0);
-#ifdef DIFFY_DEBUG
-                case 'd':
-                    opts.debug = true;
-                    break;
-#endif
                 case 'h':
                     opts.help = true;
                     return true;
