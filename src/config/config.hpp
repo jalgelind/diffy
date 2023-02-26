@@ -30,6 +30,9 @@ struct ProgramOptions {
     std::string left_file;
     std::string right_file;
 
+    std::string left_file_permissions;
+    std::string right_file_permissions;
+
     std::string left_file_name;
     std::string right_file_name;
 };

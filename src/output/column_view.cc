@@ -13,6 +13,7 @@
 #include <gsl/span>
 #include <numeric>
 #include <stack>
+#include <tuple>
 
 using namespace diffy;
 
@@ -255,8 +256,43 @@ insert_alignment_rows(DisplayColumns& columns) {
     }
 }
 
+static std::tuple<std::string, std::string>
+color_code_file_permissions(const std::string& delete_style,
+                            const std::string& insert_style,
+                            const std::string& normal_style,
+                            const std::string& left,
+                            const std::string& right) {
+    if (left == right || left.size() != right.size()) {
+        return std::make_tuple(left, right);
+    }
+
+    std::string styled_left, styled_right;
+
+    for (int i = 0; i < left.size(); i++) {
+        if (left[i] != right[i]) {
+            // Don't highlight deletion when there was no pemission previously
+             if (left[i] == '-') {
+                styled_left += left[i];
+             } else {
+                // Reset the style in case we enable any attributes that isn't set in the normal style
+                styled_left += delete_style + left[i] + "\033[0m" + normal_style;
+             }
+            styled_right += insert_style + right[i] + + "\033[0m" + normal_style;
+        } else {
+            styled_left += left[i];
+            styled_right += right[i];
+        }
+    }
+
+    return std::make_tuple(styled_left, styled_right);
+}
+
 DisplayColumns
-make_header_columns(const std::string& left, const std::string right, const ColumnViewState& config) {
+make_header_columns(const std::string& left_name,
+                    const std::string& left_perm,
+                    const std::string& right_name,
+                    const std::string& right_perm,
+                    const ColumnViewState& config) {
     auto shorten = [&config](const std::string& s) {
         if (static_cast<int64_t>(s.size()) > config.max_row_length) {
             return "..." + s.substr(s.size() - config.max_row_length + 3);
@@ -264,11 +300,19 @@ make_header_columns(const std::string& left, const std::string right, const Colu
         return s;
     };
 
-    auto a = shorten(left);
-    auto b = shorten(right);
+    auto a = shorten(left_name);
+    auto b = shorten(right_name);
 
-    auto alen = utf8_len(a);
-    auto blen = utf8_len(b);
+    auto alen = utf8_len(a) + utf8_len(left_perm) + 3;
+    auto blen = utf8_len(b) + utf8_len(right_perm) + 3;
+
+    const auto &[left_perm_color, right_perm_color] = color_code_file_permissions(
+        config.style.delete_token,
+        config.style.insert_token,
+        config.style.header, left_perm, right_perm);
+
+    a += fmt::format(" ({})", left_perm_color);
+    b += fmt::format(" ({})", right_perm_color);
 
     return {
         {DisplayLine{{{config.style.header + a + "\033[0m", alen, 0, EditType::Meta}}, alen}},
@@ -280,10 +324,22 @@ make_header_columns(const std::string& left, const std::string right, const Colu
 std::vector<DisplayColumns>
 make_display_columns(const DiffInput<diffy::Line>& diff_input,
                      const std::vector<AnnotatedHunk>& hunks,
-                     const ColumnViewState& config) {
+                     const ColumnViewState& config,
+                     const ProgramOptions& options) {
     std::vector<DisplayColumns> hunk_columns;
 
-    hunk_columns.push_back(make_header_columns(diff_input.A_name, diff_input.B_name, config));
+    auto a_permissions = options.left_file_permissions;
+    auto a_title = diff_input.A_name;
+    
+    auto b_permissions = options.right_file_permissions;
+    auto b_title = diff_input.B_name;
+
+    hunk_columns.push_back(make_header_columns(a_title, a_permissions, b_title, b_permissions, config));
+
+    if (hunks.empty()) {
+        // TODO: output a descriptive message mentioning that the files differ in permissions?
+        return hunk_columns;
+    }
 
     auto make_rows = [&config](const auto& content_strings, const auto& lines) {
         std::vector<DisplayLine> rows;
@@ -474,12 +530,8 @@ void
 diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
                                const std::vector<AnnotatedHunk>& hunks,
                                ColumnViewState& config,
-                               int64_t width) {
-    if (hunks.size() == 0) {
-        // TODO: Should return some sort of failure?
-        return;
-    }
-
+                               const diffy::ProgramOptions& options) {
+    int64_t width = options.width;
     int dummy_height = 0;
     if (width == 0) {
         int tmp_width = 0;
@@ -503,7 +555,7 @@ diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
 
     int64_t line_number_digits = 4;
     int64_t line_number_digits_padding = 0;
-    if (config.settings.show_line_numbers) {
+    if (config.settings.show_line_numbers && hunks.size() > 0) {
         auto& last_hunk = *(hunks.end() - 1);
         int64_t line_number_max =
             std::max(last_hunk.from_start + last_hunk.from_count, last_hunk.to_start + last_hunk.to_count);
@@ -518,11 +570,12 @@ diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
         frame_characters + 2 * (line_number_digits + line_number_digits_padding);
 
     // TODO: separate row length for left/right
+    // TODO: option to use minimum width required?
     config.max_row_length = (width - extra_layout_characters) / 2;
     if (config.max_row_length < 5)
         config.max_row_length = 5;
 
-    auto display_columns = make_display_columns(diff_input, hunks, config);
+    auto display_columns = make_display_columns(diff_input, hunks, config, options);
 
     print_display_columns_tty(display_columns, config);
 }

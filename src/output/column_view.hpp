@@ -27,6 +27,6 @@ void
 column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
                         const std::vector<AnnotatedHunk>& hunks,
                         ColumnViewState& config,
-                        int64_t width);
+                        const diffy::ProgramOptions& options);
 
 }  // namespace diffy

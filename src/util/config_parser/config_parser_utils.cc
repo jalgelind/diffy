@@ -5,6 +5,7 @@
 #include <fmt/format.h>
 
 #include <fstream>
+#include <filesystem>
 #include <functional>
 #include <optional>
 #include <sstream>

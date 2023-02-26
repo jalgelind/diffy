@@ -83,6 +83,33 @@ to_string(const FileStatus error_code) {
     }
 }
 
+std::string
+to_file_permission_string(const std::string& path) {
+    if (check_file_status(path) == FileStatus::kFileDoesNotExist) {
+        return "ENOENT";
+    }
+    fs::directory_entry file(path);
+    std::string perms;
+    auto p = file.status().permissions();
+    
+    perms += "u:";
+    perms += (p & fs::perms::owner_read) != fs::perms::none ? "r" : "-";
+    perms += (p & fs::perms::owner_write) != fs::perms::none ? "w" : "-";
+    perms += (p & fs::perms::owner_exec) != fs::perms::none ? "x" : "-";
+    
+    perms += " g:";
+    perms += (p & fs::perms::group_read) != fs::perms::none ? "r" : "-";
+    perms += (p & fs::perms::group_write) != fs::perms::none ? "w" : "-";
+    perms += (p & fs::perms::group_exec) != fs::perms::none ? "x" : "-";
+    
+    perms += " o:";
+    perms += (p & fs::perms::others_read) != fs::perms::none ? "r" : "-";
+    perms += (p & fs::perms::others_write) != fs::perms::none ? "w" : "-";
+    perms += (p & fs::perms::others_exec) != fs::perms::none ? "x" : "-";
+    
+    return perms;
+}
+
 bool
 compute_diff(diffy::Algo algorithm,
              bool ignore_whitespace,
@@ -309,22 +336,35 @@ Side by side options:
         auto a_status = diffy::check_file_status(opts.left_file);
         auto b_status = diffy::check_file_status(opts.right_file);
         
-        // When invoked as a ´git difftool´, try to handle cases where one of
-        // mhen a file is deleted or created.
-        // TODO: we should show if file permission flags changed
+        // When invoked as a ´git difftool´, handle cases where files are added or deleted.
+        // TODO: maybe this can be written in a better way.
         if (invoked_as_git_tool) {
-            auto git_base = getenv("BASE");
+            const char* git_base_nully = getenv("BASE");
+            std::string git_base = git_base_nully != nullptr ? git_base_nully : "";
+            std::string git_base_permissions = diffy::to_file_permission_string(git_base);
+
             if (a_status == diffy::FileStatus::kOk && b_status == diffy::FileStatus::kNullPath) {
+                // left file ok, right file null: deleted file
                 opts.right_file_name = "";
                 opts.left_file_name = git_base;
+                opts.left_file_permissions = diffy::to_file_permission_string(opts.left_file_name);
             } else if (a_status == diffy::FileStatus::kNullPath && b_status == diffy::FileStatus::kOk) {
+                // left file null, right file ok: added file
                 opts.left_file_name = "";
                 opts.right_file_name = git_base;
+                opts.right_file_permissions = git_base_permissions;
             } else if (a_status == diffy::FileStatus::kOk && b_status == diffy::FileStatus::kOk) {
+                // both file ok: changed file
+                opts.left_file_permissions = diffy::to_file_permission_string(git_base);
                 opts.left_file_name = git_base;
+                opts.right_file_permissions = diffy::to_file_permission_string(opts.right_file_name);
                 opts.right_file_name = git_base;
+            } else {
+                assert(0 && "Both files are invalid");
+                exit(1);
             }
         } else {
+            // Use optional names
             if (opts.left_file_name.empty()) {
                 opts.left_file_name = opts.left_file;
             }
@@ -332,15 +372,19 @@ Side by side options:
             if (opts.right_file_name.empty()) {
                 opts.right_file_name = opts.right_file;
             }
+
+            opts.left_file_permissions = diffy::to_file_permission_string(opts.left_file_name);
+            opts.right_file_permissions = diffy::to_file_permission_string(opts.right_file_name);
+
             // Null paths will be readable (TODO: test on windows)
             auto a_valid = a_status == diffy::FileStatus::kOk || a_status == diffy::FileStatus::kNullPath;
             auto b_valid = b_status == diffy::FileStatus::kOk || b_status == diffy::FileStatus::kNullPath;
             if (!a_valid || !b_valid) {
                 std::string err;
                 if (!a_valid)
-                    err += fmt::format("{}: {}\n", opts.left_file, diffy::to_string(a_status));
+                    err += fmt::format("File A '{}': {}\n", opts.left_file, diffy::to_string(a_status));
                 if (!b_valid)
-                    err += fmt::format("{}: {}\n", opts.right_file, diffy::to_string(b_status));
+                    err += fmt::format("File B '{}': {}\n", opts.right_file, diffy::to_string(b_status));
                 show_help(err);
                 return false;
             }
@@ -379,30 +423,19 @@ Side by side options:
         return -1;
     }
 
-    if (result.status == diffy::DiffResultStatus::NoChanges) {
-        // In order to be compatible with 'diff', don't output this
-        // helpful message in unified output mode.
-        if (!opts.unified && !invoked_as_git_tool) {
-            puts("No changes.");
-            return 0;
-        }
-    } else if (result.status != diffy::DiffResultStatus::OK) {
+    if (result.status != diffy::DiffResultStatus::OK && result.status != diffy::DiffResultStatus::NoChanges) {
         puts("Diff compute failed");
         return 1;
     }
 
     auto hunks = diffy::compose_hunks(result.edit_sequence, opts.context_lines);
 
-    if (opts.debug) {
-        fmt::print("input (N/M: {}/{})\n", diff_input.A.size(), diff_input.B.size());
-        fmt::print("edit_sequence (size: {})\n", result.edit_sequence.size());
-        diffy::edit_dump_diff_render(diff_input, result);
-    } else if (opts.column_view) {
+    if (opts.column_view) {
         const auto& annotated_hunks = annotate_hunks(
             diff_input, hunks,
             opts.line_granularity ? diffy::EditGranularity::Line : diffy::EditGranularity::Token,
             opts.ignore_whitespace);
-        diffy::column_view_diff_render(diff_input, annotated_hunks, cv_ui_opts, opts.width);
+        diffy::column_view_diff_render(diff_input, annotated_hunks, cv_ui_opts, opts);
     } else if (opts.unified) {
         auto unified_lines = diffy::unified_diff_render(diff_input, hunks);
         for (const auto& line : unified_lines) {
