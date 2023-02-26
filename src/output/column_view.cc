@@ -56,11 +56,7 @@ struct DisplayLine {
     EditType type = EditType::Meta;
 };
 
-struct DisplayColumns {
-    std::vector<DisplayLine> left;
-    std::vector<DisplayLine> right;
-    bool show_separator = true;
-};
+using DisplayColumns = std::vector<std::vector<DisplayLine>>;
 
 std::vector<DisplayLine>
 make_display_line_chopped(const DisplayLine& input_line, int64_t limit) {
@@ -230,21 +226,24 @@ insert_alignment_rows(DisplayColumns& columns) {
 
     DisplayLine empty;
 
-    while (ia < columns.left.size() || ib < columns.right.size()) {
-        auto left_line = ia < columns.left.size() ? columns.left[ia] : empty;
-        auto right_line = ib < columns.right.size() ? columns.right[ib] : empty;
+    auto& left = columns[0];
+    auto& right = columns[1];
+
+    while (ia < left.size() || ib < right.size()) {
+        auto left_line = ia < left.size() ? left[ia] : empty;
+        auto right_line = ib < right.size() ? right[ib] : empty;
 
         auto left_type = left_line.type;
         auto right_type = right_line.type;
 
         if (left_type == EditType::Delete && right_type == EditType::Common) {
-            columns.right.insert(columns.right.begin() + ia, empty);
+            right.insert(right.begin() + ia, empty);
             ia -= 2;
             ib -= 2;
         }
 
         if (right_type == EditType::Insert && left_type == EditType::Common) {
-            columns.left.insert(columns.left.begin() + ib,
+            left.insert(left.begin() + ib,
                                 empty);  // TODO: replace `empty` with `{}` and may get stuck in an infinite
                                          // loop. Figure out why.
             ia -= 2;
@@ -317,7 +316,6 @@ make_header_columns(const std::string& left_name,
     return {
         {DisplayLine{{{config.style.header + a + "\033[0m", alen, 0, EditType::Meta}}, alen}},
         {DisplayLine{{{config.style.header + b + "\033[0m", blen, 0, EditType::Meta}}, blen}},
-        false,
     };
 }
 
@@ -338,6 +336,10 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
 
     if (hunks.empty()) {
         // TODO: output a descriptive message mentioning that the files differ in permissions?
+        //       there might also be other issues:
+        //         * ?
+        // TODO: would be nice to support borders and customization of the empty space between hunks
+        // TODO: some hunk context? maybe iterate up until line avg(indentation of changed lines) < something above it
         return hunk_columns;
     }
 
@@ -361,19 +363,19 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
         insert_alignment_rows(columns);
 
         // @cleanup
-        auto diff = static_cast<int64_t>(columns.left.size()) - static_cast<int64_t>(columns.right.size());
+        auto diff = static_cast<int64_t>(columns[0].size()) - static_cast<int64_t>(columns[1].size());
 
         if (diff < 0) {
             for (int i = 0; i < -diff; i++) {
-                columns.left.push_back({});
+                columns[0].push_back({});
             }
         } else if (diff > 0) {
             for (int i = 0; i < diff; i++) {
-                columns.right.push_back({});
+                columns[1].push_back({});
             }
         }
 
-        assert(columns.left.size() == columns.right.size());
+        assert(columns[0].size() == columns[1].size());
 
         hunk_columns.push_back(columns);
     }
@@ -410,7 +412,7 @@ render_display_line(const ColumnViewState& config,
 }
 
 void
-print_display_columns_tty(const std::vector<DisplayColumns>& columns, const ColumnViewState& config) {
+print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnViewState& config) {
     auto print_display_lines = [](const DisplayLine& left, const DisplayLine& right,
                                   const ColumnViewState& config) {
         std::vector<DisplayCommand> display_commands;
@@ -510,14 +512,15 @@ print_display_columns_tty(const std::vector<DisplayColumns>& columns, const Colu
         puts(full.c_str());
     };  // print_display_lines
 
-    for (const auto& column : columns) {
-        auto max_idx = std::max(column.left.size(), column.right.size());
+    for (const auto& columns : rows) {
+        const auto& left = columns[0];
+        const auto& right = columns[1];
+        auto max_idx = std::max(left.size(), right.size());
         for (size_t idx = 0; idx < max_idx; idx++) {
-            print_display_lines(column.left[idx], column.right[idx], config);
+            print_display_lines(left[idx], right[idx], config);
         }
-        if (column.show_separator) {
+        if (columns.empty()) {
             // Empty line between hunks.
-            // TODO: configurable somehow
             DisplayLine dl;
             print_display_lines(dl, dl, config);
         }
