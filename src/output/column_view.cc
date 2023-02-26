@@ -315,10 +315,11 @@ make_header_columns(const std::string& left_name,
 
     // Shorten it again with the added permissions
     // TODO: maybe use octal format to shorten it down for low widths
-    a = shorten(a);
-    b = shorten(b);
-    alen = utf8_len(a);
-    blen = utf8_len(b);
+    // TODO: This doesn't work, it will cut off escape sequences.
+    // auto aa = shorten(a);
+    // auto bb = shorten(b);
+    // alen = utf8_len(aa);
+    // blen = utf8_len(bb);
 
     return {
         {DisplayLine{{{config.style.header + a + "\033[0m", alen, 0, EditType::Meta}}, alen}},
