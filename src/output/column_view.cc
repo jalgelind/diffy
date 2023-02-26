@@ -310,8 +310,13 @@ make_header_columns(const std::string& left_name,
         config.style.insert_token,
         config.style.header, left_perm, right_perm);
 
-    a += fmt::format(" ({})", left_perm_color);
-    b += fmt::format(" ({})", right_perm_color);
+    if (!left_perm_color.empty()) {
+        a += fmt::format(" ({})", left_perm_color);
+    }
+
+    if (!right_perm_color.empty()) {
+        b += fmt::format(" ({})", right_perm_color);
+    }
 
     // Shorten it again with the added permissions
     // TODO: maybe use octal format to shorten it down for low widths
