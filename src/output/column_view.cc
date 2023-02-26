@@ -364,6 +364,18 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
                 rows.push_back(display_line);
             }
         }
+
+        if (rows.empty()) {
+            // Empty line between hunks
+            DisplayLine dl;
+            
+            // TODO(johannes): Unsure if this is right.
+            // ﹏
+            //std::string squiggles = "﹏﹏﹏﹏﹏﹏";
+            //DisplayLine dl2 {{{squiggles, utf8_len(squiggles), 0, EditType::Meta}}, utf8_len(squiggles)};
+            rows.push_back(dl);
+        }
+
         return rows;
     };
 
@@ -532,14 +544,8 @@ print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnV
         for (size_t idx = 0; idx < max_idx; idx++) {
             print_display_lines(left[idx], right[idx], config);
         }
-        if (columns.empty()) {
-            // Empty line between hunks.
-            DisplayLine dl;
-            print_display_lines(dl, dl, config);
-        }
     }
 }
-
 }  // namespace
 
 void
