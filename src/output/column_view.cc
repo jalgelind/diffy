@@ -313,6 +313,13 @@ make_header_columns(const std::string& left_name,
     a += fmt::format(" ({})", left_perm_color);
     b += fmt::format(" ({})", right_perm_color);
 
+    // Shorten it again with the added permissions
+    // TODO: maybe use octal format to shorten it down for low widths
+    a = shorten(a);
+    b = shorten(b);
+    alen = utf8_len(a);
+    blen = utf8_len(b);
+
     return {
         {DisplayLine{{{config.style.header + a + "\033[0m", alen, 0, EditType::Meta}}, alen}},
         {DisplayLine{{{config.style.header + b + "\033[0m", blen, 0, EditType::Meta}}, blen}},
