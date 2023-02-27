@@ -1,7 +1,6 @@
 #include "config.hpp"
 
 #include <output/column_view.hpp>
-#include <processing/tokenizer.hpp>
 #include <util/color.hpp>
 #include <util/config_parser/config_parser.hpp>
 #include <util/config_parser/config_serializer.hpp>
