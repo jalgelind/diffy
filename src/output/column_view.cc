@@ -286,18 +286,31 @@ color_code_file_permissions(const std::string& delete_style,
     return std::make_tuple(styled_left, styled_right);
 }
 
-DisplayColumns
+std::vector<DisplayColumns>
 make_header_columns(const std::string& left_name,
                     const std::string& left_perm,
                     const std::string& right_name,
                     const std::string& right_perm,
                     const ColumnViewState& config) {
-    auto shorten = [&config](const std::string& s) {
-        if (static_cast<int64_t>(s.size()) > config.max_row_length) {
-            return "..." + s.substr(s.size() - config.max_row_length + 3);
+    const int perm_len = left_perm.size();
+    auto shorten = [&](const std::string& s) {
+        int max_len = config.max_row_length;
+        if (s.size() > max_len) {
+            return "..." + s.substr(s.size() - max_len + 3);
         }
         return s;
     };
+
+    if ((left_name.size() + perm_len + 3 < config.max_row_length) ||
+            (right_name.size() + perm_len + 3 < config.max_row_length)) {
+        // either side is too long to fit in a single column fully, so we
+        // split it into two rows.
+        // this puts a restriction of window width; it can't be wider than the length of the permissions stringn.
+    } else {
+        // 1. check if we can shorten the name and fit permissions?
+        // 2: maybe change the check to see if it fits with a shortened name with minimum width od len(basename left or right)
+        // 3. would it help with octal representation of permissions?
+    }
 
     auto a = shorten(left_name);
     auto b = shorten(right_name);
@@ -308,7 +321,9 @@ make_header_columns(const std::string& left_name,
     const auto &[left_perm_color, right_perm_color] = color_code_file_permissions(
         config.style.delete_token,
         config.style.insert_token,
-        config.style.header, left_perm, right_perm);
+        config.style.header,
+        left_perm,
+        right_perm);
 
     if (!left_perm_color.empty()) {
         a += fmt::format(" ({})", left_perm_color);
@@ -326,10 +341,10 @@ make_header_columns(const std::string& left_name,
     // alen = utf8_len(aa);
     // blen = utf8_len(bb);
 
-    return {
+    return {{
         {DisplayLine{{{config.style.header + a + "\033[0m", alen, 0, EditType::Meta}}, alen}},
         {DisplayLine{{{config.style.header + b + "\033[0m", blen, 0, EditType::Meta}}, blen}},
-    };
+    }};
 }
 
 std::vector<DisplayColumns>
@@ -345,7 +360,9 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
     auto b_permissions = options.right_file_permissions;
     auto b_title = diff_input.B_name;
 
-    hunk_columns.push_back(make_header_columns(a_title, a_permissions, b_title, b_permissions, config));
+    for (const auto& column : make_header_columns(a_title, a_permissions, b_title, b_permissions, config)) {
+        hunk_columns.push_back(column);
+    }
 
     if (hunks.empty()) {
         // TODO: output a descriptive message mentioning that the files differ in permissions?
