@@ -98,8 +98,8 @@ config_save(const std::string& config_root, const std::string& config_name, diff
 
     FILE* f = fopen(config_name.c_str(), "wb");
     if (!f) {
-        fprintf(stderr, "Failed to open '%s' for writing.\n", config_name.c_str());
-        fprintf(stderr, "   errno (%d) = %s\n", errno, strerror(errno));
+        fmt::print(stderr, "Failed to open '{}' for writing.\n", config_name.c_str());
+        fmt::print(stderr, "   errno ({}) = {}\n", errno, strerror(errno));
         return;
     }
 
