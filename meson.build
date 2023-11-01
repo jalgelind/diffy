@@ -94,9 +94,16 @@ src_test = [
   'src/util/utf8decode_tests.cc',
 ]
 
+hash = run_command('git', 'rev-parse', '--short', 'HEAD', check: true)
+
 executable('diffy',
             ['src/diffy_main.cc'] + src,
-            cpp_args : '-DDIFFY_VERSION="@0@"'.format(meson.project_version()),
+            cpp_args : 
+              [
+                '-DDIFFY_VERSION="@0@"'.format(meson.project_version()),
+                '-DDIFFY_BUILD_HASH="@0@"'.format(
+                    hash.stdout().strip())
+              ],
             include_directories: include_directories([
                 'src',
               ]),

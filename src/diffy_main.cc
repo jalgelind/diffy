@@ -199,6 +199,7 @@ Side by side options:
             switch (c) {
                 case 'v':
                     fmt::print("version: {}\n", DIFFY_VERSION);
+                    fmt::print("vcs hash: {}\n", DIFFY_BUILD_HASH);
                     exit(0);
                 case 'h':
                     opts.help = true;
