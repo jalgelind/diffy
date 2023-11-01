@@ -424,12 +424,15 @@ Side by side options:
         diffy::column_view_diff_render(diff_input, annotated_hunks, cv_ui_opts, opts);
     } else if (opts.unified) {
         auto unified_lines = diffy::unified_diff_render(diff_input, hunks);
-        for (const auto& line : unified_lines) {
+        auto num_lines = unified_lines.size();
+        for (auto i = 0u; i < num_lines; i++) {
+            const auto& line = unified_lines[i];
             if (line[line.size() - 1] == '\n')
                 printf("%s", line.c_str());
             else {
                 printf("%s\n", line.c_str());
-                printf("\\ No newline at end of file\n");
+                if (i == num_lines-1)
+                    printf("\\ No newline at end of file\n");
             }
         }
         return 1;
