@@ -105,7 +105,18 @@ def run_single_patch_test(args, test_group, name, test_case):
     if not patch_ok:
         print(f" Test '{name}' FAILED")
         target = os.path.join(ARCHIVE_FAILED, args.config_name, test_group)
-        shutil.copytree(WORKDIR, os.path.join(target, name))
+        dest = os.path.join(target, name)
+        try:
+            os.makedirs(dest)
+        except:
+            pass
+        cp_cmd = f'cp -r "{WORKDIR}" "{dest}"'
+        cp_result = Process(cp_cmd, workdir=".").return_code
+        if cp_result != 0:
+            print(cp_cmd)
+            print(f"  Failed to copy WORKDIR ('{WORKDIR}')")
+            print(f"                 to DEST ('{dest}')")
+            print(cp_result)
 
 
 def main(argv):
@@ -164,7 +175,7 @@ def main(argv):
         print(f"Running tests for configuration '{run_args.args}'")
         for test_group, test_cases in all_test_cases.items():
             for test_case in test_cases:
-                name = os.path.basename(test_case[0])[:-1]
+                name = os.path.basename(test_case[0])[:-2]
                 run_single_patch_test(run_args, test_group, name, test_case)
 
 if __name__ == '__main__':
