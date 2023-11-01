@@ -4,6 +4,7 @@
 #include "util/config_parser/config_parser.hpp"
 
 #include <string>
+#include <filesystem>
 
 namespace diffy {
 
@@ -30,8 +31,8 @@ struct ProgramOptions {
     std::string left_file;
     std::string right_file;
 
-    std::string left_file_permissions;
-    std::string right_file_permissions;
+    std::optional<std::filesystem::perms> left_file_permissions;
+    std::optional<std::filesystem::perms> right_file_permissions;
 
     std::string left_file_name;
     std::string right_file_name;

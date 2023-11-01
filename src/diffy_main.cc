@@ -83,31 +83,14 @@ to_string(const FileStatus error_code) {
     }
 }
 
-std::string
-to_file_permission_string(const std::string& path) {
+std::optional<std::filesystem::perms>
+read_file_permissions(const std::string& path) {
     if (check_file_status(path) == FileStatus::kFileDoesNotExist) {
-        return "ENOENT";
+        return std::nullopt;
     }
     fs::directory_entry file(path);
     std::string perms;
-    auto p = file.status().permissions();
-    
-    perms += "u:";
-    perms += (p & fs::perms::owner_read) != fs::perms::none ? "r" : "-";
-    perms += (p & fs::perms::owner_write) != fs::perms::none ? "w" : "-";
-    perms += (p & fs::perms::owner_exec) != fs::perms::none ? "x" : "-";
-    
-    perms += " g:";
-    perms += (p & fs::perms::group_read) != fs::perms::none ? "r" : "-";
-    perms += (p & fs::perms::group_write) != fs::perms::none ? "w" : "-";
-    perms += (p & fs::perms::group_exec) != fs::perms::none ? "x" : "-";
-    
-    perms += " o:";
-    perms += (p & fs::perms::others_read) != fs::perms::none ? "r" : "-";
-    perms += (p & fs::perms::others_write) != fs::perms::none ? "w" : "-";
-    perms += (p & fs::perms::others_exec) != fs::perms::none ? "x" : "-";
-    
-    return perms;
+    return file.status().permissions();
 }
 
 bool
@@ -341,25 +324,25 @@ Side by side options:
         if (invoked_as_git_tool) {
             const char* git_base_nully = getenv("BASE");
             std::string git_base = git_base_nully != nullptr ? git_base_nully : "";
-            std::string git_base_permissions = diffy::to_file_permission_string(git_base);
+            auto git_base_permissions = diffy::read_file_permissions(git_base);
 
             if (a_status == diffy::FileStatus::kOk && b_status == diffy::FileStatus::kNullPath) {
                 // left file ok, right file null: deleted file
                 opts.right_file_name = "";
                 opts.left_file_name = git_base;
-                opts.left_file_permissions = diffy::to_file_permission_string(opts.left_file);
-                opts.right_file_permissions = "";
+                opts.left_file_permissions = diffy::read_file_permissions(opts.left_file);
+                opts.right_file_permissions = std::nullopt;
             } else if (a_status == diffy::FileStatus::kNullPath && b_status == diffy::FileStatus::kOk) {
                 // left file null, right file ok: added file
                 opts.left_file_name = "";
-                opts.right_file_permissions = "";
+                opts.right_file_permissions = std::nullopt;
                 opts.right_file_name = git_base;
                 opts.right_file_permissions = git_base_permissions;
             } else if (a_status == diffy::FileStatus::kOk && b_status == diffy::FileStatus::kOk) {
                 // both file ok: changed file
-                opts.left_file_permissions = diffy::to_file_permission_string(git_base);
+                opts.left_file_permissions = diffy::read_file_permissions(git_base);
                 opts.left_file_name = git_base;
-                opts.right_file_permissions = diffy::to_file_permission_string(opts.right_file_name);
+                opts.right_file_permissions = diffy::read_file_permissions(opts.right_file_name);
                 opts.right_file_name = git_base;
             } else {
                 assert(0 && "Both files are invalid");
@@ -375,8 +358,8 @@ Side by side options:
                 opts.right_file_name = opts.right_file;
             }
 
-            opts.left_file_permissions = diffy::to_file_permission_string(opts.left_file_name);
-            opts.right_file_permissions = diffy::to_file_permission_string(opts.right_file_name);
+            opts.left_file_permissions = diffy::read_file_permissions(opts.left_file_name);
+            opts.right_file_permissions = diffy::read_file_permissions(opts.right_file_name);
 
             // Null paths will be readable (TODO: test on windows)
             auto a_valid = a_status == diffy::FileStatus::kOk || a_status == diffy::FileStatus::kNullPath;

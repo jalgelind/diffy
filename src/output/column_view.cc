@@ -10,10 +10,13 @@
 #include <fmt/format.h>
 
 #include <cstdlib>
+#include <filesystem>
 #include <gsl/span>
 #include <numeric>
 #include <stack>
 #include <tuple>
+
+namespace fs = std::filesystem;
 
 using namespace diffy;
 
@@ -255,6 +258,29 @@ insert_alignment_rows(DisplayColumns& columns) {
     }
 }
 
+std::string
+to_file_permission_string(const std::filesystem::perms perms) {
+    std::string result;
+    auto p = perms;
+
+    result += "u:";
+    result += ((p & fs::perms::owner_read) != fs::perms::none) ? "r" : "-";
+    result += ((p & fs::perms::owner_write) != fs::perms::none) ? "w" : "-";
+    result += ((p & fs::perms::owner_exec) != fs::perms::none) ? "x" : "-";
+    
+    result += " g:";
+    result += ((p & fs::perms::group_read) != fs::perms::none) ? "r" : "-";
+    result += ((p & fs::perms::group_write) != fs::perms::none) ? "w" : "-";
+    result += ((p & fs::perms::group_exec) != fs::perms::none) ? "x" : "-";
+    
+    result += " o:";
+    result += ((p & fs::perms::others_read) != fs::perms::none) ? "r" : "-";
+    result += ((p & fs::perms::others_write) != fs::perms::none) ? "w" : "-";
+    result += ((p & fs::perms::others_exec) != fs::perms::none) ? "x" : "-";
+    
+    return result;
+}
+
 static std::tuple<std::string, std::string>
 color_code_file_permissions(const std::string& delete_style,
                             const std::string& insert_style,
@@ -286,29 +312,96 @@ color_code_file_permissions(const std::string& delete_style,
     return std::make_tuple(styled_left, styled_right);
 }
 
-DisplayColumns
+std::vector<DisplayColumns>
 make_header_columns(const std::string& left_name,
-                    const std::string& left_perm,
+                    const std::optional<std::filesystem::perms> a_permissions,
                     const std::string& right_name,
-                    const std::string& right_perm,
+                    const std::optional<std::filesystem::perms> b_permissions,
                     const ColumnViewState& config) {
-    auto shorten = [&config](const std::string& s) {
-        if (static_cast<int64_t>(s.size()) > config.max_row_length) {
-            return "..." + s.substr(s.size() - config.max_row_length + 3);
+    std::vector<DisplayLine> col_left;
+    std::vector<DisplayLine> col_right;
+   
+    auto shorten = [&](const std::string& s, int trail_reserved = 0) {
+        int max_len = config.max_row_length - trail_reserved;
+        if (s.size() > max_len) {
+            return "..." + s.substr(s.size() - max_len + 3);
         }
         return s;
     };
+    
+    // TODO: If permissions are equal, then don't bother showing them.
 
-    auto a = shorten(left_name);
-    auto b = shorten(right_name);
+    std::string left_perm;
+    std::string left_perm_long;
+    std::string left_perm_short;
+    std::string right_perm;
+    std::string right_perm_long;
+    std::string right_perm_short;
 
-    auto alen = utf8_len(a) + utf8_len(left_perm) + 3;
-    auto blen = utf8_len(b) + utf8_len(right_perm) + 3;
+    // r:rw- u:r-x o:-wx
+    if (a_permissions) {
+        left_perm_short = fmt::format("{:o}", (int) *a_permissions);
+        left_perm_long = to_file_permission_string(*a_permissions);
+    }
+    if (b_permissions) {
+        right_perm_short = fmt::format("{:o}", (int) *b_permissions);
+        right_perm_long = to_file_permission_string(*b_permissions);
+    }
+
+    const int long_perm_width = strlen("u:rw- g:r-- o:r--");
+    const int short_perm_width = strlen("644");
+    
+    const int num_extra_long_and_short_perm_chars = 3; // " ()"
+
+    const bool left_long_perm_fits = left_name.size() + long_perm_width +
+        num_extra_long_and_short_perm_chars < config.max_row_length;
+    const bool left_short_perm_fits = left_name.size() + short_perm_width +
+        num_extra_long_and_short_perm_chars < config.max_row_length;
+    
+    const bool right_long_perm_fits = right_name.size() + long_perm_width +
+        num_extra_long_and_short_perm_chars < config.max_row_length;
+    const bool right_short_perm_fits = right_name.size() + short_perm_width +
+        num_extra_long_and_short_perm_chars < config.max_row_length;
+
+    int left_perm_width = 0;
+    int right_perm_width = 0;
+    int num_extra_perm_chars = 0;
+
+    if (left_long_perm_fits && right_long_perm_fits)
+    {
+        left_perm_width = long_perm_width;
+        right_perm_width = long_perm_width;
+        left_perm = left_perm_long;
+        right_perm = right_perm_long;
+        num_extra_perm_chars = 3; // " ()"
+    } else if (right_short_perm_fits && left_short_perm_fits) {
+        left_perm_width = short_perm_width;
+        right_perm_width = short_perm_width;
+        left_perm = left_perm_short;
+        right_perm = right_perm_short;
+        num_extra_perm_chars = 3; // " ()"
+    } else {
+        // Permissions doesn't fit on one line
+        // TODO: try two lines
+        left_perm_width = 0;
+        right_perm_width = 0;
+        left_perm = "";
+        right_perm = "";
+        num_extra_perm_chars = 0;
+    }
+    
+    auto a = shorten(left_name, left_perm_width + num_extra_perm_chars);
+    auto b = shorten(right_name, right_perm_width + num_extra_perm_chars);
+
+    auto alen = utf8_len(a) + left_perm_width + num_extra_perm_chars;
+    auto blen = utf8_len(b) + right_perm_width + num_extra_perm_chars;
 
     const auto &[left_perm_color, right_perm_color] = color_code_file_permissions(
         config.style.delete_token,
         config.style.insert_token,
-        config.style.header, left_perm, right_perm);
+        config.style.header,
+        left_perm,
+        right_perm);
 
     if (!left_perm_color.empty()) {
         a += fmt::format(" ({})", left_perm_color);
@@ -318,18 +411,10 @@ make_header_columns(const std::string& left_name,
         b += fmt::format(" ({})", right_perm_color);
     }
 
-    // Shorten it again with the added permissions
-    // TODO: maybe use octal format to shorten it down for low widths
-    // TODO: This doesn't work, it will cut off escape sequences.
-    // auto aa = shorten(a);
-    // auto bb = shorten(b);
-    // alen = utf8_len(aa);
-    // blen = utf8_len(bb);
+    col_left.push_back({DisplayLine{{{config.style.header + a + "\033[0m", alen, 0, EditType::Meta}}, alen}});
+    col_right.push_back({DisplayLine{{{config.style.header + b + "\033[0m", blen, 0, EditType::Meta}}, blen}});
 
-    return {
-        {DisplayLine{{{config.style.header + a + "\033[0m", alen, 0, EditType::Meta}}, alen}},
-        {DisplayLine{{{config.style.header + b + "\033[0m", blen, 0, EditType::Meta}}, blen}},
-    };
+    return {{ col_left, col_right }};
 }
 
 std::vector<DisplayColumns>
@@ -339,13 +424,14 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
                      const ProgramOptions& options) {
     std::vector<DisplayColumns> hunk_columns;
 
+    std::string a_title = diff_input.A_name;
     auto a_permissions = options.left_file_permissions;
-    auto a_title = diff_input.A_name;
-    
+    std::string b_title = diff_input.B_name;
     auto b_permissions = options.right_file_permissions;
-    auto b_title = diff_input.B_name;
 
-    hunk_columns.push_back(make_header_columns(a_title, a_permissions, b_title, b_permissions, config));
+    for (const auto& column : make_header_columns(a_title, a_permissions, b_title, b_permissions, config)) {
+        hunk_columns.push_back(column);
+    }
 
     if (hunks.empty()) {
         // TODO: output a descriptive message mentioning that the files differ in permissions?
@@ -364,6 +450,16 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
                 rows.push_back(display_line);
             }
         }
+
+        if (rows.empty()) {
+            // Empty line between hunks
+            // TODO(ja): doesn't work
+            //std::string squiggles = "﹏﹏﹏﹏﹏﹏";
+            //DisplayLine squiggly_line {{{squiggles, utf8_len(squiggles), 0, EditType::Meta}}, utf8_len(squiggles)};
+            //rows.push_back(squiggly_line);
+            rows.push_back(DisplayLine {});
+        }
+
         return rows;
     };
 
@@ -532,14 +628,14 @@ print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnV
         for (size_t idx = 0; idx < max_idx; idx++) {
             print_display_lines(left[idx], right[idx], config);
         }
+        // Empty line between hunks.
+        // TODO(ja): doesn't work
         if (columns.empty()) {
-            // Empty line between hunks.
             DisplayLine dl;
             print_display_lines(dl, dl, config);
         }
     }
 }
-
 }  // namespace
 
 void
