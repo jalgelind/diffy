@@ -1,11 +1,11 @@
 TODO
 ----
-* Allow arbitrary color names in config?
-* git-diffy does not show changes to permissions
+-
 
 Most probably happening at some point
 -------------------------------------
 * Improve diff performance where A and B have a lot of common lines at the beginning and the end of the file
+* Allow arbitrary color names in config
 
 Most likely not happening
 -------------------------
