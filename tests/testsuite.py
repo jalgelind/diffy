@@ -146,16 +146,16 @@ def main(argv):
     # TODO: Something to re-run a single test case
 
     patch_configs = (
-        *['-a mg -U{}'.format(n) for n in range(2)],
-        *['-a ml -U{}'.format(n) for n in range(2)],
-        *['-a p -U{}'.format(n) for n in range(2)]
+        *[(f'mg{n}', f'-I -W -a mg -U{n}') for n in range(2)],
+        *[(f'ml{n}', f'-I -W -a ml -U{n}') for n in range(2)],
+        *[(f'p{n}', f'-I -W -a p -U{n}') for n in range(2)]
     )
 
     crash_configs = (
-        #*['-a p -S0 -W {}'.format(n) for n in range(0, 100, 3)],
+        #*[(f'u{n}', f'-a p -S0 -W -I -W{n}') for n in range(0, 100, 3)],
     )
 
-    for config in crash_configs:
+    for config_name, config in crash_configs:
         run_args = argparse.Namespace(
             diff_tool = os.path.abspath(args.diff_tool),
             args = config,
@@ -169,11 +169,11 @@ def main(argv):
                 run_single_crash_test(run_args, test_group, name, test_case)
 
     
-    for config in patch_configs:
+    for config_name, config in patch_configs:
         run_args = argparse.Namespace(
             diff_tool = os.path.abspath(args.diff_tool),
             args = config,
-            config_name = config.replace('-a ', '').replace(' -', '_').replace('test_cases/', '')
+            config_name = config_name
         )
 
         print(f"Running tests for configuration '{run_args.args}'")
