@@ -1,6 +1,7 @@
 TODO
 ----
--
+* I found a weird theme file on one computer where [color_map] had
+  'red' = true. Try to reproduce.
 
 Most probably happening at some point
 -------------------------------------
