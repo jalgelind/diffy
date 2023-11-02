@@ -440,10 +440,22 @@ Side by side options:
                 printf("%s", line.c_str());
             else {
                 printf("%s\n", line.c_str());
-                if (i == num_lines-1)
-                    printf("\\ No newline at end of file\n");
             }
         }
+
+        // TODO(ja): This differs from how ´diff´ does it. ´diff´ also warns about this
+        //           in the left file. When using this program with git it makes sense
+        //           to skip this, since you don't really care if the issue was present
+        //           in the previous revision.
+        bool right_eof_newline = false;
+        if (right_line_data.size() > 0 && right_line_data.back().line.back() == '\n') {
+            right_eof_newline = true;
+        }
+
+        if (!right_eof_newline) {
+            printf("\\ No newline at end of file\n");
+        }
+
         return 1;
     }
 
