@@ -116,20 +116,37 @@ config_apply_options(diffy::Value& config, const OptionVector& options) {
         // Do we have a value for this option in the config we loaded?
         if (auto stored_value = config.lookup_value_by_path(path); stored_value) {
             // Yes. So we take the value and write it into our settings struct.
+            auto& v = stored_value->get();
             switch (type) {
                 case ConfigVariableType::Bool: {
-                    *((bool*) ptr) = stored_value->get().as_bool();
+                    if (v.is_bool()) {
+                        *((bool*) ptr) = v.as_bool();
+                    } else {
+                        // TODO: Output warning
+                    }
                 } break;
                 case ConfigVariableType::Int: {
-                    *((int64_t*) ptr) = (int64_t) stored_value->get().as_int();
+                    if (v.is_int()) {
+                        *((int64_t*) ptr) = (int64_t) v.as_int();
+                    } else {
+                        // TODO: Output warning
+                    }
                 } break;
                 case ConfigVariableType::String: {
-                    *((std::string*) ptr) = stored_value->get().as_string();
+                    if (v.is_string()) {
+                        *((std::string*) ptr) = v.as_string();
+                    } else {
+                        // TODO: Output warning
+                    }
                 } break;
                 case ConfigVariableType::Color: {
-                    auto style = diffy::TermStyle::parse_value(stored_value->get().as_table());
-                    if (style) {
-                        *((diffy::TermStyle*) ptr) = *style;
+                    if (v.is_table()) {
+                        auto style = diffy::TermStyle::parse_value(v.as_table());
+                        if (style) {
+                            *((diffy::TermStyle*) ptr) = *style;
+                        }
+                    } else {
+                        // TODO: Output warning
                     }
                 } break;
             }
