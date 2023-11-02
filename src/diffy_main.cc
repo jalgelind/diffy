@@ -153,20 +153,23 @@ Options:
                                     myers-linear (ml)
                                     myers-greedy (mg)
                                     patience     (p)
-    -u, -U [context_lines]     show unified output, optional context line count
-    -s, -S [context_lines]     show side-by-side column output, optional context line count
+    -u, -U [context_lines]       show unified output, optional context line count
+    -s, -S [context_lines]       show side-by-side column output, optional context line count
 
-    -o, --old-file             custom name to give the old-file (left)
-    -n, --new-file             custom name to give the old-file (right)
+    -o, --old-file               custom name to give the old-file (left)
+    -n, --new-file               custom name to give the old-file (right)
 
-    -i, --ignore-line-endings  ignore changes to line endings
-    -w, --ignore-whitespace    ignore all changes to whitespace
+    -i, --ignore-line-endings    ignore changes to line endings
+    -I, --no-ignore-line-endings inverse of --ignore-line-endings
 
-    --list-colors              list all available colors available in the configuration
+    -w, --ignore-whitespace      ignore all changes to whitespace
+    -W, --no-ignore-whitespace   inverse of --ignore-whitespace
+
+    --list-colors                list all available colors available in the configuration
     
 Side by side options:
-    -l, --line                 line based diff instead of word based diff
-    -W [width]                 maximum width in each column
+    -l, --line                   line based diff instead of word based diff
+    -W [width]                   maximum width in each column
 )"),
                                        argv[0], diffy::config_get_directory());
 
@@ -191,11 +194,13 @@ Side by side options:
                                                {"old-file", optional_argument, 0, 'o'},
                                                {"new-file", optional_argument, 0, 'n'},
                                                {"ignore-line-endings", no_argument, 0, 'i'},
+                                               {"no-ignore-line-endings", no_argument, 0, 'I'},
                                                {"ignore-whitespace", no_argument, 0, 'w'},
+                                               {"no-ignore-whitespace", no_argument, 0, 'W'},
                                                {"list-colors", no_argument, 0, '1'},
                                                {0, 0, 0, 0}};
         int c = 0, option_index = 0;
-        while ((c = getopt_long(in_argc, in_argv, "a:hlsS:uU:W:o:n:iw", long_options, &option_index)) >= 0) {
+        while ((c = getopt_long(in_argc, in_argv, "a:hlsS:uU:W:o:n:iIwW", long_options, &option_index)) >= 0) {
             switch (c) {
                 case 'v':
                     fmt::print("version: {}\n", DIFFY_VERSION);
@@ -237,9 +242,26 @@ Side by side options:
                 case 'i':
                     opts.ignore_line_endings = true;
                     break;
+                case 'I':
+                    opts.ignore_line_endings = false;
+                    break;
                 case 'w':
                     opts.ignore_whitespace = true;
                     break;
+                case 'W': {
+                    if (optarg) {
+                        if (isdigit(optarg[0])) {
+                            opts.width = atoi(optarg);
+                        } else {
+                            opts.ignore_whitespace = false;
+                            optind--;
+                        }
+                    } else {
+                        // Only happens when we don't provide any positional arguments
+                        opts.ignore_whitespace = false;
+                    }
+                    break;
+                }
                 case 'u':
                 case 's':
                 case 'U':
@@ -257,19 +279,6 @@ Side by side options:
                         } else {
                             show_help(fmt::format("error: invalid value for -{} ({})\n", static_cast<char>(c),
                                                   optarg));
-                            return false;
-                        }
-                    }
-                    break;
-                }
-                case 'W': {
-                    if (optarg) {
-                        // @cleanup
-                        if (isdigit(optarg[0])) {
-                            opts.width = atoi(optarg);
-                        } else {
-                            show_help(fmt::format("error: invalid width value for -{} ({})\n",
-                                                  static_cast<char>(c), optarg));
                             return false;
                         }
                     }
