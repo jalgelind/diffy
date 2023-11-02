@@ -147,8 +147,8 @@ Usage: {} [options] left_file right_file
 Compare files line by line, side by side
 
 Options:
-    -v, --version              show program version and exit
-    -a --algorithm [algorithm] which algorithm to use for line diffing
+    -v, --version                show program version and exit
+    -a --algorithm [algorithm]   which algorithm to use for line diffing
                                     myers-linear (ml)
                                     myers-greedy (mg)
                                     patience     (p)
