@@ -25,8 +25,8 @@ struct ProgramOptions {
 
     std::string theme = "theme_default";
 
-    bool ignore_line_endings = true;
-    bool ignore_whitespace = true;
+    bool ignore_line_endings = false;
+    bool ignore_whitespace = false;
 
     std::string left_file;
     std::string right_file;
