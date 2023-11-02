@@ -122,21 +122,21 @@ config_apply_options(diffy::Value& config, const OptionVector& options) {
                     if (v.is_bool()) {
                         *((bool*) ptr) = v.as_bool();
                     } else {
-                        // TODO: Output warning
+                        fmt::print("warning: config value at '{}' is invalid (expected bool)\n", path);
                     }
                 } break;
                 case ConfigVariableType::Int: {
                     if (v.is_int()) {
                         *((int64_t*) ptr) = (int64_t) v.as_int();
                     } else {
-                        // TODO: Output warning
+                        fmt::print("warning: config value at '{}' is invalid (expected int)\n", path);
                     }
                 } break;
                 case ConfigVariableType::String: {
                     if (v.is_string()) {
                         *((std::string*) ptr) = v.as_string();
                     } else {
-                        // TODO: Output warning
+                        fmt::print("warning: config value at '{}' is invalid (expected string)\n", path);
                     }
                 } break;
                 case ConfigVariableType::Color: {
@@ -146,7 +146,7 @@ config_apply_options(diffy::Value& config, const OptionVector& options) {
                             *((diffy::TermStyle*) ptr) = *style;
                         }
                     } else {
-                        // TODO: Output warning
+                        fmt::print("warning: config value at '{}' is invalid (expected table)\n", path);
                     }
                 } break;
             }
