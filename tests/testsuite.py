@@ -118,7 +118,9 @@ def run_single_patch_test(args, test_group, name, test_case):
                 print(f"  Failed to copy WORKDIR ('{WORKDIR}')")
                 print(f"                 to DEST ('{dest}')")
                 print(cp_result)
-        copy(WORKDIR, dest)
+        copy(a_test, dest)
+        copy(b_test, dest)
+        copy(os.path.join(WORKDIR, patch_file), dest)
 
 
 def main(argv):
