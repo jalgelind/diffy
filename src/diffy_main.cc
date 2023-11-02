@@ -89,7 +89,6 @@ read_file_permissions(const std::string& path) {
         return std::nullopt;
     }
     fs::directory_entry file(path);
-    std::string perms;
     return file.status().permissions();
 }
 
