@@ -121,7 +121,7 @@ config_apply_options(diffy::Value& config, const OptionVector& options) {
                     *((bool*) ptr) = stored_value->get().as_bool();
                 } break;
                 case ConfigVariableType::Int: {
-                    *((int64_t*) ptr) = (int64_t) stored_value->get().is_int();
+                    *((int64_t*) ptr) = (int64_t) stored_value->get().as_int();
                 } break;
                 case ConfigVariableType::String: {
                     *((std::string*) ptr) = stored_value->get().as_string();
