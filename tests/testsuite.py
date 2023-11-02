@@ -5,9 +5,9 @@ import itertools
 import shutil
 import subprocess
 
-RUNROOT = "_test_runner"
-WORKDIR = "_test_runner/workdir"
-ARCHIVE_FAILED = "_test_runner/failed"
+RUNROOT = "out"
+WORKDIR = "out/workdir"
+ARCHIVE_FAILED = "out/failed"
 
 class Process:
     def __init__(self, cmdline, workdir):
@@ -104,19 +104,21 @@ def run_single_patch_test(args, test_group, name, test_case):
 
     if not patch_ok:
         print(f" Test '{name}' FAILED")
-        target = os.path.join(ARCHIVE_FAILED, args.config_name, test_group)
+        
+        target = os.path.join(ARCHIVE_FAILED, args.config_name + "_" + test_group.replace("/", "_"))
         dest = os.path.join(target, name)
-        try:
-            os.makedirs(dest)
-        except:
-            pass
-        cp_cmd = f'cp -r "{WORKDIR}" "{dest}"'
-        cp_result = Process(cp_cmd, workdir=".").return_code
-        if cp_result != 0:
-            print(cp_cmd)
-            print(f"  Failed to copy WORKDIR ('{WORKDIR}')")
-            print(f"                 to DEST ('{dest}')")
-            print(cp_result)
+        
+        mkdirs(dest)
+        
+        def copy(src, dst):
+            cp_cmd = f'cp -r "{src}" "{dst}"'
+            cp_result = Process(cp_cmd, workdir=".").return_code
+            if cp_result != 0:
+                print(cp_cmd)
+                print(f"  Failed to copy WORKDIR ('{WORKDIR}')")
+                print(f"                 to DEST ('{dest}')")
+                print(cp_result)
+        copy(WORKDIR, dest)
 
 
 def main(argv):
@@ -169,7 +171,7 @@ def main(argv):
         run_args = argparse.Namespace(
             diff_tool = os.path.abspath(args.diff_tool),
             args = config,
-            config_name = config.replace('-a ', '').replace(' -', '_')
+            config_name = config.replace('-a ', '').replace(' -', '_').replace('test_cases/', '')
         )
 
         print(f"Running tests for configuration '{run_args.args}'")
