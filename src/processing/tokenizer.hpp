@@ -34,6 +34,19 @@ struct Token {
     }
 };
 
+std::string
+repr(Token& token);
+
+std::string
+repr(Token& token, const std::string& source_text);
+
+struct IndentRecord {
+    int line;
+    int indentation;
+    int scope;
+    std::size_t token_offset;
+};
+
 bool
 is_whitespace(char c);
 
@@ -41,6 +54,6 @@ bool
 is_empty(const std::string& s);
 
 std::vector<Token>
-tokenize(const std::string& text);
+tokenize(const std::string& text, std::vector<IndentRecord>* indentation_records = nullptr);
 
 }  // namespace diffy
