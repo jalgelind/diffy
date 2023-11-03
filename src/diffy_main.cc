@@ -442,10 +442,9 @@ Side by side options:
             }
         }
 
-        // TODO(ja): This differs from how ´diff´ does it. ´diff´ also warns about this
-        //           in the left file. When using this program with git it makes sense
-        //           to skip this, since you don't really care if the issue was present
-        //           in the previous revision.
+        // TODO(ja): This differs from how ´diff´ does it. ´diff´ also warns about missing newline before
+        //           eof in the left file. When using this program with git it makes sense to skip this,
+        //           since you don't really care if the issue was present in the previous revision.
         bool right_eof_newline = false;
         if (right_line_data.size() > 0 && right_line_data.back().line.back() == '\n') {
             right_eof_newline = true;
