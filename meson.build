@@ -50,6 +50,9 @@ doctest_dep = doctest_proj.get_variable('doctest_dep')
 getopt_proj = subproject('getopt')
 getopt_dep = getopt_proj.get_variable('getopt_dep')
 
+config_parser_proj = subproject('config_parser')
+config_parser_dep = config_parser_proj.get_variable('config_parser_dep')
+config_parser_test_dep = config_parser_proj.get_variable('config_parser_test_dep')
 
 src = ['src/algorithms/myers_greedy.hpp',
        'src/algorithms/myers_linear.hpp',
@@ -65,14 +68,6 @@ src = ['src/algorithms/myers_greedy.hpp',
        'src/output/unified.cc',
        'src/output/column_view.hpp',
        'src/output/column_view.cc',
-       'src/util/config_parser/config_parser.hpp',
-       'src/util/config_parser/config_parser.cc',
-       'src/util/config_parser/config_parser_utils.hpp',
-       'src/util/config_parser/config_parser_utils.cc',
-       'src/util/config_parser/config_serializer.hpp',
-       'src/util/config_parser/config_serializer.cc',
-       'src/util/config_parser/config_tokenizer.hpp',
-       'src/util/config_parser/config_tokenizer.cc',
        'src/util/color.hpp',
        'src/util/color.cc',
        'src/util/readlines.hpp',
@@ -87,9 +82,9 @@ src = ['src/algorithms/myers_greedy.hpp',
 
 src_test = [
   'src/processing/tokenizer_tests.cc',
-  'src/util/config_parser/config_parser_tests.cc',
-  'src/util/config_parser/config_serializer_tests.cc',
-  'src/util/config_parser/config_tokenizer_tests.cc',
+#  'src/util/config_parser/config_parser_tests.cc',
+#  'src/util/config_parser/config_serializer_tests.cc',
+#  'src/util/config_parser/config_tokenizer_tests.cc',
   'src/util/bipolar_array_tests.cc',
   'src/util/utf8decode_tests.cc',
 ]
@@ -111,7 +106,8 @@ executable('diffy',
                            GSL_dep,
                            fmt_dep,
                            getopt_dep,
-                           platform_folders_dep]
+                           platform_folders_dep,
+                           config_parser_dep]
           )
 
 test_executable = executable('diffy-test',
@@ -124,7 +120,9 @@ test_executable = executable('diffy-test',
                              doctest_dep, 
                              fmt_dep,
                              getopt_dep,
-                             platform_folders_dep]
+                             platform_folders_dep,
+                             config_parser_dep,
+                             config_parser_test_dep]
             )
 
 test('unit-tests', test_executable)

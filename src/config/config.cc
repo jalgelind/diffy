@@ -2,12 +2,12 @@
 
 #include <output/column_view.hpp>
 #include <util/color.hpp>
-#include <util/config_parser/config_parser.hpp>
-#include <util/config_parser/config_serializer.hpp>
-#include <util/config_parser/config_parser_utils.hpp>
 
 #include <fmt/format.h>
 #include <sago/platform_folders.h>
+#include <config_parser/config_parser.hpp>
+#include <config_parser/config_serializer.hpp>
+#include <config_parser/config_parser_utils.hpp>
 
 #include <deque>
 #include <filesystem>

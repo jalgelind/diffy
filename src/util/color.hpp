@@ -1,12 +1,12 @@
 #pragma once
 
-#include "config_parser/config_parser.hpp"
-
 #include <cstdint>
 #include <string>
 #include <optional>
 #include <unordered_map>
 #include <vector>
+
+#include <config_parser/config_parser.hpp>
 
 namespace diffy {
 

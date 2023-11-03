@@ -1,10 +1,11 @@
 #pragma once
 
 #include "util/color.hpp"
-#include "util/config_parser/config_parser.hpp"
 
 #include <string>
 #include <filesystem>
+
+#include <config_parser/config_parser.hpp>
 
 namespace diffy {
 
