@@ -5,10 +5,6 @@
 #include <string>
 #include <vector>
 
-// TODO: replace with fstream? unsure why this was done this way.
-//       probably needs instream.unsetf(std::ios_base::skipws)
-#ifdef DIFFY_PLATFORM_WINDOWS
-
 #include <errno.h>
 #include <limits.h>
 
@@ -16,7 +12,7 @@
 
 using ssize_t = long;
 
-namespace {
+namespace internal {
 
 ssize_t
 getdelim(char** lineptr, size_t* n, int delim, FILE* stream) {
@@ -78,14 +74,9 @@ getdelim(char** lineptr, size_t* n, int delim, FILE* stream) {
 
 ssize_t
 getline(char** lineptr, size_t* n, FILE* stream) {
-    return getdelim(lineptr, n, '\n', stream);
+    return internal::getdelim(lineptr, n, '\n', stream);
 }
 
-}  // namespace
-
-#endif
-
-namespace {
 std::string
 right_trim(const std::string& s) {
     auto end = s.find_last_not_of(" \n\r\t\f\v");
@@ -106,10 +97,10 @@ diffy::readlines(std::string path, bool ignore_line_endings) {
         return lines;  // TODO: Error handling
 
     uint32_t i = 1;
-    while ((nread = getline(&line, &len, stream)) != -1) {
+    while ((nread = internal::getline(&line, &len, stream)) != -1) {
         std::string sline(line);
         if (ignore_line_endings) {
-            sline = right_trim(sline);
+            sline = internal::right_trim(sline);
         }
         uint32_t hash = hash::hash(sline.c_str(), static_cast<uint32_t>(sline.size()));
         lines.push_back({i, hash, std::move(sline)});
