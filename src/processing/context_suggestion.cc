@@ -16,30 +16,42 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion*
     const auto start_indent = start_line.indentation_level;
     const auto start_scope = start_line.scope_level;
 
-    auto find_parent_scope_by_indentation = [&](int from, int parent_scope){
-        int found = -1;
-        for (int i = from; i >=0; i--) {
-            if (lines[i].indentation_level < parent_scope) {
-                found = i;
-                break;
-            }
+    fmt::print("start_indent: {}\n", start_indent);
+    fmt::print("start_scope: {}\n", start_scope);
+
+    auto find_parent_scope_by_indentation = [&](int from_line, int from_scope, int num_scopes){
+        int indent_target = std::max(0, from_scope - num_scopes);
+        
+        int best = 0;
+        int i = from_line;
+        while (i >= 0 && lines[i].indentation_level > indent_target) {
+            best = i;
+            i--;
         }
-        return found;
+
+        return (lines[best].indentation_level - indent_target) == num_scopes ? best : -1;
     };
 
-    auto find_parent_scope_by_curly = [&](int from, int parent_scope){
-        int found = -1;
-        for (int i = from; i >=0; i--) {
-            if (lines[i].scope_level < parent_scope) {
-                found = i;
-                break;
-            }
+    auto find_parent_scope_by_curly = [&](int from_line, int from_scope, int num_scopes){
+        int scope_target = std::max(0, from_scope - num_scopes);
+        
+        int best = 0;
+        int i = from_line;
+        while (i >= 0 && lines[i].scope_level > scope_target) {
+            best = i;
+            i--;
         }
-        return found;
+
+        return (lines[best].scope_level - scope_target) == num_scopes ? best : -1;
     };
 
-    int indent_parent = find_parent_scope_by_indentation(from, start_indent-1);
-    int scope_parent = find_parent_scope_by_curly(from, start_scope-1);
+
+    for (int i = 0; i < 4; i++) {
+        int indent_parent = find_parent_scope_by_indentation(from, start_indent, i);
+        int scope_parent = find_parent_scope_by_curly(from, start_scope, i);
+        fmt::print("i: {}, scope: {}, indent: {}\n", i, scope_parent, indent_parent);
+    }
+
 
 #if 0
     std::vector<config_tokenizer::Token> tokens;

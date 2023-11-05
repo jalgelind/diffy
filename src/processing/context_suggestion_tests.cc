@@ -1,4 +1,5 @@
 #include "processing/context_suggestion.hpp"
+#include "util/readlines.hpp"
 
 #include <fmt/format.h>
 #include <doctest.h>
@@ -9,21 +10,37 @@ using namespace diffy;
 
 TEST_CASE("context_suggestion") {
     SUBCASE("simple") {
-        std::string s = R"foo(void
+        std::string s = R"foo(
+int a = 0;
+
+void
 apa() {
     int a = 0
     if (a == 0) {
         a = 1;
     }
     else if (a == 1) {
+        a = 1;
         a = 0;
     }
 }
 )foo";
-        //std::vector<diffy::Line> lines;
 
-        //REQUIRE(diffy::parselines(s, lines, false) == true);
+        int line_a_eq_0 = 12;
+        std::vector<diffy::Line> lines;
+        REQUIRE(diffy::parselines(s, lines, false) == true);
 
+        for (int i = 0; i < lines.size(); i++) {
+            auto line = lines[i];
+            auto indent = line.indentation_level;
+            auto scope = line.scope_level;
+            fmt::print("[{:2d} {:2d}] {:2d} '{}' ({})\n", indent, scope, lines[i].line_number, escape_whitespace(line.line), line.line.size());
+        }
+
+        diffy::ContextSuggestion suggestion;
+        diffy::context_find(lines, line_a_eq_0, &suggestion);
+
+        fmt::print("test\n");
     }
 
 }
