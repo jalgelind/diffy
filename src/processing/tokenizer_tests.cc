@@ -1,7 +1,6 @@
 #include "tokenizer.hpp"
 
 #include <doctest.h>
-#include <fmt/format.h>
 
 #include <string>
 #include <vector>

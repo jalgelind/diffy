@@ -2,10 +2,6 @@ TODO
 ----
 * I found a weird theme file on one computer where [color_map] had
   'red' = true. Try to reproduce.
-* Find function header. Maybe the tokenizer can build some indentation table to assist with finding it
-
-search 3 indentation levels (arbitrary), rank the symbols surrounding the first line in the scope
-"def", "fn", "void", anything ending with '_t', '>', ending with '){' or ':\n' 
 
 Most probably happening at some point
 -------------------------------------
