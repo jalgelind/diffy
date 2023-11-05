@@ -405,8 +405,15 @@ Side by side options:
         return 0;
     }
 
-    auto left_line_data = diffy::readlines(opts.left_file, opts.ignore_line_endings);
-    auto right_line_data = diffy::readlines(opts.right_file, opts.ignore_line_endings);
+    std::vector<diffy::Line> left_line_data;
+    if (!diffy::readlines(opts.left_file, left_line_data, opts.ignore_line_endings)) {
+        return -1;
+    }
+
+    std::vector<diffy::Line> right_line_data;
+    if (!diffy::readlines(opts.right_file, right_line_data, opts.ignore_line_endings)) {
+        return -1;
+    }
 
     gsl::span<diffy::Line> left_lines{left_line_data};
     gsl::span<diffy::Line> right_lines{right_line_data};

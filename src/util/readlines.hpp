@@ -12,7 +12,11 @@ namespace diffy {
 struct Line {
     uint32_t line_number;
     uint32_t checksum;
+
     std::string line;
+
+    int indentation_level;
+    int scope_level;
 
     uint32_t
     hash() const {
@@ -30,7 +34,10 @@ struct Line {
     }
 };
 
-std::vector<Line>
-readlines(std::string path, bool ignore_line_endings);
+bool
+parselines(const std::string& input_text, std::vector<Line>& lines, bool ignore_line_endings);
+
+bool
+readlines(const std::string& path, std::vector<Line>& lines, bool ignore_line_endings);
 
 }  // namespace diffy
