@@ -182,3 +182,25 @@ diffy::readlines(const std::string& path, std::vector<diffy::Line>& lines, bool 
     fclose(stream);
     return true;
 }
+
+std::string diffy::escape_whitespace(const std::string& input) {
+    const char special_chars[] = {'\n', '\r', '\t'};
+    const char* escape_sequences[] = {"\\n", "\\r", "\\t"};
+    const size_t num_special_chars = sizeof(special_chars) / sizeof(special_chars[0]);
+
+    std::string result;
+    for (char c : input) {
+        bool found = false;
+        for (size_t i = 0; i < num_special_chars; ++i) {
+            if (c == special_chars[i]) {
+                result += escape_sequences[i];
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            result += c;
+        }
+    }
+    return result;
+}

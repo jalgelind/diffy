@@ -40,4 +40,7 @@ parselines(const std::string& input_text, std::vector<Line>& lines, bool ignore_
 bool
 readlines(const std::string& path, std::vector<Line>& lines, bool ignore_line_endings);
 
+std::string
+escape_whitespace(const std::string& input);
+
 }  // namespace diffy

@@ -1,6 +1,7 @@
 #include "tokenizer.hpp"
 
 #include "util/hash.hpp"
+#include "util/readlines.hpp"
 
 #include <string>
 #include <vector>
@@ -21,6 +22,21 @@ is_delimiter(char c) {
 }
 
 }  // namespace
+
+#if 0
+std::string
+diffy::repr(Token& token) {
+    return fmt::format("Token(.start={:>3}, .length={:>3}, .flags={}, .hash={:8X})",
+        token.start, token.length, token.flags, token.hash);
+}
+
+std::string
+diffy::repr(Token& token, const std::string& source_text) {
+    auto s = diffy::escape_whitespace(token.str_from(source_text));
+    return fmt::format("Token(.start={:>3}, .length={:>3}, .flags={}, .text='{}')",
+        token.start, token.length, token.flags, s);
+}
+#endif
 
 bool
 diffy::is_whitespace(char c) {
