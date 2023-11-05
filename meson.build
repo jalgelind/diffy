@@ -83,6 +83,7 @@ src = ['src/algorithms/myers_greedy.hpp',
 ]
 
 src_test = [
+  'src/processing/context_suggestion_tests.cc',
   'src/processing/tokenizer_tests.cc',
   'src/util/bipolar_array_tests.cc',
   'src/util/readlines_tests.cc',
