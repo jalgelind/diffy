@@ -1,5 +1,6 @@
 #include "context_suggestion.hpp"
 
+#include <unordered_map>
 #include <unordered_set>
 
 #include <fmt/format.h>
@@ -12,6 +13,7 @@ bool
 diffy::context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion* out_suggestions) {
     config_tokenizer::ParseOptions options;
     options.strip_spaces = true;
+    options.strip_newlines = true;
     options.strip_annotated_string_tokens = true;
 
     const auto& start_line = lines[from];
@@ -88,6 +90,27 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion*
     }
 
     config_tokenizer::token_dump(tokens, text);
+
+    // Consider having separate filter functions for each language type
+    // Each language type could be handled in a state-machine DSL-thing
+    // like in the config parser.
+
+    auto cxx_filter = [](std::vector<Token> tokens) -> std::vector<Token> {
+        std::vector<Token> result = tokens;
+
+        return tokens;
+    };
+
+    std::unordered_map<std::string, std::function<std::vector<Token>(std::vector<Token>)>> lang_filters = {
+        { "cpp", cxx_filter }, { "cxx", cxx_filter }, { "cc", cxx_filter }, { "c", cxx_filter },
+        { "hpp", cxx_filter }, { "hxx", cxx_filter }, { "h", cxx_filter },
+    };
+
+    auto& lang_filter = lang_filters.at("cc");
+
+    auto filtered_tokens = lang_filter(tokens);
+
+    config_tokenizer::token_dump(filtered_tokens, text);
 
     return false;
 }
