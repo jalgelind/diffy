@@ -1,5 +1,7 @@
 #include "context_suggestion.hpp"
 
+#include <unordered_set>
+
 #include <fmt/format.h>
 
 #include "config_parser/config_tokenizer.hpp"
@@ -16,8 +18,7 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion*
     const auto start_indent = start_line.indentation_level;
     const auto start_scope = start_line.scope_level;
 
-    fmt::print("start_indent: {}\n", start_indent);
-    fmt::print("start_scope: {}\n", start_scope);
+    fmt::print("initial cursor position: line_idx: {}, indent={}, scope={}\n", from, start_indent, start_scope);
 
     auto find_parent_scope_by_indentation = [&](int from_line, int from_scope, int num_scopes){
         int indent_target = std::max(0, from_scope - num_scopes);
@@ -45,32 +46,48 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion*
         return (lines[best].scope_level - scope_target) == num_scopes ? best : -1;
     };
 
+    std::unordered_set<int> found;
 
     for (int i = 0; i < 4; i++) {
         int indent_parent = find_parent_scope_by_indentation(from, start_indent, i);
         int scope_parent = find_parent_scope_by_curly(from, start_scope, i);
-        fmt::print("i: {}, scope: {}, indent: {}\n", i, scope_parent, indent_parent);
+        if (indent_parent != -1)
+            found.insert(indent_parent);
+        if (scope_parent != -1)
+            found.insert(scope_parent);
+        //fmt::print("i: {}, scope: {}, indent: {}\n", i, scope_parent, indent_parent);
     }
 
+    fmt::print("suggested start positions:\n");
+    for (auto suggested_pos : found) {
+        fmt::print("    {}\n", suggested_pos);
+    }
 
-#if 0
+    if (found.empty()) {
+        return false;
+    }
+
+    int start_pos = *found.begin();
+
     std::vector<config_tokenizer::Token> tokens;
-    int ctx_start = 0;
-    int ctx_end = 0;
+    const int BACK_RANGE = 3; // in lines, but maybe it should be for symbols
+    int ctx_start = std::max(0, start_pos-BACK_RANGE);
+    int ctx_end = start_pos;
 
-    for (int i = ctx_start; i < ctx_end; i++)
-    {
-        config_tokenizer::ParseResult result;
-        if (config_tokenizer::tokenize(lines[i].line, options, result)) {
-            for (auto& token : result.tokens) {
-                tokens.push_back(token);
-            }
-        } else {
-            return false;
-        }
+    std::string text;
+
+    for (int i = ctx_start; i <= ctx_end; i++) {
+        text.append(lines[i].line);
     }
 
-    config_tokenizer::token_dump(tokens);
-#endif
+    config_tokenizer::ParseResult result;
+    if (config_tokenizer::tokenize(text, options, result)) {
+        tokens = result.tokens;
+    } else {
+        return false;
+    }
+
+    config_tokenizer::token_dump(tokens, text);
+
     return false;
 }
