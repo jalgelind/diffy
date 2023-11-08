@@ -14,7 +14,7 @@ TEST_CASE("context_suggestion") {
 int a = 0;
 
 void
-apa() {
+apa(int bepa, char<3> bop) {
     int a = 0
     if (a == 0) {
         a = 1;

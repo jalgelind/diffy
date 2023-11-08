@@ -12,8 +12,8 @@ using namespace diffy::config_tokenizer;
 bool
 diffy::context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion* out_suggestions) {
     config_tokenizer::ParseOptions options;
-    options.strip_spaces = true;
-    options.strip_newlines = true;
+    options.strip_spaces = false;
+    options.strip_newlines = false;
     options.strip_annotated_string_tokens = true;
 
     const auto& start_line = lines[from];
@@ -72,7 +72,7 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion*
     int start_pos = *found.begin();
 
     std::vector<config_tokenizer::Token> tokens;
-    const int BACK_RANGE = 3; // in lines, but maybe it should be for symbols
+    const int BACK_RANGE = 10; // in lines, but maybe it should be for symbols
     int ctx_start = std::max(0, start_pos-BACK_RANGE);
     int ctx_end = start_pos;
 
@@ -96,9 +96,31 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion*
     // like in the config parser.
 
     auto cxx_filter = [](std::vector<Token> tokens) -> std::vector<Token> {
-        std::vector<Token> result = tokens;
+        std::vector<Token> result;
 
-        return tokens;
+        int curly_end_pos = -1;
+        int semi_start_pos = -1;
+        for (int i = tokens.size()-1; i >= 0; i--) {
+            if (tokens[i].id & TokenId_OpenCurly) {
+                curly_end_pos = i+1;
+            } else if (tokens[i].id & TokenId_Semicolon) {
+                semi_start_pos = i+1;
+            }
+
+            if (curly_end_pos != -1 && semi_start_pos != -1)
+                break;
+        }
+
+        fmt::print("curly_end_pos: {}\n", curly_end_pos);
+        fmt::print("semi_start_pos: {}\n", semi_start_pos);
+
+        if (curly_end_pos != -1 && semi_start_pos != -1) {
+            for (int i = semi_start_pos; i < curly_end_pos; i++) {
+                result.push_back(tokens[i]);
+            }
+        }
+    
+        return result;
     };
 
     std::unordered_map<std::string, std::function<std::vector<Token>(std::vector<Token>)>> lang_filters = {
@@ -110,7 +132,20 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion*
 
     auto filtered_tokens = lang_filter(tokens);
 
+    bool drop_newlines = true;
+    std::string filtered_text;
+    for (int i = 0; i < filtered_tokens.size(); i++) {
+        if (filtered_tokens[i].id & TokenId_Newline) {
+            if (!drop_newlines)
+                filtered_text += " ";
+        } else {
+            filtered_text += filtered_tokens[i].str_from(text);
+            drop_newlines = false;
+        }
+    }
+
     config_tokenizer::token_dump(filtered_tokens, text);
+    fmt::print("Context: '{}'\n", filtered_text);
 
     return false;
 }

@@ -39,6 +39,7 @@ struct TokenDescriptor {
         { "SingleQuote",  TokenId_SingleQuote,   "'" ,          TokenId_SingleQuote , std::nullopt    },
         { "Hashtag",      TokenId_Hashtag,       "#" ,          TokenId_Newline     , TokenId_Comment },
         { "Comma",        TokenId_Comma,         "," ,          std::nullopt        , std::nullopt    },
+        { "Semicolon",    TokenId_Semicolon,     ";" ,          std::nullopt        , std::nullopt    },
         { "Backslash",    TokenId_Backslash,     "\\",          std::nullopt        , std::nullopt    },
         // Extra token annotation IDs. An identifier can be e.g:
         //   "String | EmptyString" or "String | Integer"...
