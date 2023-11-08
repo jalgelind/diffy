@@ -17,6 +17,7 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, std::string& out_s
     options.strip_spaces = false;
     options.strip_newlines = false;
     options.strip_annotated_string_tokens = true;
+    options.strip_comments = true;
 
     const auto& start_line = lines[from];
     const auto start_indent = start_line.indentation_level;
@@ -110,7 +111,7 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, std::string& out_s
         for (int i = tokens.size()-1; i >= 0; i--) {
             if (tokens[i].id & TokenId_OpenCurly) {
                 curly_end_pos = i+1;
-            } else if (tokens[i].id & TokenId_Semicolon) {
+            } else if (curly_end_pos > 0 && tokens[i].id & TokenId_Semicolon) {
                 semi_start_pos = i+1;
             }
 
@@ -142,14 +143,21 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, std::string& out_s
     auto filtered_tokens = lang_filter(tokens);
 
     bool drop_newlines = true;
+    bool drop_spaces = true;
     std::string filtered_text;
     for (int i = 0; i < filtered_tokens.size(); i++) {
         if (filtered_tokens[i].id & TokenId_Newline) {
             if (!drop_newlines)
                 filtered_text += " ";
+            drop_spaces = true;
+        } else if (filtered_tokens[i].id & TokenId_Space) {
+            if (!drop_spaces)
+                filtered_text += " ";
+            drop_spaces = true;
         } else {
             filtered_text += filtered_tokens[i].str_from(text);
             drop_newlines = false;
+            drop_spaces = false;
         }
     }
 #ifdef LOCAL_DEBUG
