@@ -38,8 +38,13 @@ apa(int bepa, char<3> bop) {
         }
 
         std::string suggestion;
-        diffy::context_find(lines, line_a_eq_0, suggestion);
+    
+        for (int i = 0; i < lines.size(); i++) {
+            diffy::context_find(lines, i, suggestion);
+            fmt::print("suggestion line={}: {}\n", i+1, suggestion);
+        }
 
+        diffy::context_find(lines, line_a_eq_0, suggestion);
         fmt::print("suggestion: {}\n", suggestion);
     }
 
