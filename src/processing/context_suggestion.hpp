@@ -6,11 +6,7 @@
 
 namespace diffy {
 
-struct ContextSuggestion {
-
-};
-
 bool
-context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion* out_suggestions);
+context_find(std::vector<diffy::Line> lines, int from, std::string& out_suggestion);
 
 }  // namespace diffy

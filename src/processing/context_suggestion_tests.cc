@@ -37,10 +37,10 @@ apa(int bepa, char<3> bop) {
             fmt::print("[{:2d} {:2d}] {:2d} '{}' ({})\n", indent, scope, lines[i].line_number, escape_whitespace(line.line), line.line.size());
         }
 
-        diffy::ContextSuggestion suggestion;
-        diffy::context_find(lines, line_a_eq_0, &suggestion);
+        std::string suggestion;
+        diffy::context_find(lines, line_a_eq_0, suggestion);
 
-        fmt::print("test\n");
+        fmt::print("suggestion: {}\n", suggestion);
     }
 
 }

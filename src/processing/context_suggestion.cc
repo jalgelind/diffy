@@ -9,8 +9,10 @@
 
 using namespace diffy::config_tokenizer;
 
+//#define LOCAL_DEBUG
+
 bool
-diffy::context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion* out_suggestions) {
+diffy::context_find(std::vector<diffy::Line> lines, int from, std::string& out_suggestion) {
     config_tokenizer::ParseOptions options;
     options.strip_spaces = false;
     options.strip_newlines = false;
@@ -20,7 +22,9 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion*
     const auto start_indent = start_line.indentation_level;
     const auto start_scope = start_line.scope_level;
 
+#ifdef LOCAL_DEBUG
     fmt::print("initial cursor position: line_idx: {}, indent={}, scope={}\n", from, start_indent, start_scope);
+#endif
 
     auto find_parent_scope_by_indentation = [&](int from_line, int from_scope, int num_scopes){
         int indent_target = std::max(0, from_scope - num_scopes);
@@ -57,13 +61,14 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion*
             found.insert(indent_parent);
         if (scope_parent != -1)
             found.insert(scope_parent);
-        //fmt::print("i: {}, scope: {}, indent: {}\n", i, scope_parent, indent_parent);
     }
 
+#ifdef LOCAL_DEBUG
     fmt::print("suggested start positions:\n");
     for (auto suggested_pos : found) {
         fmt::print("    {}\n", suggested_pos);
     }
+#endif
 
     if (found.empty()) {
         return false;
@@ -89,7 +94,9 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion*
         return false;
     }
 
+#ifdef LOCAL_DEBUG
     config_tokenizer::token_dump(tokens, text);
+#endif
 
     // Consider having separate filter functions for each language type
     // Each language type could be handled in a state-machine DSL-thing
@@ -111,8 +118,10 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion*
                 break;
         }
 
+#ifdef LOCAL_DEBUG
         fmt::print("curly_end_pos: {}\n", curly_end_pos);
         fmt::print("semi_start_pos: {}\n", semi_start_pos);
+#endif
 
         if (curly_end_pos != -1 && semi_start_pos != -1) {
             for (int i = semi_start_pos; i < curly_end_pos; i++) {
@@ -143,9 +152,12 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, ContextSuggestion*
             drop_newlines = false;
         }
     }
-
+#ifdef LOCAL_DEBUG
     config_tokenizer::token_dump(filtered_tokens, text);
     fmt::print("Context: '{}'\n", filtered_text);
+#endif
 
-    return false;
+    out_suggestion = filtered_text;
+
+    return true;
 }
