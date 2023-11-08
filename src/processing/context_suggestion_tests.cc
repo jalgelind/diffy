@@ -15,7 +15,7 @@ int a = 0;
 
 void
 apa(int bepa, char<3> bop) {
-    int a = 0
+    int a = 0 // adding semicolor breaks the suggestions
     if (a == 0) {
         a = 1;
     }
