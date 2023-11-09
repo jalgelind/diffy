@@ -12,7 +12,7 @@ using namespace diffy::config_tokenizer;
 //#define LOCAL_DEBUG
 
 bool
-diffy::context_find(std::vector<diffy::Line> lines, int from, std::string& out_suggestion) {
+diffy::context_find(std::vector<diffy::Line> lines, int from, std::vector<std::string>& out_suggestions) {
     config_tokenizer::ParseOptions options;
     options.strip_spaces = false;
     options.strip_newlines = false;
@@ -103,12 +103,12 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, std::string& out_s
     // Each language type could be handled in a state-machine DSL-thing
     // like in the config parser.
 
-    auto cxx_filter = [](std::vector<Token> tokens) -> std::vector<Token> {
+    auto cxx_filter = [](std::vector<Token> tokens, int start) -> std::vector<Token> {
         std::vector<Token> result;
 
         int curly_end_pos = -1;
         int semi_start_pos = -1;
-        for (int i = tokens.size()-1; i >= 0; i--) {
+        for (int i = start; i >= 0; i--) {
             if (tokens[i].id & TokenId_OpenCurly) {
                 curly_end_pos = i+1;
             } else if (curly_end_pos > 0 && tokens[i].id & TokenId_Semicolon) {
@@ -133,14 +133,14 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, std::string& out_s
         return result;
     };
 
-    std::unordered_map<std::string, std::function<std::vector<Token>(std::vector<Token>)>> lang_filters = {
+    std::unordered_map<std::string, std::function<std::vector<Token>(std::vector<Token>, int start)>> lang_filters = {
         { "cpp", cxx_filter }, { "cxx", cxx_filter }, { "cc", cxx_filter }, { "c", cxx_filter },
         { "hpp", cxx_filter }, { "hxx", cxx_filter }, { "h", cxx_filter },
     };
 
     auto& lang_filter = lang_filters.at("cc");
 
-    auto filtered_tokens = lang_filter(tokens);
+    auto filtered_tokens = lang_filter(tokens, tokens.size()-1);
 
     bool drop_newlines = true;
     bool drop_spaces = true;
@@ -165,7 +165,7 @@ diffy::context_find(std::vector<diffy::Line> lines, int from, std::string& out_s
     fmt::print("Context: '{}'\n", filtered_text);
 #endif
 
-    out_suggestion = filtered_text;
+    out_suggestions.push_back(filtered_text);
 
     return true;
 }

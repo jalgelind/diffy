@@ -37,15 +37,19 @@ apa(int bepa, char<3> bop) {
             fmt::print("[{:2d} {:2d}] {:2d} '{}' ({})\n", indent, scope, lines[i].line_number, escape_whitespace(line.line), line.line.size());
         }
 
-        std::string suggestion;
-    
         for (int i = 0; i < lines.size(); i++) {
-            diffy::context_find(lines, i, suggestion);
-            fmt::print("suggestion line={}: {}\n", i+1, suggestion);
+            std::vector<std::string> suggestions;
+            diffy::context_find(lines, i, suggestions);
+            fmt::print("{:2d}: ", i+1);
+            if (!suggestions.empty()) {
+                for (auto& s : suggestions)
+                    fmt::print("'{}' ", s);
+                }
+            fmt::print("\n");
         }
 
-        diffy::context_find(lines, line_a_eq_0, suggestion);
-        fmt::print("suggestion: {}\n", suggestion);
+        //diffy::context_find(lines, line_a_eq_0, suggestion);
+        //fmt::print("suggestion: {}\n", suggestion);
     }
 
 }
