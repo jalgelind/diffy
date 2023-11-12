@@ -463,7 +463,33 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
         return rows;
     };
 
+    // Shorten from the middle
+    // void my_func( ... , Something blah) {
+    auto shorten = [&](const std::string& s, int trail_reserved = 0) {
+        int max_len = config.max_row_length - trail_reserved;
+        if (s.size() > max_len) {
+            return "..." + s.substr(s.size() - max_len + 3);
+        }
+        return s;
+    };
+
     for (const auto& hunk : hunks) {
+        if (hunk.hunk_context) {
+            DisplayColumns columns;
+
+            std::string context_str = shorten(*hunk.hunk_context);
+            int context_len = utf8_len(context_str);
+            if (context_len > 0)
+            {
+                auto left_line = DisplayLine{{{config.style.context_header + context_str + "\033[0m", context_len, 0, EditType::Meta}}, context_len};
+                //auto left_line2 = make_display_line_chopped(left_line, config.max_row_length);
+                //left_line2[0].segments[0].text = config.style.context_header + context_str + "\033[0m";
+                columns.push_back({left_line});
+                columns.push_back({left_line});
+                hunk_columns.push_back(columns);
+            }
+        }
+
         DisplayColumns columns{
             make_rows(diff_input.A, hunk.a_lines),
             make_rows(diff_input.B, hunk.b_lines),

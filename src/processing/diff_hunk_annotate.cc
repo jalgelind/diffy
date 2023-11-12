@@ -255,13 +255,14 @@ diffy::annotate_hunks(const DiffInput<diffy::Line>& diff_input,
             break;
     }
 
-    // Find context info
-    // TODO: find a nice way to add this to the side-by-side view
+    // Look-up context info line for each hunk.
+    //   (e.g name of the function that is being changed).
     for (auto& hunk: hunks_annotated) {
         std::vector<std::string> suggestions;
         if (context_find(diff_input.B, hunk.from_start, suggestions)) {
-            for (auto& suggestion : suggestions) {
-                fmt::print("context: {}\n", suggestion);
+            // TODO(ja): Is there any reason why we shouldn't pick the first suggestion?
+            if (suggestions.size() > 0 && suggestions[0].size() > 0) {
+                hunk.hunk_context = suggestions[0];
             }
         }
     }

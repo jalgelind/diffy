@@ -316,6 +316,7 @@ diffy::config_apply_theme(const std::string& theme,
 
         // side-by-side color style
         { "style.header",                   ConfigVariableType::Color,  &cv_style_opts.header },
+        { "style.context_header",           ConfigVariableType::Color,  &cv_style_opts.context_header },
         { "style.delete_line",              ConfigVariableType::Color,  &cv_style_opts.delete_line },
         { "style.delete_token",             ConfigVariableType::Color,  &cv_style_opts.delete_token },
         { "style.delete_line_number",       ConfigVariableType::Color,  &cv_style_opts.delete_line_number },
@@ -334,6 +335,7 @@ diffy::config_apply_theme(const std::string& theme,
     // Set up escape code heper struct values
     const std::vector<std::tuple<TermStyle*, std::string*>> colors = {
         {&cv_style_opts.header, &cv_style_escape_codes.header},
+        {&cv_style_opts.context_header, &cv_style_escape_codes.context_header},
         {&cv_style_opts.delete_line, &cv_style_escape_codes.delete_line},
         {&cv_style_opts.delete_token, &cv_style_escape_codes.delete_token},
         {&cv_style_opts.delete_line_number, &cv_style_escape_codes.delete_line_number},

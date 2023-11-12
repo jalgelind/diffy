@@ -47,6 +47,13 @@ struct ColumnViewTextStyle {
         TermStyle::Attribute::Underline
     };
 
+    TermStyle context_header = TermStyle {
+        TermColor::kWhite,
+        TermColor::kNone,
+        TermStyle::Attribute::Bold
+    };
+
+    // TODO: unused
     TermStyle header_background = TermStyle {
         TermColor::kWhite,
         TermColor::kNone,
@@ -117,6 +124,7 @@ struct ColumnViewTextStyle {
 
 struct ColumnViewTextStyleEscapeCodes {
     std::string header;
+    std::string context_header;
     std::string delete_line;
     std::string delete_token;
     std::string delete_line_number;
