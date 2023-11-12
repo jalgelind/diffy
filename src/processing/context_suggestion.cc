@@ -12,7 +12,7 @@ using namespace diffy::config_tokenizer;
 //#define LOCAL_DEBUG
 
 bool
-diffy::context_find(std::vector<diffy::Line> lines, int from, std::vector<std::string>& out_suggestions) {
+diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<std::string>& out_suggestions) {
     config_tokenizer::ParseOptions options;
     options.strip_spaces = false;
     options.strip_newlines = false;

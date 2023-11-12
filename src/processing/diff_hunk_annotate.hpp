@@ -37,6 +37,8 @@ struct AnnotatedHunk {
     int64_t to_start = 0;
     int64_t to_count = 0;
 
+    std::optional<std::string> hunk_context;
+
     std::vector<EditLine> a_lines;
     std::vector<EditLine> b_lines;
 };

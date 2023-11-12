@@ -2,6 +2,7 @@
 
 #include "algorithms/myers_linear.hpp"
 #include "algorithms/patience.hpp"
+#include "context_suggestion.hpp"
 #include "processing/tokenizer.hpp"
 
 #include <fmt/format.h>
@@ -253,5 +254,19 @@ diffy::annotate_hunks(const DiffInput<diffy::Line>& diff_input,
         default:
             break;
     }
+
+    // Find context info
+    // TODO: find a nice way to add this to the side-by-side view
+    for (auto& hunk: hunks_annotated) {
+        std::vector<std::string> suggestions;
+        if (context_find(diff_input.B, hunk.from_start, suggestions)) {
+            for (auto& suggestion : suggestions) {
+                fmt::print("context: {}\n", suggestion);
+            }
+        } else {
+            hunk.hunk_context = nullptr;
+        }
+    }
+
     return hunks_annotated;
 }
