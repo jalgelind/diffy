@@ -32,5 +32,9 @@ sanitize-address: | $(build_out)/sanitize-address/build.ninja
 install: release
 	cp out/release/diffy $(LOCAL_BIN_DIR)/diffy
 
+dinstall: debug
+	cp out/debug/diffy $(LOCAL_BIN_DIR)/diffy
 
-.PHONY: all debug debugoptimized release clean test install
+
+
+.PHONY: all debug debugoptimized release clean test install dinstall
