@@ -19,6 +19,13 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<std::str
     options.strip_annotated_string_tokens = true;
     options.strip_comments = true;
 
+    if (from > lines.size()) {
+        return false;
+    }
+#ifdef LOCAL_DEBUG
+    fmt::print("linecount: {}, cursor: {}\n", lines.size(), from);
+#endif
+
     const auto& start_line = lines[from];
     const auto start_indent = start_line.indentation_level;
     const auto start_scope = start_line.scope_level;

@@ -263,8 +263,6 @@ diffy::annotate_hunks(const DiffInput<diffy::Line>& diff_input,
             for (auto& suggestion : suggestions) {
                 fmt::print("context: {}\n", suggestion);
             }
-        } else {
-            hunk.hunk_context = nullptr;
         }
     }
 
