@@ -258,9 +258,20 @@ diffy::annotate_hunks(const DiffInput<diffy::Line>& diff_input,
     // Look-up context info line for each hunk.
     //   (e.g name of the function that is being changed).
     for (auto& hunk: hunks_annotated) {
+
+        auto start_offset = [&](std::vector<EditLine>& lines) -> int {
+            for (int i = 0; i < lines.size(); i++) {
+                if (lines[i].type != EditType::Common) {
+                    return i;
+                }
+            }
+            return -1;
+        };
+
         {
             std::vector<std::string> suggestions;
-            if (context_find(diff_input.A, hunk.from_start, suggestions)) {
+            auto context_offset = start_offset(hunk.a_lines);
+            if (context_offset >= 0 && context_find(diff_input.A, hunk.from_start + context_offset, suggestions)) {
                 // TODO(ja): Is there any reason why we shouldn't pick the first suggestion?
                 if (suggestions.size() > 0 && suggestions[0].size() > 0) {
                     hunk.a_hunk_context = suggestions[0];
@@ -270,7 +281,8 @@ diffy::annotate_hunks(const DiffInput<diffy::Line>& diff_input,
 
         {
             std::vector<std::string> suggestions;
-            if (context_find(diff_input.B, hunk.to_start, suggestions)) {
+            auto context_offset = start_offset(hunk.b_lines);
+            if (context_offset >= 0 && context_find(diff_input.B, hunk.to_start + start_offset(hunk.b_lines), suggestions)) {
                 // TODO(ja): Is there any reason why we shouldn't pick the first suggestion?
                 if (suggestions.size() > 0 && suggestions[0].size() > 0) {
                     hunk.b_hunk_context = suggestions[0];
