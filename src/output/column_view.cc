@@ -465,29 +465,41 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
 
     // Shorten from the middle
     // void my_func( ... , Something blah) {
-    auto shorten = [&](const std::string& s, int trail_reserved = 0) {
-        int max_len = config.max_row_length - trail_reserved;
-        if (s.size() > max_len) {
-            return "..." + s.substr(s.size() - max_len + 3);
+    auto shorten = [&](const std::string& s) {
+        int max_len = config.max_row_length;
+
+        // Whole string fits
+        if (s.size() < max_len) {
+            return s;
         }
-        return s;
+
+        // It's long, but not long enough.
+        int num_extra_for_split = 5; // " ... "
+        if (s.size() + num_extra_for_split < max_len) {
+            return s.substr(0, max_len-3) + "...";
+        }
+
+        // Split in two, and join with " ... "
+        std::size_t mid = config.max_row_length/2;
+        return s.substr(0, mid) + " ... " + s.substr(s.size()-mid+num_extra_for_split, mid);
+    };
+
+    auto make_hunk_context_column = [&](std::optional<std::string> context) -> DisplayLine {
+        std::string s = context ? shorten(*context) : "";
+        int slen = utf8_len(s);
+        DisplayLine display_line {
+            {{config.style.context_header + s + "\033[0m", slen, 0, EditType::Meta}}, slen
+        };
+        return display_line;
     };
 
     for (const auto& hunk : hunks) {
-        if (hunk.a_hunk_context) {
+        // Append context info to each hunk
+        {
             DisplayColumns columns;
-
-            std::string context_str = shorten(*hunk.a_hunk_context);
-            int context_len = utf8_len(context_str);
-            if (context_len > 0)
-            {
-                auto left_line = DisplayLine{{{config.style.context_header + context_str + "\033[0m", context_len, 0, EditType::Meta}}, context_len};
-                //auto left_line2 = make_display_line_chopped(left_line, config.max_row_length);
-                //left_line2[0].segments[0].text = config.style.context_header + context_str + "\033[0m";
-                columns.push_back({left_line});
-                columns.push_back({left_line});
-                hunk_columns.push_back(columns);
-            }
+            columns.push_back({make_hunk_context_column(hunk.a_hunk_context)});
+            columns.push_back({make_hunk_context_column(hunk.b_hunk_context)});
+            hunk_columns.push_back(columns);
         }
 
         DisplayColumns columns{
