@@ -258,11 +258,23 @@ diffy::annotate_hunks(const DiffInput<diffy::Line>& diff_input,
     // Look-up context info line for each hunk.
     //   (e.g name of the function that is being changed).
     for (auto& hunk: hunks_annotated) {
-        std::vector<std::string> suggestions;
-        if (context_find(diff_input.B, hunk.from_start, suggestions)) {
-            // TODO(ja): Is there any reason why we shouldn't pick the first suggestion?
-            if (suggestions.size() > 0 && suggestions[0].size() > 0) {
-                hunk.hunk_context = suggestions[0];
+        {
+            std::vector<std::string> suggestions;
+            if (context_find(diff_input.A, hunk.from_start, suggestions)) {
+                // TODO(ja): Is there any reason why we shouldn't pick the first suggestion?
+                if (suggestions.size() > 0 && suggestions[0].size() > 0) {
+                    hunk.a_hunk_context = suggestions[0];
+                }
+            }
+        }
+
+        {
+            std::vector<std::string> suggestions;
+            if (context_find(diff_input.B, hunk.to_start, suggestions)) {
+                // TODO(ja): Is there any reason why we shouldn't pick the first suggestion?
+                if (suggestions.size() > 0 && suggestions[0].size() > 0) {
+                    hunk.b_hunk_context = suggestions[0];
+                }
             }
         }
     }

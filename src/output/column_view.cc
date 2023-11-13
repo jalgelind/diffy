@@ -474,10 +474,10 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
     };
 
     for (const auto& hunk : hunks) {
-        if (hunk.hunk_context) {
+        if (hunk.a_hunk_context) {
             DisplayColumns columns;
 
-            std::string context_str = shorten(*hunk.hunk_context);
+            std::string context_str = shorten(*hunk.a_hunk_context);
             int context_len = utf8_len(context_str);
             if (context_len > 0)
             {
