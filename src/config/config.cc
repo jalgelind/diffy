@@ -270,6 +270,12 @@ diffy::config_apply_theme(const std::string& theme,
         flush_config_to_disk = true;
     }
 
+    // Remove `style.header_background`, it was never used.
+    if (auto value = config_file_table_value.lookup_value_by_path("style.header_background"); value != std::nullopt) {
+        config_file_table_value["style"].as_table().remove("header_background");
+        flush_config_to_disk = true;
+    }
+
     // Update the color table
     {
         const std::vector<std::string> palette_color_names = {
