@@ -113,6 +113,23 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
     // TODO: We fail when context looks like: for (int i = 0; i < lines.size(); i++) {
     // We scan from { to ;, but miss that it's separators for the loop conditions...
 
+    /*
+        loop_score = 1
+        function_score = 2
+
+        // -1: any number of tokens ahead of identiifer
+        //  0: no tokens ahead of identifier
+        find(-1, TokenId_Identifier,
+              0, TokenId_OpenParam,
+             -1, TokenId_CloseParam,
+              0, TokenId_StartCurly)
+        // but we need to seek backwards
+        find( 0, TokenId_StartCurly,
+             -1, TokenId_CloseParam,
+              0, TokenId_OpenParam,
+             -1, TokenId_Identifier)
+    */
+
     auto cxx_filter = [](std::vector<Token> tokens, int start) -> std::vector<Token> {
         std::vector<Token> result;
 
