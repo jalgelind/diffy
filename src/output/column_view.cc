@@ -484,11 +484,12 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
         return s.substr(0, mid) + " ... " + s.substr(s.size()-mid+num_extra_for_split, mid);
     };
 
-    auto make_hunk_context_column = [&](std::optional<std::string> context) -> DisplayLine {
-        std::string s = context ? shorten(*context) : "";
+    auto make_hunk_context_column = [&](std::optional<diffy::Suggestion> context) -> DisplayLine {
+        std::string s = context ? shorten((*context).text) : "";
+        int line_no = context ? (*context).line_no : -1;
         int slen = utf8_len(s);
         DisplayLine display_line {
-            {{config.style.context_header + s + "\033[0m", slen, 0, EditType::Meta}}, slen
+            {{config.style.context_header + s + "\033[0m", slen, 0, EditType::Meta}}, slen, line_no
         };
         return display_line;
     };

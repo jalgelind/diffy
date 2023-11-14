@@ -38,12 +38,12 @@ apa(int bepa, char<3> bop) {
         }
 
         for (int i = 0; i < lines.size(); i++) {
-            std::vector<std::string> suggestions;
+            std::vector<diffy::Suggestion> suggestions;
             diffy::context_find(lines, i, suggestions);
             fmt::print("{:2d}: ", i+1);
             if (!suggestions.empty()) {
                 for (auto& s : suggestions)
-                    fmt::print("'{}' ", s);
+                    fmt::print("'{}' ", s.text);
                 }
             fmt::print("\n");
         }

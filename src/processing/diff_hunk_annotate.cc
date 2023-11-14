@@ -269,22 +269,22 @@ diffy::annotate_hunks(const DiffInput<diffy::Line>& diff_input,
         };
 
         {
-            std::vector<std::string> suggestions;
+            std::vector<diffy::Suggestion> suggestions;
             auto context_offset = start_offset(hunk.a_lines);
             if (context_offset >= 0 && context_find(diff_input.A, hunk.from_start + context_offset, suggestions)) {
                 // TODO(ja): Is there any reason why we shouldn't pick the first suggestion?
-                if (suggestions.size() > 0 && suggestions[0].size() > 0) {
+                if (suggestions.size() > 0 && suggestions[0].text.size() > 0) {
                     hunk.a_hunk_context = suggestions[0];
                 }
             }
         }
 
         {
-            std::vector<std::string> suggestions;
+            std::vector<diffy::Suggestion> suggestions;
             auto context_offset = start_offset(hunk.b_lines);
             if (context_offset >= 0 && context_find(diff_input.B, hunk.to_start + start_offset(hunk.b_lines), suggestions)) {
                 // TODO(ja): Is there any reason why we shouldn't pick the first suggestion?
-                if (suggestions.size() > 0 && suggestions[0].size() > 0) {
+                if (suggestions.size() > 0 && suggestions[0].text.size() > 0) {
                     hunk.b_hunk_context = suggestions[0];
                 }
             }

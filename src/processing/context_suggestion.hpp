@@ -9,7 +9,12 @@
 
 namespace diffy {
 
+struct Suggestion {
+    int line_no;
+    std::string text;
+};
+
 bool
-context_find(gsl::span<diffy::Line> lines, int from, std::vector<std::string>& out_suggestions);
+context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggestion>& out_suggestions);
 
 }  // namespace diffy

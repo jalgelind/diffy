@@ -9,6 +9,7 @@
 */
 
 #include "algorithms/algorithm.hpp"
+#include "processing/context_suggestion.hpp"
 #include "processing/diff_hunk.hpp"
 #include "processing/tokenizer.hpp"
 #include "util/readlines.hpp"
@@ -40,8 +41,8 @@ struct AnnotatedHunk {
     std::vector<EditLine> a_lines;
     std::vector<EditLine> b_lines;
 
-    std::optional<std::string> a_hunk_context;
-    std::optional<std::string> b_hunk_context;
+    std::optional<diffy::Suggestion> a_hunk_context;
+    std::optional<diffy::Suggestion> b_hunk_context;
 };
 
 enum class EditGranularity {

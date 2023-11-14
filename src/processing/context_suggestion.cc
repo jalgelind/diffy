@@ -12,7 +12,7 @@ using namespace diffy::config_tokenizer;
 //#define LOCAL_DEBUG
 
 bool
-diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<std::string>& out_suggestions) {
+diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggestion>& out_suggestions) {
     config_tokenizer::ParseOptions options;
     options.strip_spaces = false;
     options.strip_newlines = false;
@@ -172,7 +172,8 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<std::str
     fmt::print("Context: '{}'\n", filtered_text);
 #endif
 
-    out_suggestions.push_back(filtered_text);
+    // TODO: we should take the index of the first (or last?) token we are returning, not ctx_start wher
+    out_suggestions.push_back({ctx_start, filtered_text});
 
     return true;
 }
