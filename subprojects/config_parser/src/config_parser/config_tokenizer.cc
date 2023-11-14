@@ -35,6 +35,8 @@ struct TokenDescriptor {
         { "Assign",       TokenId_Assign,        "=" ,          std::nullopt        , std::nullopt    },
         { "OpenCurly",    TokenId_OpenCurly,     "{" ,          std::nullopt        , std::nullopt    },
         { "CloseCurly",   TokenId_CloseCurly,    "}" ,          std::nullopt        , std::nullopt    },
+        { "OpenParen",    TokenId_OpenParen,     "(" ,          std::nullopt        , std::nullopt    },
+        { "CloseParen",   TokenId_CloseParen,    ")" ,          std::nullopt        , std::nullopt    },
         { "DoubleQuote",  TokenId_DoubleQuote,   "\"",          TokenId_DoubleQuote , std::nullopt    },
         { "SingleQuote",  TokenId_SingleQuote,   "'" ,          TokenId_SingleQuote , std::nullopt    },
         { "Hashtag",      TokenId_Hashtag,       "#" ,          TokenId_Newline     , TokenId_Comment },
