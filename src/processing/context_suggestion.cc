@@ -110,6 +110,9 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
     // Each language type could be handled in a state-machine DSL-thing
     // like in the config parser.
 
+    // TODO: We fail when context looks like: for (int i = 0; i < lines.size(); i++) {
+    // We scan from { to ;, but miss that it's separators for the loop conditions...
+
     auto cxx_filter = [](std::vector<Token> tokens, int start) -> std::vector<Token> {
         std::vector<Token> result;
 
@@ -151,9 +154,18 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
 
     bool drop_newlines = true;
     bool drop_spaces = true;
+    bool drop_curlies = true;
     std::string filtered_text;
     for (int i = 0; i < filtered_tokens.size(); i++) {
-        if (filtered_tokens[i].id & TokenId_Newline) {
+        if (filtered_tokens[i].id & TokenId_CloseCurly) {
+            if (!drop_curlies)
+                filtered_text += "}";
+        } else if (filtered_tokens[i].id & TokenId_Identifier) {
+            filtered_text += filtered_tokens[i].str_from(text);
+            drop_curlies = false;
+            drop_newlines = false;
+            drop_spaces = false;
+        } else if (filtered_tokens[i].id & TokenId_Newline) {
             if (!drop_newlines)
                 filtered_text += " ";
             drop_spaces = true;
