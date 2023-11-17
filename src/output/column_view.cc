@@ -524,6 +524,29 @@ void
 print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnViewState& config) {
     auto print_display_lines = [](const DisplayLine& left, const DisplayLine& right,
                                   const ColumnViewState& config) {
+    auto line_no_style = [&](EditType type) -> std::string {
+        std::string style = "";
+        if (config.settings.context_colored_line_numbers) {
+            switch (right.type) {
+                case EditType::Insert:
+                    style = config.style.insert_line_number;
+                    break;
+                case EditType::Delete:
+                    style = config.style.delete_line_number;
+                    break;
+                case EditType::Common:
+                    style = config.style.common_line_number;
+                    break;
+                case EditType::Meta:
+                    style = config.style.empty_cell;
+                    break;
+                default:
+                    break;
+            }
+        }
+        return style;
+    };
+
         std::vector<DisplayCommand> display_commands;
 
         // color stack? do we have the line meta data somewhere here to decide if we should
@@ -533,25 +556,7 @@ print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnV
         display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell,
             config.chars.edge_separator));
         if (config.settings.show_line_numbers) {
-            std::string style = "";
-            if (config.settings.context_colored_line_numbers) {
-                switch (left.type) {
-                    case EditType::Insert:
-                        style = config.style.insert_line_number;
-                        break;
-                    case EditType::Delete:
-                        style = config.style.delete_line_number;
-                        break;
-                    case EditType::Common:
-                        style = config.style.common_line_number;
-                        break;
-                    case EditType::Meta:
-                        style = config.style.empty_cell;
-                        break;
-                    default:
-                        break;
-                }
-            }
+            std::string style = line_no_style(left.type);
             display_commands.push_back(DisplayCommand::with_style(
                 style, format_line_number(left.line_number, config.line_number_digits_count,
                                           config.settings.line_number_align_right)));
@@ -574,27 +579,8 @@ print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnV
         }
 
         // Right side
-
         if (config.settings.show_line_numbers) {
-            std::string style = "";
-            if (config.settings.context_colored_line_numbers) {
-                switch (right.type) {
-                    case EditType::Insert:
-                        style = config.style.insert_line_number;
-                        break;
-                    case EditType::Delete:
-                        style = config.style.delete_line_number;
-                        break;
-                    case EditType::Common:
-                        style = config.style.common_line_number;
-                        break;
-                    case EditType::Meta:
-                        style = config.style.empty_cell;
-                        break;
-                    default:
-                        break;
-                }
-            }
+            std::string style = line_no_style(right.type);
             display_commands.push_back(DisplayCommand::with_style(
                 style, format_line_number(right.line_number, config.line_number_digits_count,
                                           config.settings.line_number_align_right)));
