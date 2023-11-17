@@ -557,7 +557,8 @@ render_display_line(const ColumnViewState& config,
                 break;
             case EditType::Meta:
                 // TODO: We need DisplayType or something, "Meta" is a hack that doesn't scale
-                // style = config.style.header;
+                // In this case, we only use it for the file header...
+                style = config.style.header;
                 break;
             default:
                 break;
@@ -584,7 +585,7 @@ print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnV
                     style = config.style.common_line_number;
                     break;
                 case EditType::Meta:
-                    style = config.style.empty_cell;
+                    style = config.style.common_line_number; // empty_cell?
                     break;
                 default:
                     break;
@@ -644,6 +645,8 @@ print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnV
         display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell,
             config.chars.edge_separator));
 
+        // Do the render
+
         std::string full;
         for (auto& command : display_commands) {
             if (command.style.empty()) {
@@ -699,20 +702,21 @@ diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
         frame_characters += 2 * utf8_len(config.chars.edge_separator);
     }
 
-    int64_t line_number_digits = 4;
-    int64_t line_number_digits_padding = 0;
+    // TODO: When we are invoked with git diff, maybe we can remember the width of the previous execution
+    // within the same session using env vars?
+    int64_t line_number_digits = 3;
     if (config.settings.show_line_numbers && hunks.size() > 0) {
         auto& last_hunk = *(hunks.end() - 1);
         int64_t line_number_max =
             std::max(last_hunk.from_start + last_hunk.from_count, last_hunk.to_start + last_hunk.to_count);
         int64_t line_number_max_digits = fmt::format("{}", line_number_max + 1).size();
         line_number_digits = line_number_max_digits;
-        line_number_digits_padding = 2;
     }
 
     config.line_number_digits_count = line_number_digits;  // @cleanup
 
-    int64_t extra_layout_characters =
+    const int64_t line_number_digits_padding = 1; // one space after line number
+    const int64_t extra_layout_characters =
         frame_characters + 2 * (line_number_digits + line_number_digits_padding);
 
     // TODO: option with minimum width
