@@ -18,7 +18,8 @@ struct ColumnViewState {
 
     // Internal state below
 
-    int64_t max_row_length = 0;  // Automatically calculated based on terminal width
+    int64_t max_row_length_left = 0;  // Automatically calculated based on terminal width
+    int64_t max_row_length_right = 0;  // Automatically calculated based on terminal width
     int64_t line_number_digits_count =
         4;  // This is automatically adjusted depending on how many lines we show.
 };

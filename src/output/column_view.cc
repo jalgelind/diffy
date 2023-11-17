@@ -213,16 +213,17 @@ transform_edit_line(const gsl::span<diffy::Line>& content_strings,
 std::vector<DisplayLine>
 make_display_lines(const gsl::span<diffy::Line>& content_strings,
                    const EditLine& line,
-                   const ColumnViewState& config) {
+                   const ColumnViewState& config,
+                   int64_t max_length) {
 
     // TODO: So... this is the one that works on line level...
     DisplayLine display_line = transform_edit_line(content_strings, line, config);
 
     if (!config.settings.word_wrap) {
-        return make_display_line_chopped(display_line, config.max_row_length);
+        return make_display_line_chopped(display_line, max_length);
     }
 
-    return make_display_line_wrapped(display_line, config.max_row_length);
+    return make_display_line_wrapped(display_line, max_length);
 }
 
 void
@@ -323,8 +324,8 @@ make_header_columns(const std::string& left_name,
     std::vector<DisplayLine> col_left;
     std::vector<DisplayLine> col_right;
    
-    auto shorten = [&](const std::string& s, int trail_reserved = 0) {
-        int max_len = config.max_row_length - trail_reserved;
+    auto shorten = [&](const std::string& s, int64_t max_length, int trail_reserved = 0) {
+        int max_len = max_length - trail_reserved;
         if (s.size() > max_len) {
             return "..." + s.substr(s.size() - max_len + 3);
         }
@@ -362,14 +363,14 @@ make_header_columns(const std::string& left_name,
     const int num_extra_long_and_short_perm_chars = 3; // " ()"
 
     const bool left_long_perm_fits = left_name.size() + long_perm_width +
-        num_extra_long_and_short_perm_chars < config.max_row_length;
+        num_extra_long_and_short_perm_chars < config.max_row_length_left;
     const bool left_short_perm_fits = left_name.size() + short_perm_width +
-        num_extra_long_and_short_perm_chars < config.max_row_length;
+        num_extra_long_and_short_perm_chars < config.max_row_length_left;
     
     const bool right_long_perm_fits = right_name.size() + long_perm_width +
-        num_extra_long_and_short_perm_chars < config.max_row_length;
+        num_extra_long_and_short_perm_chars < config.max_row_length_right;
     const bool right_short_perm_fits = right_name.size() + short_perm_width +
-        num_extra_long_and_short_perm_chars < config.max_row_length;
+        num_extra_long_and_short_perm_chars < config.max_row_length_right;
 
     int left_perm_width = 0;
     int right_perm_width = 0;
@@ -397,8 +398,8 @@ make_header_columns(const std::string& left_name,
         num_extra_perm_chars = 0;
     }
     
-    auto a = shorten(left_name, left_perm_width + num_extra_perm_chars);
-    auto b = shorten(right_name, right_perm_width + num_extra_perm_chars);
+    auto a = shorten(left_name, config.max_row_length_left, left_perm_width + num_extra_perm_chars);
+    auto b = shorten(right_name, config.max_row_length_right, right_perm_width + num_extra_perm_chars);
 
     auto alen = utf8_len(a) + left_perm_width + num_extra_perm_chars;
     auto blen = utf8_len(b) + right_perm_width + num_extra_perm_chars;
@@ -449,10 +450,10 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
         return hunk_columns;
     }
 
-    auto make_rows = [&config](const auto& content_strings, const auto& lines) {
+    auto make_rows = [&config](const auto& content_strings, const auto& lines, int64_t max_length) {
         std::vector<DisplayLine> rows;
         for (const auto& line : lines) {
-            const auto& display_lines = make_display_lines(content_strings, line, config);
+            const auto& display_lines = make_display_lines(content_strings, line, config, max_length);
             for (const auto& display_line : display_lines) {
                 rows.push_back(display_line);
             }
@@ -472,9 +473,7 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
 
     // Shorten from the middle
     // void my_func( ... , Something blah) {
-    auto shorten = [&](const std::string& s) {
-        int max_len = config.max_row_length;
-
+    auto shorten = [&](const std::string& s, int64_t max_len) {
         // Whole string fits
         if (s.size() < max_len) {
             return s;
@@ -487,12 +486,12 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
         }
 
         // Split in two, and join with " ... "
-        std::size_t mid = config.max_row_length/2;
+        std::size_t mid = max_len/2;
         return s.substr(0, mid) + " ... " + s.substr(s.size()-mid+num_extra_for_split, mid);
     };
 
-    auto make_hunk_context_column = [&](std::optional<diffy::Suggestion> context) -> DisplayLine {
-        std::string s = context ? shorten((*context).text) : "";
+    auto make_hunk_context_column = [&](std::optional<diffy::Suggestion> context, int64_t max_len) -> DisplayLine {
+        std::string s = context ? shorten((*context).text, max_len) : "";
         int line_no = context ? (*context).line_no : -1;
         int slen = utf8_len(s);
         DisplayLine display_line {
@@ -506,14 +505,14 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
         // Append context info to each hunk
         {
             DisplayColumns columns;
-            columns.push_back({make_hunk_context_column(hunk.a_hunk_context)});
-            columns.push_back({make_hunk_context_column(hunk.b_hunk_context)});
+            columns.push_back({make_hunk_context_column(hunk.a_hunk_context, config.max_row_length_left)});
+            columns.push_back({make_hunk_context_column(hunk.b_hunk_context, config.max_row_length_right)});
             hunk_columns.push_back(columns);
         }
 
         DisplayColumns columns{
-            make_rows(diff_input.A, hunk.a_lines),
-            make_rows(diff_input.B, hunk.b_lines),
+            make_rows(diff_input.A, hunk.a_lines, config.max_row_length_left),
+            make_rows(diff_input.B, hunk.b_lines, config.max_row_length_right),
         };
 
         insert_alignment_rows(columns);
@@ -611,10 +610,10 @@ print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnV
         }
 
         render_display_line(config, &display_commands, left);
-        assert(config.max_row_length >= left.line_length);
+        assert(config.max_row_length_left >= left.line_length);
 
         display_commands.push_back(DisplayCommand::with_style(
-            config.style.common_line, std::string(config.max_row_length - left.line_length, ' ')));
+            config.style.common_line, std::string(config.max_row_length_left - left.line_length, ' ')));
 
         // Middle
         if (config.settings.context_colored_line_numbers) {
@@ -629,16 +628,18 @@ print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnV
         if (config.settings.show_line_numbers) {
             std::string style = line_no_style(right.type);
             display_commands.push_back(DisplayCommand::with_style(
-                style, format_line_number(right.line_number, config.line_number_digits_count,
+                style, format_line_number(right.line_number,
+                                          config.line_number_digits_count,
                                           config.settings.line_number_align_right)));
             display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell, " "));
         }
 
         render_display_line(config, &display_commands, right);
-        assert(config.max_row_length >= right.line_length);
+        assert(config.max_row_length_right >= right.line_length);
 
         display_commands.push_back(DisplayCommand::with_style(
-            config.style.common_line, std::string(config.max_row_length - right.line_length, ' ')));
+            config.style.common_line,
+            std::string(config.max_row_length_right - right.line_length, ' ')));
 
         display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell,
             config.chars.edge_separator));
@@ -714,11 +715,10 @@ diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
     int64_t extra_layout_characters =
         frame_characters + 2 * (line_number_digits + line_number_digits_padding);
 
-    // TODO: separate row length for left/right
-    // TODO: option to use minimum width required?
-    config.max_row_length = (width - extra_layout_characters) / 2;
-    if (config.max_row_length < 5)
-        config.max_row_length = 5;
+    // TODO: option with minimum width
+    // TODO: actually make use of the ability to size the columns differently
+    config.max_row_length_left = std::max(5, (int)(width - extra_layout_characters) / 2);
+    config.max_row_length_right = std::max(5, (int)(width - extra_layout_characters) / 2);
 
     auto display_columns = make_display_columns(diff_input, hunks, config, options);
 
