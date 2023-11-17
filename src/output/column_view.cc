@@ -35,7 +35,7 @@ struct DisplayCommand {
 std::string
 format_line_number(int64_t line_number, int64_t width, bool right_align) {
     if (line_number == -1) {
-        return fmt::format("{:>{}}", " ", width);
+        return std::string(width, ' ');
     }
     if (right_align) {
         return fmt::format("{:>{}}", line_number, width);
