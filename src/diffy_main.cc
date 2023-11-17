@@ -89,7 +89,9 @@ read_file_permissions(const std::string& path) {
         return std::nullopt;
     }
     fs::directory_entry file(path);
-    return file.status().permissions();
+    auto perms = file.status().permissions();
+    perms &= std::filesystem::perms::all; // ignore uid/gid/sticky
+    return perms;
 }
 
 bool
