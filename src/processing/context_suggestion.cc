@@ -19,7 +19,7 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
     options.strip_annotated_string_tokens = true;
     options.strip_comments = true;
 
-    if (from > lines.size()) {
+    if (from >= lines.size()) {
         return false;
     }
 #ifdef LOCAL_DEBUG
