@@ -344,10 +344,16 @@ make_header_columns(const std::string& left_name,
     if (a_permissions) {
         left_perm_short = fmt::format("{:o}", (int) *a_permissions);
         left_perm_long = to_file_permission_string(*a_permissions);
+    } else {
+        left_perm_short = "---";
+        left_perm_long = "u:--- g:--- o:---";
     }
     if (b_permissions) {
         right_perm_short = fmt::format("{:o}", (int) *b_permissions);
         right_perm_long = to_file_permission_string(*b_permissions);
+    } else {
+        right_perm_short = "---";
+        right_perm_long = "u:--- g:--- o:---";
     }
 
     const int long_perm_width = strlen("u:rw- g:r-- o:r--");
@@ -369,8 +375,7 @@ make_header_columns(const std::string& left_name,
     int right_perm_width = 0;
     int num_extra_perm_chars = 0;
 
-    if (left_long_perm_fits && right_long_perm_fits)
-    {
+    if (left_long_perm_fits && right_long_perm_fits) {
         left_perm_width = long_perm_width;
         right_perm_width = long_perm_width;
         left_perm = left_perm_long;
