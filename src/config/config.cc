@@ -278,27 +278,18 @@ diffy::config_apply_theme(const std::string& theme,
 
     // Update the color table
     {
-        const std::vector<std::string> palette_color_names = {
-            "black",      "red",           "green",      "yellow",    "blue",        "magenta",
-            "cyan",       "light_gray",    "dark_gray",  "light_red", "light_green", "light_yellow",
-            "light_blue", "light_magenta", "light_cyan", "white",
-        };
-
         if (!config_file_table_value.lookup_value_by_path("color_map.red")) {
             config_file_table_value.set_value_at("color_map.red", {"red"});
         }
 
         auto& color_values = config_file_table_value.lookup_value_by_path("color_map")->get();
 
-        for (const auto& color : palette_color_names) {
-            if (color_values.contains(color)) {
-                auto& v = color_values[color];
-                auto term_color = TermColor::parse_value(v);
-                if (term_color) {
-                    color_map_set(color, *term_color);
-                }
+        color_values.as_table().for_each([](auto k, auto v) {
+            auto term_color = TermColor::parse_value(v);
+            if (term_color) {
+                color_map_set(k, *term_color);
             }
-        }
+        });
     }
 
     // Sync up the rest of the configuration with the options structs
