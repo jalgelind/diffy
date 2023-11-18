@@ -339,13 +339,13 @@ Side by side options:
 
             if (a_status == diffy::FileStatus::kOk && b_status == diffy::FileStatus::kNullPath) {
                 // left file ok, right file null: deleted file
-                opts.right_file_name = "";
+                opts.right_file_name = "(No file)";
                 opts.left_file_name = git_base;
-                opts.left_file_permissions = diffy::read_file_permissions(opts.left_file);
+                opts.left_file_permissions = std::nullopt; // No need to show permissions of deleted file
                 opts.right_file_permissions = std::nullopt;
             } else if (a_status == diffy::FileStatus::kNullPath && b_status == diffy::FileStatus::kOk) {
                 // left file null, right file ok: added file
-                opts.left_file_name = "";
+                opts.left_file_name = "(No file)";
                 opts.right_file_permissions = std::nullopt;
                 opts.right_file_name = git_base;
                 opts.right_file_permissions = git_base_permissions;
