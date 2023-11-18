@@ -368,6 +368,11 @@ diffy::cfg_parse(const std::string& input_data,
                 // Section header followed by key identifier
                 PARSER_TRANSITION_TO(TokenId_Identifier, State::ParseKey);
 
+                // The section is empty, and we found the next one.
+                scope_stack.pop();
+                emit_ins(TbInstruction::TableEnd());
+                PARSER_TRANSITION_TO(TokenId_OpenBracket, State::ParseSection);
+
                 PARSER_GIVE_UP("Exhausted");
             } break;
             case State::ParseKey: {
