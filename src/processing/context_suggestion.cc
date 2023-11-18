@@ -106,32 +106,29 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
     config_tokenizer::token_dump(tokens, text);
 #endif
 
-    // Consider having separate filter functions for each language type
-    // Each language type could be handled in a state-machine DSL-thing
-    // like in the config parser.
+    struct SequencePoint {
+        int num_leading_tokens = -1; // any, *, other integer values must be valid
+        config_tokenizer::TokenId id;
+        std::string ident_match;
+    };
 
-    // TODO: We fail when context looks like: for (int i = 0; i < lines.size(); i++) {
-    // We scan from { to ;, but miss that it's separators for the loop conditions...
-
-    /*
-        loop_score = 1
-        function_score = 2
-
-        // -1: any number of tokens ahead of identiifer
-        //  0: no tokens ahead of identifier
-        find(-1, TokenId_Identifier,
-              0, TokenId_OpenParam,
-             -1, TokenId_CloseParam,
-              0, TokenId_StartCurly)
-        // but we need to seek backwards
-        find( 0, TokenId_StartCurly,
-             -1, TokenId_CloseParam,
-              0, TokenId_OpenParam,
-             -1, TokenId_Identifier)
-    */
-
-    auto cxx_filter = [](std::vector<Token> tokens, int start) -> std::vector<Token> {
+    // Scan `input` backwards and find the sequence pattern.
+    auto reverse_find_sequence = [](std::vector<Token>& input, std::vector<SequencePoint> sequence) -> int {
+        return 0;
+    };
+    auto cxx_filter = [&](std::vector<Token> tokens, int start) -> std::vector<Token> {
         std::vector<Token> result;
+
+        std::vector<SequencePoint> for_loop_sequence {
+            SequencePoint { -1, TokenId_Identifier, "for" },
+            SequencePoint {  0, TokenId_OpenParen },
+            SequencePoint { -1, TokenId_Semicolon },
+            SequencePoint { -1, TokenId_Semicolon },
+            SequencePoint {  0, TokenId_CloseParen },
+        };
+        int seeker = reverse_find_sequence(tokens, for_loop_sequence);
+        // We should also get the indentation level and scope level
+        //fmt::print("Found for-loop at idx: {}\n", seeker);
 
         int curly_end_pos = -1;
         int semi_start_pos = -1;
