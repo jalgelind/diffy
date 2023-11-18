@@ -12,7 +12,6 @@ TODO
 Most probably happening at some point
 -------------------------------------
 * Improve diff performance where A and B have a lot of common lines at the beginning and the end of the file
-* Allow arbitrary color names in config
 * Limit width of diff window depending on line length
 
 Most likely not happening

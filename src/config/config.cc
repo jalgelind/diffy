@@ -277,14 +277,16 @@ diffy::config_apply_theme(const std::string& theme,
     }
 
     // Update the color table
-    {
-        if (!config_file_table_value.lookup_value_by_path("color_map.red")) {
+    auto& color_map = config_file_table_value.lookup_value_by_path("color_map")->get();
+    if (color_map.is_table()) {   
+        auto& color_values = color_map.as_table();
+        const auto num_values = color_values.size();
+        if (num_values == 0 && !config_file_table_value.lookup_value_by_path("color_map.red")) {
             config_file_table_value.set_value_at("color_map.red", {"red"});
+            flush_config_to_disk = true;
         }
 
-        auto& color_values = config_file_table_value.lookup_value_by_path("color_map")->get();
-
-        color_values.as_table().for_each([](auto k, auto v) {
+        color_values.for_each([](auto k, auto v) {
             auto term_color = TermColor::parse_value(v);
             if (term_color) {
                 color_map_set(k, *term_color);
