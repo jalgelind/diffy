@@ -95,11 +95,11 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
         text.append(lines[i].line);
     }
 
-//#ifdef LOCAL_DEBUG
+#ifdef LOCAL_DEBUG
     fmt::print("8< - - - - - - - - - - - - - - -\n");
     fmt::print("{}\n", text);
     fmt::print("- - - - - - - - - - - - - - - >8\n");
-//#endif
+#endif
 
     config_tokenizer::ParseResult parse_results;
     if (config_tokenizer::tokenize(text, options, parse_results)) {
@@ -107,10 +107,6 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
     } else {
         return false;
     }
-
-//#ifdef LOCAL_DEBUG
-    config_tokenizer::token_dump(tokens, text);
-//#endif
 
     struct SequencePoint {
         config_tokenizer::TokenId id;
@@ -277,7 +273,7 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
         SequenceMatch match;
         if (reverse_find_sequence(tokens, for_loop_sequence, &match)) {
             // We should also get the indentation level and scope level of the match
-            fmt::print("Found for-loop at pos: {}..{}\n", match.start, match.end);
+            //fmt::print("Found for-loop at pos: {}..{}\n", match.start, match.end);
             match_start = match.start;
             match_end = match.end;
         } else {
@@ -297,8 +293,6 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
         fmt::print("match_start: {}\n", match_start);
         fmt::print("match_end: {}\n", match_end);
 #endif
-
-        token_dump(tokens, text);
 
         if (match_start != -1 && match_end != -1) {
             for (int i = match_start; i < match_end; i++) {

@@ -15,7 +15,7 @@ int a = 0;
 
 void
 apa(int bepa, char<3> bop) {
-    int a = 0; // adding semicolor breaks the suggestions
+    int a = 0; // adding semicolon breaks the suggestions
     if (a == 0) {
         a = 1;
     }
@@ -30,6 +30,7 @@ apa(int bepa, char<3> bop) {
         std::vector<diffy::Line> lines;
         REQUIRE(diffy::parselines(s, lines, false) == true);
 
+#if 0
         for (int i = 0; i < lines.size(); i++) {
             auto line = lines[i];
             auto indent = line.indentation_level;
@@ -47,7 +48,7 @@ apa(int bepa, char<3> bop) {
                 }
             fmt::print("\n");
         }
-
+#endif
         //diffy::context_find(lines, line_a_eq_0, suggestion);
         //fmt::print("suggestion: {}\n", suggestion);
     }

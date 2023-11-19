@@ -28,12 +28,15 @@ src = ['src/config_parser/config_parser.hpp',
        'src/config_parser/config_serializer.cc',
        'src/config_parser/config_tokenizer.hpp',
        'src/config_parser/config_tokenizer.cc',
+       'src/config_parser/config_tokenizer_matcher.hpp',
+       'src/config_parser/config_tokenizer_matcher.cc',
 ]
 
 src_test = [
   'src/config_parser/config_parser_tests.cc',
   'src/config_parser/config_serializer_tests.cc',
   'src/config_parser/config_tokenizer_tests.cc',
+  'src/config_parser/config_tokenizer_matcher_tests.cc',
 ]
 
 config_parser_dep = declare_dependency(
