@@ -95,64 +95,218 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
         text.append(lines[i].line);
     }
 
-    config_tokenizer::ParseResult result;
-    if (config_tokenizer::tokenize(text, options, result)) {
-        tokens = result.tokens;
+//#ifdef LOCAL_DEBUG
+    fmt::print("8< - - - - - - - - - - - - - - -\n");
+    fmt::print("{}\n", text);
+    fmt::print("- - - - - - - - - - - - - - - >8\n");
+//#endif
+
+    config_tokenizer::ParseResult parse_results;
+    if (config_tokenizer::tokenize(text, options, parse_results)) {
+        tokens = parse_results.tokens;
     } else {
         return false;
     }
 
-#ifdef LOCAL_DEBUG
+//#ifdef LOCAL_DEBUG
     config_tokenizer::token_dump(tokens, text);
-#endif
+//#endif
 
     struct SequencePoint {
-        int num_leading_tokens = -1; // any, *, other integer values must be valid
         config_tokenizer::TokenId id;
         std::string ident_match;
     };
 
+    struct SequenceMatch {
+        int start;
+        int end;
+    };
+
+    auto repr = [](SequencePoint p) {
+        return fmt::format("SequencePoint[{}, {}]", config_tokenizer::repr(p.id), p.ident_match);
+    };
+
+    auto token_match = [&](const Token& token, const SequencePoint& point) -> bool {
+        if (token.id & point.id) {
+            if (point.id & TokenId_Identifier && !point.ident_match.empty()) {
+                return token.str_from(text) == point.ident_match;
+            }
+            return true;
+        }
+        return false;
+    };
+
     // Scan `input` backwards and find the sequence pattern.
-    auto reverse_find_sequence = [](std::vector<Token>& input, std::vector<SequencePoint> sequence) -> int {
-        return 0;
+    auto reverse_find_sequence = [&](std::vector<Token>& input, std::vector<SequencePoint> sequence, SequenceMatch* result) -> bool {
+        int input_cursor = input.size() - 1;
+        int seq_cursor = sequence.size() - 1;
+
+        int match_start = -1;
+        int match_end = -1;
+
+        enum State : uint8_t {
+            Scan     = 1 << 0,
+            Matching = 1 << 1,
+            Found    = 1 << 2,
+            Abort    = 1 << 4,
+        };
+        const uint8_t ScanOrMatch = Scan | Matching;
+        State state = Scan;
+
+        while (state & ScanOrMatch && input_cursor >= 0 && seq_cursor >= 0) {
+            Token& token = input[input_cursor];
+
+            while (token.id & TokenId_Space) {
+                if (input_cursor == 0) {
+                    state = Abort;
+                    break;
+                }
+                input_cursor--;
+                token = input[input_cursor];
+            }
+            
+            SequencePoint& p = sequence[seq_cursor];
+            SequencePoint& p_next = sequence[std::max(0, seq_cursor - 1)];
+#ifdef LOCAL_DEBUG
+            fmt::print("[{} | {:2d} {:2d}] - {}\n",
+                [&](){
+                    switch(state) {
+                        case Scan: return "SCAN";
+                        case Matching: return "MTCH";
+                        case Found: return "DONE";
+                        case Abort: return "ABRT";
+                    }
+                    return "????";
+                }(),
+                input_cursor,
+                seq_cursor,
+                config_tokenizer::repr(token, text));
+            fmt::print("               - {}\n", repr(p));
+#endif
+            switch (state) {
+                case Scan: {
+                    if (token_match(token, p)) {
+                        state = Matching;
+                        match_end = input_cursor+1;
+                    } else {
+                        input_cursor--;
+                    }
+                } break;
+                case Matching: {
+                    bool match_token = false;
+                    if (p.id == TokenId_Any) {
+                        bool match_next_token = token_match(token, p_next);
+                        if (!match_next_token) {
+                            // Scan input until we find the next token in the sequence
+                            input_cursor--;
+                            continue;
+                        } else {
+                            // Next token match the current sequence point
+                            seq_cursor--;
+                            match_token = true;
+                        }
+                    } else {
+                        match_token = token_match(token, p);
+                    }
+
+                    if (match_token) {
+                        if (seq_cursor == 0) {
+                            state = Found;
+                            match_start = input_cursor;
+                            break;
+                        }
+                        
+                        seq_cursor--;
+                        input_cursor--;
+                        continue;
+                    }
+                    // Match sequence broken. Try scanning again.
+                    // TODO: adjust input cursor?
+                    state = Scan;
+                    seq_cursor = sequence.size() - 1;
+                } break;
+                case Found: {
+#ifdef LOCAL_DEBUG
+                    fmt::print("  Found match\n");
+#endif
+                } break;
+                case Abort: {
+#ifdef LOCAL_DEBUG
+                    fmt::print("  Abort match\n");
+#endif
+                } break;
+            }
+        }
+
+        if (match_start != -1 && match_end != -1) {
+#if LOCAL_DEBUG
+            fmt::print("Success - match start: {}, match_end: {}\n", match_start, match_end);
+#endif
+            if (result) {
+                result->start = match_start;
+                result->end = match_end;
+            }
+            return true;
+        }
+#if LOCAL_DEBUG
+        fmt::print("Failure - match start: {}, match_end: {}\n", match_start, match_end);
+#endif
+        // Sequence not found
+        return false;
     };
     auto cxx_filter = [&](std::vector<Token> tokens, int start) -> std::vector<Token> {
         std::vector<Token> result;
 
+        //config_tokenizer::token_dump(tokens, text);
+
         std::vector<SequencePoint> for_loop_sequence {
-            SequencePoint { -1, TokenId_Identifier, "for" },
-            SequencePoint {  0, TokenId_OpenParen },
-            SequencePoint { -1, TokenId_Semicolon },
-            SequencePoint { -1, TokenId_Semicolon },
-            SequencePoint {  0, TokenId_CloseParen },
+            SequencePoint { TokenId_Identifier, "for" },
+            SequencePoint { TokenId_OpenParen },
+            SequencePoint { TokenId_Any },
+            SequencePoint { TokenId_Semicolon },
+            SequencePoint { TokenId_Any },
+            SequencePoint { TokenId_Semicolon },
+            SequencePoint { TokenId_Any },
+            SequencePoint { TokenId_CloseParen },
+            SequencePoint { TokenId_OpenCurly },
         };
-        int seeker = reverse_find_sequence(tokens, for_loop_sequence);
-        // We should also get the indentation level and scope level
-        //fmt::print("Found for-loop at idx: {}\n", seeker);
 
-        int curly_end_pos = -1;
-        int semi_start_pos = -1;
-        for (int i = start; i >= 0; i--) {
-            if (tokens[i].id & TokenId_OpenCurly) {
-                curly_end_pos = i+1;
-            } else if (curly_end_pos > 0 && tokens[i].id & TokenId_Semicolon) {
-                semi_start_pos = i+1;
+        int match_start = -1;
+        int match_end = -1;
+
+        SequenceMatch match;
+        if (reverse_find_sequence(tokens, for_loop_sequence, &match)) {
+            // We should also get the indentation level and scope level of the match
+            fmt::print("Found for-loop at pos: {}..{}\n", match.start, match.end);
+            match_start = match.start;
+            match_end = match.end;
+        } else {
+            for (int i = start; i >= 0; i--) {
+                if (tokens[i].id & TokenId_OpenCurly) {
+                    match_end = i+1;
+                } else if (match_end > 0 && tokens[i].id & TokenId_Semicolon) {
+                    match_start = i+1;
+                }
+
+                if (match_end != -1 && match_start != -1)
+                    break;
             }
-
-            if (curly_end_pos != -1 && semi_start_pos != -1)
-                break;
         }
 
 #ifdef LOCAL_DEBUG
-        fmt::print("curly_end_pos: {}\n", curly_end_pos);
-        fmt::print("semi_start_pos: {}\n", semi_start_pos);
+        fmt::print("match_start: {}\n", match_start);
+        fmt::print("match_end: {}\n", match_end);
 #endif
 
-        if (curly_end_pos != -1 && semi_start_pos != -1) {
-            for (int i = semi_start_pos; i < curly_end_pos; i++) {
+        token_dump(tokens, text);
+
+        if (match_start != -1 && match_end != -1) {
+            for (int i = match_start; i < match_end; i++) {
                 result.push_back(tokens[i]);
             }
         }
+
+        token_dump(result, text);
     
         return result;
     };

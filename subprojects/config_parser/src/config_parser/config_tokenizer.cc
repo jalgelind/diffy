@@ -121,23 +121,33 @@ diffy::config_tokenizer::is_whitespace(char c) {
 std::string
 diffy::config_tokenizer::repr(TokenId id) {
     std::string s = "\033[1;34m";
-    for (const auto& token : kTokens) {
-        if (id & token.id) {
-            s += "TokenId_" + token.name;
-            s += "|";
+    if (id == TokenId_Any) {
+        s += "TokenId_Any|";
+    }
+    else {
+        for (const auto& token : kTokens) {
+            if (id & token.id) {
+                s += "TokenId_" + token.name;
+                s += "|";
+            }
         }
     }
     return s.substr(0, s.size() - 1) + "\033[0m";  // drop trailing pipe
 }
 
-void
-diffy::config_tokenizer::token_dump(std::vector<Token> tokens, const std::string& source_text) {
-    fmt::print("input text:\n{}\n---\ntokens:\n", source_text);
-    int j = 1;
-    for (auto& r : tokens) {
-        fmt::print("{:02} [line: {:02}, col: {:02}, off: {:03}, len: {:2}, seq: {:2}]: {:18}    {}\n", j++,
+std::string
+diffy::config_tokenizer::repr(Token r, const std::string& source_text) {
+    return fmt::format("[line: {:02}, col: {:02}, off: {:03}, len: {:2}, seq: {:2}]: {:18}    {}",
                    r.line, r.column, r.start, r.length, r.sequence_index,
                    "'" + r.str_display_from(source_text) + "'", repr(r.id));
+}
+
+void
+diffy::config_tokenizer::token_dump(std::vector<Token> tokens, const std::string& source_text) {
+    fmt::print("input text:\n{}\n---\ntokens ({}):\n", source_text, tokens.size());
+    int j = 1;
+    for (auto& r : tokens) {
+        fmt::print("{:02} {}\n", j++, repr(r, source_text));
     }
 }
 

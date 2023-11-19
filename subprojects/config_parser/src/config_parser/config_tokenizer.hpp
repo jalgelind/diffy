@@ -43,8 +43,9 @@ const TokenId TokenId_Comment      = 1 << 21;
 const TokenId TokenId_Terminator   = 1 << 22;
 const TokenId TokenId_FirstOnLine  = 1 << 23; // Only whitespace before this token
 
-const TokenId TokenId_MetaValue = TokenId_Boolean | TokenId_Integer | TokenId_String;
-const TokenId TokenId_MetaObject = TokenId_OpenCurly | TokenId_OpenBracket | TokenId_MetaValue;
+const TokenId TokenId_Any          = (TokenId_FirstOnLine << 1)-1;
+const TokenId TokenId_MetaValue    = TokenId_Boolean | TokenId_Integer | TokenId_String;
+const TokenId TokenId_MetaObject   = TokenId_OpenCurly | TokenId_OpenBracket | TokenId_MetaValue;
 
 // clang-format on
 
@@ -89,6 +90,9 @@ struct ParseResult {
 
 bool
 tokenize(const std::string& text, ParseOptions& options, ParseResult& result);
+
+std::string
+repr(Token token, const std::string& source_text);
 
 void
 token_dump(std::vector<Token> tokens, const std::string& source_text);
