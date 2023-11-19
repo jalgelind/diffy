@@ -52,6 +52,8 @@ struct DisplayLineSegment {
 };
 
 struct DisplayLine {
+    // TODO: TermColor prefix;?
+    // TODO: TermColor suffix;?
     std::vector<DisplayLineSegment> segments;
     int64_t line_length = 0;
     int64_t line_number = -1;
@@ -489,6 +491,7 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
         int line_no = context ? (*context).line_no : -1;
         int slen = utf8_len(s);
         DisplayLine display_line {
+            // TODO: line number should maybe be underlined here too
             {{config.style.context_header + s + "\033[0m", slen, 0, EditType::Meta}}, slen, line_no
         };
         return display_line;

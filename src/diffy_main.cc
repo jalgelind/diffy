@@ -337,6 +337,8 @@ Side by side options:
             std::string git_base = git_base_nully != nullptr ? git_base_nully : "";
             auto git_base_permissions = diffy::read_file_permissions(git_base);
 
+            // TODO: Maybe pass along status to the renderer so we can maybe show something like
+            // "(Deleted file)", "(New file)" in context of git.
             if (a_status == diffy::FileStatus::kOk && b_status == diffy::FileStatus::kNullPath) {
                 // left file ok, right file null: deleted file
                 opts.right_file_name = "(No file)";

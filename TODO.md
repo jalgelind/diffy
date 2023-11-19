@@ -1,5 +1,11 @@
 TODO
 ----
+* diffy-git does not handle file move well in column view
+* Run algorithm in a separate thread. Add watchdog and an optional time limit.
+   * Sometimes when used with git I'd just want it to skip a file if it would take too long to load.
+      (it's typically large generated assets)
+* Look into supporting arbitrary number of columns. Maybe with widths allocated up front?
+* Make a default, dark and light theme, so we find a nice set of style attributes to provide
 * I found a weird theme file on one computer where [color_map] had
   'red' = true. Try to reproduce.
 
