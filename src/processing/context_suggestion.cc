@@ -154,7 +154,7 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
         State state = Scan;
 
         while (state & ScanOrMatch && input_cursor >= 0 && seq_cursor >= 0) {
-            Token& token = input[input_cursor];
+            Token token = input[input_cursor];
 
             while (token.id & TokenId_Space) {
                 if (input_cursor == 0) {
@@ -305,8 +305,6 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
                 result.push_back(tokens[i]);
             }
         }
-
-        token_dump(result, text);
     
         return result;
     };
