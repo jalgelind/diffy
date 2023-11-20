@@ -92,6 +92,30 @@ int main() {
         REQUIRE(rendered == "for (int i = 0; i < 3; i++) {");
         REQUIRE(match.start == 12);
         REQUIRE(match.end == 35);
+    }
+
+    SUBCASE("match-while-loop") {
+        std::string text = R"foo({
+int main() {
+  while (true && apa == 'bepa') {
+      i++;
+})foo";
+
+        auto tokens = tokenize(text);
+
+        std::vector<SequencePoint> for_loop_sequence {
+            SequencePoint { TokenId_Identifier, "while" },
+            SequencePoint { TokenId_OpenParen },
+            SequencePoint { TokenId_Any },
+            SequencePoint { TokenId_CloseParen },
+            SequencePoint { TokenId_OpenCurly },
+        };
+
+        SequenceMatch match;
+        reverse_find_sequence(tokens, text, for_loop_sequence, &match);
+        auto rendered = render_sequence(tokens, text, match);
+        fmt::print("'{}'\n", rendered);
+        REQUIRE(rendered == "while (true && apa == 'bepa') {");
 
     }
 }
