@@ -511,6 +511,9 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
             hunk_columns.push_back(columns);
         }
 
+        // Maybe just one of the rows have a context suggestion
+        //insert_alignment_rows(hunk_columns);
+
         DisplayColumns columns{
             make_rows(diff_input.A, hunk.a_lines, config.max_row_length_left),
             make_rows(diff_input.B, hunk.b_lines, config.max_row_length_right),
@@ -521,6 +524,7 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
         // @cleanup
         auto diff = static_cast<int64_t>(columns[0].size()) - static_cast<int64_t>(columns[1].size());
 
+        // TDOO: hold up, gör vi inte detta ovan med alignment rows?
         if (diff < 0) {
             for (int i = 0; i < -diff; i++) {
                 columns[0].push_back({});
