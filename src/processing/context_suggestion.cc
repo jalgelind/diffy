@@ -12,6 +12,38 @@ using namespace diffy::config_tokenizer;
 
 //#define LOCAL_DEBUG
 
+std::string
+render_sequence(const std::vector<Token> tokens, const std::string& token_text) {
+    bool drop_newlines = true;
+    bool drop_spaces = true;
+    bool drop_curlies = true;
+    std::string text;
+    for (int i = 0; i < tokens.size(); i++) {
+        if (tokens[i].id & TokenId_CloseCurly) {
+            if (!drop_curlies)
+                text += "}";
+        } else if (tokens[i].id & TokenId_Identifier) {
+            text += tokens[i].str_from(token_text);
+            drop_curlies = false;
+            drop_newlines = false;
+            drop_spaces = false;
+        } else if (tokens[i].id & TokenId_Newline) {
+            if (!drop_newlines)
+                text += " ";
+            drop_spaces = true;
+        } else if (tokens[i].id & TokenId_Space) {
+            if (!drop_spaces)
+                text += " ";
+            drop_spaces = true;
+        } else {
+            text += tokens[i].str_from(token_text);
+            drop_newlines = false;
+            drop_spaces = false;
+        }
+    }
+    return text;
+}
+
 bool
 diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggestion>& out_suggestions) {
     config_tokenizer::ParseOptions options;
@@ -171,33 +203,8 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
 
     auto filtered_tokens = lang_filter(tokens, tokens.size()-1);
 
-    bool drop_newlines = true;
-    bool drop_spaces = true;
-    bool drop_curlies = true;
-    std::string filtered_text;
-    for (int i = 0; i < filtered_tokens.size(); i++) {
-        if (filtered_tokens[i].id & TokenId_CloseCurly) {
-            if (!drop_curlies)
-                filtered_text += "}";
-        } else if (filtered_tokens[i].id & TokenId_Identifier) {
-            filtered_text += filtered_tokens[i].str_from(text);
-            drop_curlies = false;
-            drop_newlines = false;
-            drop_spaces = false;
-        } else if (filtered_tokens[i].id & TokenId_Newline) {
-            if (!drop_newlines)
-                filtered_text += " ";
-            drop_spaces = true;
-        } else if (filtered_tokens[i].id & TokenId_Space) {
-            if (!drop_spaces)
-                filtered_text += " ";
-            drop_spaces = true;
-        } else {
-            filtered_text += filtered_tokens[i].str_from(text);
-            drop_newlines = false;
-            drop_spaces = false;
-        }
-    }
+    std::string filtered_text = render_sequence(filtered_tokens, text);
+
 #ifdef LOCAL_DEBUG
     config_tokenizer::token_dump(filtered_tokens, text);
     fmt::print("Context: '{}'\n", filtered_text);

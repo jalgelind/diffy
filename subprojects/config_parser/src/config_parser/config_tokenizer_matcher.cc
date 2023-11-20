@@ -6,6 +6,41 @@
 using namespace diffy;
 using namespace config_tokenizer;
 
+namespace {
+    // Duplicated from diffy suggestion engine
+    std::string
+    render_sequence(const std::vector<Token> tokens, const std::string& token_text) {
+        bool drop_newlines = true;
+        bool drop_spaces = true;
+        bool drop_curlies = true;
+        std::string text;
+        for (int i = 0; i < tokens.size(); i++) {
+            if (tokens[i].id & TokenId_CloseCurly) {
+                if (!drop_curlies)
+                    text += "}";
+            } else if (tokens[i].id & TokenId_Identifier) {
+                text += tokens[i].str_from(token_text);
+                drop_curlies = false;
+                drop_newlines = false;
+                drop_spaces = false;
+            } else if (tokens[i].id & TokenId_Newline) {
+                if (!drop_newlines)
+                    text += " ";
+                drop_spaces = true;
+            } else if (tokens[i].id & TokenId_Space) {
+                if (!drop_spaces)
+                    text += " ";
+                drop_spaces = true;
+            } else {
+                text += tokens[i].str_from(token_text);
+                drop_newlines = false;
+                drop_spaces = false;
+            }
+        }
+        return text;
+    }
+}
+
 std::string
 config_tokenizer::repr(SequencePoint p) {
     return fmt::format("SequencePoint[{}, {}]", repr(p.id), p.ident_match);
