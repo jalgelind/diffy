@@ -158,25 +158,66 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
             SequencePoint { TokenId_OpenCurly },
         };
 
+        std::vector<SequencePoint> while_loop_sequence {
+            SequencePoint { TokenId_Identifier, "while" },
+            SequencePoint { TokenId_OpenParen },
+            SequencePoint { TokenId_Any },
+            SequencePoint { TokenId_CloseParen },
+            SequencePoint { TokenId_OpenCurly },
+        };
+
+        std::vector<SequencePoint> if_cond_sequence {
+            SequencePoint { TokenId_Identifier, "if" },
+            SequencePoint { TokenId_OpenParen },
+            SequencePoint { TokenId_Any },
+            SequencePoint { TokenId_CloseParen },
+            SequencePoint { TokenId_OpenCurly },
+        };
+
+        std::vector<SequencePoint> switch_cond_sequence {
+            SequencePoint { TokenId_Identifier, "switch" },
+            SequencePoint { TokenId_OpenParen },
+            SequencePoint { TokenId_Any },
+            SequencePoint { TokenId_CloseParen },
+            SequencePoint { TokenId_OpenCurly },
+        };
+
+        // Good enough.
+        std::vector<SequencePoint> function_sequence {
+            SequencePoint { TokenId_Identifier },
+            SequencePoint { TokenId_OpenParen },
+            SequencePoint { TokenId_Any },
+            SequencePoint { TokenId_CloseParen },
+            SequencePoint { TokenId_OpenCurly },
+        };
+
+        // ?
+       std::vector<SequencePoint> other_sequence {
+            SequencePoint { TokenId_Identifier },
+            SequencePoint { TokenId_OpenCurly },
+        };
+
+
+        std::vector<std::vector<SequencePoint>*> sqs {
+            &function_sequence,
+            &for_loop_sequence,
+            &while_loop_sequence,
+            &if_cond_sequence,
+            &switch_cond_sequence,
+            &other_sequence
+        };
+
         int match_start = -1;
         int match_end = -1;
 
         SequenceMatch match;
-        if (reverse_find_sequence(tokens, text, for_loop_sequence, &match)) {
-            // We should also get the indentation level and scope level of the match
-            //fmt::print("Found for-loop at pos: {}..{}\n", match.start, match.end);
-            match_start = match.start;
-            match_end = match.end;
-        } else {
-            for (int i = start; i >= 0; i--) {
-                if (tokens[i].id & TokenId_OpenCurly) {
-                    match_end = i+1;
-                } else if (match_end > 0 && tokens[i].id & TokenId_Semicolon) {
-                    match_start = i+1;
-                }
-
-                if (match_end != -1 && match_start != -1)
-                    break;
+        for (auto& sq : sqs) {
+            if (reverse_find_sequence(tokens, text, for_loop_sequence, &match)) {
+                // We should also get the indentation level and scope level of the match
+                //fmt::print("Found for-loop at pos: {}..{}\n", match.start, match.end);
+                match_start = match.start;
+                match_end = match.end;
+                break;
             }
         }
 
