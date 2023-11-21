@@ -210,9 +210,10 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
         int match_start = -1;
         int match_end = -1;
 
+        // TODO: retain indentation level?
         SequenceMatch match;
         for (auto& sq : sqs) {
-            if (reverse_find_sequence(tokens, text, for_loop_sequence, &match)) {
+            if (reverse_find_sequence(tokens, text, *sq, &match)) {
                 // We should also get the indentation level and scope level of the match
                 //fmt::print("Found for-loop at pos: {}..{}\n", match.start, match.end);
                 match_start = match.start;
