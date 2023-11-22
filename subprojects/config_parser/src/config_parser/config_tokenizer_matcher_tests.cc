@@ -23,7 +23,7 @@ namespace {
         bool drop_curlies = true;
         std::string text;
         for (int i = match.start; i < match.end; i++) {
-            if (tokens[i].id & TokenId_CloseCurly) {
+            /*if (tokens[i].id & TokenId_CloseCurly) {
                 if (!drop_curlies)
                     text += "}";
             } else if (tokens[i].id & TokenId_Identifier) {
@@ -39,7 +39,7 @@ namespace {
                 if (!drop_spaces)
                     text += " ";
                 drop_spaces = true;
-            } else {
+            } else */{
                 text += tokens[i].str_from(token_text);;
                 drop_newlines = false;
                 drop_spaces = false;
