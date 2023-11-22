@@ -101,5 +101,6 @@
         "__tuple_03": "cpp",
         "__verbose_abort": "cpp",
         "csetjmp": "cpp"
-    }
+    },
+    "C_Cpp.default.compileCommands": "builddir\\compile_commands.json"
 }

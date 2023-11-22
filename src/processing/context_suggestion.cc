@@ -141,7 +141,7 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
         return false;
     }
 
-    auto cxx_filter = [&](std::vector<Token> tokens, int start) -> std::vector<Token> {
+    auto generic_filter = [&](std::vector<Token> tokens, int start) -> std::vector<Token> {
         std::vector<Token> result;
 
         //config_tokenizer::token_dump(tokens, text);
@@ -182,6 +182,36 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
             SequencePoint { TokenId_OpenCurly },
         };
 
+        std::vector<SequencePoint> typedef_sequence {
+            SequencePoint { TokenId_Identifier, "typedef" },
+            SequencePoint { TokenId_Identifier }, // enum, struct etc
+            SequencePoint { TokenId_Identifier }, // name
+            SequencePoint { TokenId_OpenCurly },
+        };
+
+        std::vector<SequencePoint> typedef2_sequence {
+            SequencePoint { TokenId_Identifier, "typedef" },
+            SequencePoint { TokenId_Identifier }, // enum, struct etc
+            SequencePoint { TokenId_Identifier }, // name
+            SequencePoint { TokenId_OpenCurly },
+        };
+
+        // fn (...) {
+        std::vector<SequencePoint> fn_sequence {
+            SequencePoint { TokenId_Identifier, "fn" },
+            SequencePoint { TokenId_OpenParen },
+            SequencePoint { TokenId_Any },
+            SequencePoint { TokenId_CloseParen },
+            SequencePoint { TokenId_OpenCurly },
+        };
+
+        // def ...:
+        std::vector<SequencePoint> def_sequence {
+            SequencePoint { TokenId_Identifier, "def" },
+            SequencePoint { TokenId_Any },
+            SequencePoint { TokenId_Identifier, ":" }, // TODO: hm! TokenId_Colon
+        };
+
         // Good enough.
         std::vector<SequencePoint> function_sequence {
             SequencePoint { TokenId_Identifier },
@@ -193,18 +223,25 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
 
         // ?
        std::vector<SequencePoint> other_sequence {
-            SequencePoint { TokenId_Identifier },
+            SequencePoint { TokenId_Semicolon },
             SequencePoint { TokenId_OpenCurly },
         };
 
-
-        std::vector<std::vector<SequencePoint>*> sqs {
-            &function_sequence,
-            &for_loop_sequence,
-            &while_loop_sequence,
-            &if_cond_sequence,
-            &switch_cond_sequence,
-            &other_sequence
+        struct NamedSequencePoint {
+            std::string name;
+            std::vector<SequencePoint>& sp;
+        };
+        std::vector<NamedSequencePoint> sqs {
+            {"typedef/1"       , typedef_sequence},
+            {"typedef/2"       , typedef2_sequence},
+            {"func/0"          , function_sequence},
+            {"func/1"          , fn_sequence},
+            {"func/2"          , def_sequence},
+            {"loop/for"        , for_loop_sequence},
+            {"loop/while"      , while_loop_sequence},
+            {"cond/if"         , if_cond_sequence},
+            {"cond/switch"     , switch_cond_sequence},
+            {"misc/semicurl"   , other_sequence}
         };
 
         int match_start = -1;
@@ -213,9 +250,9 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
         // TODO: retain indentation level?
         SequenceMatch match;
         for (auto& sq : sqs) {
-            if (reverse_find_sequence(tokens, text, *sq, &match)) {
+            if (reverse_find_sequence(tokens, text, sq.sp, &match)) {
                 // We should also get the indentation level and scope level of the match
-                //fmt::print("Found for-loop at pos: {}..{}\n", match.start, match.end);
+                fmt::print("Found {} at pos: {}..{}\n", sq.name, match.start, match.end);
                 match_start = match.start;
                 match_end = match.end;
                 break;
@@ -235,15 +272,16 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
     
         return result;
     };
-
+#if 0
     std::unordered_map<std::string, std::function<std::vector<Token>(std::vector<Token>, int start)>> lang_filters = {
-        { "cpp", cxx_filter }, { "cxx", cxx_filter }, { "cc", cxx_filter }, { "c", cxx_filter },
-        { "hpp", cxx_filter }, { "hxx", cxx_filter }, { "h", cxx_filter },
+        { "cpp", generic_filter }, { "cxx", generic_filter }, { "cc", generic_filter }, { "c", generic_filter },
+        { "hpp", generic_filter }, { "hxx", generic_filter }, { "h", generic_filter },
     };
 
     auto& lang_filter = lang_filters.at("cc");
-
     auto filtered_tokens = lang_filter(tokens, tokens.size()-1);
+#endif
+    auto filtered_tokens = generic_filter(tokens, tokens.size()-1);
 
     std::string filtered_text = render_sequence(filtered_tokens, text);
 

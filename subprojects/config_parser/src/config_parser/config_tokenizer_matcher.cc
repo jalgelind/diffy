@@ -3,6 +3,8 @@
 
 #include <fmt/format.h>
 
+//#define LOCAL_DEBUG 1
+
 using namespace diffy;
 using namespace config_tokenizer;
 
@@ -67,7 +69,7 @@ config_tokenizer::reverse_find_sequence(std::vector<Token>& input, const std::st
             }(),
             input_cursor,
             seq_cursor,
-            repr(token, text));
+            repr(token, input_text));
         fmt::print("               - {}\n", repr(p));
 #endif
         switch (state) {
