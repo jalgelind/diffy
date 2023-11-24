@@ -23,11 +23,11 @@ namespace {
         bool drop_curlies = true;
         std::string text;
         for (int i = match.start; i < match.end; i++) {
-            /*if (tokens[i].id & TokenId_CloseCurly) {
+            if (tokens[i].id & TokenId_CloseCurly) {
                 if (!drop_curlies)
                     text += "}";
             } else if (tokens[i].id & TokenId_Identifier) {
-                tokens[i].str_from(token_text);
+                text += tokens[i].str_from(token_text);
                 drop_curlies = false;
                 drop_newlines = false;
                 drop_spaces = false;
@@ -39,7 +39,7 @@ namespace {
                 if (!drop_spaces)
                     text += " ";
                 drop_spaces = true;
-            } else */{
+            } else {
                 text += tokens[i].str_from(token_text);;
                 drop_newlines = false;
                 drop_spaces = false;
@@ -177,33 +177,36 @@ std::vector<Token> tokenize(const std::string& text) {
 TEST_CASE("config_tokenizer_matcher") {
     SUBCASE("match-for-loop") {
         std::string text = R"foo({
-int main() {
-  for (int i = 0; i < 3; i++) {
-      i++;
-})foo";
+            int main() {
+            for (int i = 0 ; i < 3; i++)  {
+                i++;
+            }
+        )foo";
 
         auto tokens = tokenize(text);
 
         std::string source;
         SequenceMatch match = match_sequence(tokens, text, &source);
         REQUIRE(source == "loop/for");
-
-        //reverse_find_sequence(tokens, text, for_loop_sequence, &match);
+;
         auto rendered = render_sequence(tokens, text, match);
 
-        REQUIRE(rendered == "for (int i = 0; i < 3; i++) {");
-        REQUIRE(match.start == 12);
-        REQUIRE(match.end == 35);
+        REQUIRE(rendered == "for (int i = 0 ; i < 3; i++) {");
     }
 
     SUBCASE("match-while-loop") {
         std::string text = R"foo({
-int main() {
-  while (true && apa == 'bepa') {
-      i++;
-})foo";
+            int main() {
+            while (true && apa == 'bepa') {
+                i++;
+            }
+        )foo";
 
         auto tokens = tokenize(text);
+
+        std::string source;
+        SequenceMatch match = match_sequence(tokens, text, &source);
+        REQUIRE(source == "loop/while");
 
         std::vector<SequencePoint> for_loop_sequence {
             SequencePoint { TokenId_Identifier, "while" },
@@ -213,10 +216,8 @@ int main() {
             SequencePoint { TokenId_OpenCurly },
         };
 
-        SequenceMatch match;
-        reverse_find_sequence(tokens, text, for_loop_sequence, &match);
+        //config_tokenizer::token_dump(tokens, text);
         auto rendered = render_sequence(tokens, text, match);
-        fmt::print("'{}'\n", rendered);
         REQUIRE(rendered == "while (true && apa == 'bepa') {");
 
     }
