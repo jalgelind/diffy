@@ -182,6 +182,12 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
             SequencePoint { TokenId_OpenCurly },
         };
 
+        std::vector<SequencePoint> switch_case_sequence {
+            SequencePoint { TokenId_Identifier, "case" },
+            SequencePoint { TokenId_Any },
+            SequencePoint { TokenId_Identifier, ":" },
+        };
+
         std::vector<SequencePoint> typedef_sequence {
             SequencePoint { TokenId_Identifier, "typedef" },
             SequencePoint { TokenId_Identifier }, // enum, struct etc
@@ -231,16 +237,17 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
             std::string name;
             std::vector<SequencePoint>& sp;
         };
-        std::vector<NamedSequencePoint> sqs {
+        std::vector<NamedSequencePoint> test_pattern_sequences {
+            {"loop/for"        , for_loop_sequence},
             {"typedef/1"       , typedef_sequence},
             {"typedef/2"       , typedef2_sequence},
-            {"func/0"          , function_sequence},
-            {"func/1"          , fn_sequence},
-            {"func/2"          , def_sequence},
-            {"loop/for"        , for_loop_sequence},
             {"loop/while"      , while_loop_sequence},
             {"cond/if"         , if_cond_sequence},
+            {"cond/case"       , switch_case_sequence},
             {"cond/switch"     , switch_cond_sequence},
+            {"func/1"          , fn_sequence},
+            {"func/2"          , def_sequence},
+            {"func/0"          , function_sequence},
             {"misc/semicurl"   , other_sequence}
         };
 
@@ -249,10 +256,10 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
 
         // TODO: retain indentation level?
         SequenceMatch match;
-        for (auto& sq : sqs) {
-            if (reverse_find_sequence(tokens, text, sq.sp, &match)) {
+        for (auto& pattern : test_pattern_sequences) {
+            if (reverse_find_sequence(tokens, text, pattern.sp, &match)) {
                 // We should also get the indentation level and scope level of the match
-                fmt::print("Found {} at pos: {}..{}\n", sq.name, match.start, match.end);
+                fmt::print("Found {} at pos: {}..{}\n", pattern.name, match.start, match.end);
                 match_start = match.start;
                 match_end = match.end;
                 break;
