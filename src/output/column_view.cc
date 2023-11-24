@@ -502,18 +502,23 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
     };
 
     for (const auto& hunk : hunks) {
+        // Empty line (TODO: make work)
+        {
+            // TODO: Check and see if the hunk suggestion is already visible!
+            DisplayColumns columns;
+            DisplayLine empty_line;
+            DisplayLineSegment empty_segment;
+            empty_segment.type = EditType::Common;
+            empty_segment.text_len = 0;
+            empty_line.segments.push_back(empty_segment);
+            columns.push_back({empty_line});
+            columns.push_back({empty_line});
+            hunk_columns.push_back(columns);
+        }
+
         // Append context info to each hunk
         // TODO: found context-check?
         {
-            // Empty line (TODO: make work)
-            {
-                // TODO: Check and see if the hunk suggestion is already visible!
-                DisplayColumns columns;
-                columns.push_back({{}});
-                columns.push_back({{}});
-                hunk_columns.push_back(columns);
-            }
-
             // TODO: Check and see if the hunk suggestion is already visible!
             DisplayColumns columns;
             columns.push_back({make_hunk_context_column(hunk.a_hunk_context, config.max_row_length_left)});
@@ -682,7 +687,8 @@ print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnV
         }
         // Empty line between hunks.
         // TODO(ja): doesn't work
-        if (columns.empty()) {
+        if (columns.empty())
+        {
             DisplayLine dl;
             print_display_lines(dl, dl, config);
         }

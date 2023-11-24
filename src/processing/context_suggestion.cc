@@ -47,7 +47,8 @@ render_sequence(const MatchInfo& match, const std::string& token_text) {
             drop_spaces = false;
         }
     }
-    return std::string(' ', 4 * match.indentation_level) + text;
+    //auto indent = std::string(' ', 4 * match.indentation_level);
+    return indent = text;
 }
 
 bool
@@ -283,9 +284,11 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
             }
         }
 
-        result.indentation_level = lines[tokens[0].line].indentation_level;
-        result.scope_level = lines[tokens[0].line].indentation_level;
-    
+        if (result.tokens.size() > 0) {
+            result.indentation_level = lines[tokens[0].line].indentation_level;
+            result.scope_level = lines[tokens[0].line].indentation_level;
+        }
+
         return result;
     };
 #if 0
