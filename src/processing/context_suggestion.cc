@@ -12,36 +12,42 @@ using namespace diffy::config_tokenizer;
 
 //#define LOCAL_DEBUG
 
+struct MatchInfo {
+    std::vector<Token> tokens;
+    int indentation_level = -1;
+    int scope_level = -1;
+};
+
 std::string
-render_sequence(const std::vector<Token> tokens, const std::string& token_text) {
+render_sequence(const MatchInfo& match, const std::string& token_text) {
     bool drop_newlines = true;
     bool drop_spaces = true;
     bool drop_curlies = true;
     std::string text;
-    for (int i = 0; i < tokens.size(); i++) {
-        if (tokens[i].id & TokenId_CloseCurly) {
+    for (int i = 0; i < match.tokens.size(); i++) {
+        if (match.tokens[i].id & TokenId_CloseCurly) {
             if (!drop_curlies)
                 text += "}";
-        } else if (tokens[i].id & TokenId_Identifier) {
-            text += tokens[i].str_from(token_text);
+        } else if (match.tokens[i].id & TokenId_Identifier) {
+            text += match.tokens[i].str_from(token_text);
             drop_curlies = false;
             drop_newlines = false;
             drop_spaces = false;
-        } else if (tokens[i].id & TokenId_Newline) {
+        } else if (match.tokens[i].id & TokenId_Newline) {
             if (!drop_newlines)
                 text += " ";
             drop_spaces = true;
-        } else if (tokens[i].id & TokenId_Space) {
+        } else if (match.tokens[i].id & TokenId_Space) {
             if (!drop_spaces)
                 text += " ";
             drop_spaces = true;
         } else {
-            text += tokens[i].str_from(token_text);
+            text += match.tokens[i].str_from(token_text);
             drop_newlines = false;
             drop_spaces = false;
         }
     }
-    return text;
+    return std::string(' ', 4 * match.indentation_level) + text;
 }
 
 bool
@@ -141,8 +147,8 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
         return false;
     }
 
-    auto generic_filter = [&](std::vector<Token> tokens, int start) -> std::vector<Token> {
-        std::vector<Token> result;
+    auto generic_filter = [&](std::vector<Token> tokens, int start) -> MatchInfo {
+        MatchInfo result;
 
         //config_tokenizer::token_dump(tokens, text);
 
@@ -273,9 +279,12 @@ diffy::context_find(gsl::span<diffy::Line> lines, int from, std::vector<Suggesti
 
         if (match_start != -1 && match_end != -1) {
             for (int i = match_start; i < match_end; i++) {
-                result.push_back(tokens[i]);
+                result.tokens.push_back(tokens[i]);
             }
         }
+
+        result.indentation_level = lines[tokens[0].line].indentation_level;
+        result.scope_level = lines[tokens[0].line].indentation_level;
     
         return result;
     };

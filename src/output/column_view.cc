@@ -503,7 +503,17 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
 
     for (const auto& hunk : hunks) {
         // Append context info to each hunk
+        // TODO: found context-check?
         {
+            // Empty line (TODO: make work)
+            {
+                // TODO: Check and see if the hunk suggestion is already visible!
+                DisplayColumns columns;
+                columns.push_back({{}});
+                columns.push_back({{}});
+                hunk_columns.push_back(columns);
+            }
+
             // TODO: Check and see if the hunk suggestion is already visible!
             DisplayColumns columns;
             columns.push_back({make_hunk_context_column(hunk.a_hunk_context, config.max_row_length_left)});
