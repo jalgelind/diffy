@@ -47,8 +47,8 @@ render_sequence(const MatchInfo& match, const std::string& token_text) {
             drop_spaces = false;
         }
     }
-    //auto indent = std::string(' ', 4 * match.indentation_level);
-    return indent = text;
+    auto indent = std::string(' ', std::max(0, 4 * match.indentation_level));
+    return indent + text;
 }
 
 bool
