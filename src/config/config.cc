@@ -94,7 +94,20 @@ config_load_file(const std::string& config_path,
 
 static void
 config_save(const std::string& config_root, const std::string& config_name, diffy::Value& config_value) {
-    std::filesystem::create_directory(config_root);
+    std::vector<std::string> required_dirs;
+    std::filesystem::path current{config_root};
+    while (current.has_root_directory() && !std::filesystem::exists(current)) {
+        if (current == std::filesystem::current_path().root_path())
+            break;
+        required_dirs.push_back(current);
+        current = current.parent_path();
+    }
+
+    for (auto it = required_dirs.rbegin(); it != required_dirs.rend(); ++it) {
+        if (!std::filesystem::exists(*it)) {
+            std::filesystem::create_directory(*it);
+        }
+    }
 
     FILE* f = fopen(config_name.c_str(), "wb");
     if (!f) {
