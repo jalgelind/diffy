@@ -71,7 +71,7 @@ const std::unordered_map<std::string, diffy::TermColor> k16DefaultColors = {
 // clang-format on
 
 // Color look-up table where colors can be re-defined
-std::unordered_map<std::string, diffy::TermColor> k16Colors = k16DefaultColors;
+std::unordered_map<std::string, diffy::TermColor> kColorTable = k16DefaultColors;
 
 std::optional<TermColor>
 TermColor::parse_hex(const std::string& s) {
@@ -114,9 +114,9 @@ TermColor::parse_string(const std::string& s) {
         return {};
     }
 
-    // Is it a color in the default color palette?
-    if (k16Colors.find(s) != k16Colors.end()) {
-        return k16Colors.at(s);
+    // Is it a color in the color palette?
+    if (kColorTable.find(s) != kColorTable.end()) {
+        return kColorTable.at(s);
     }
 
     // Is it a 256color palette index?
@@ -153,7 +153,7 @@ diffy::repr(const TermColor& color) {
 static
 std::string
 get_term_color_name(const TermColor& expected) {
-    for (const auto &[name, color] : k16Colors) {
+    for (const auto &[name, color] : kColorTable) {
         if (color == expected) {
             return name;
         }
@@ -331,7 +331,7 @@ diffy::repr(const TermStyle& style) {
 
 void
 diffy::color_map_set(std::string color_name, diffy::TermColor color) {
-    k16Colors[color_name] = color;
+    kColorTable[color_name] = color;
 }
 
 void
@@ -350,7 +350,7 @@ diffy::color_dump() {
     
     fmt::print("Available values (16 color palette)\n");
     int counter = 0;
-    for (const auto& [k, v] : k16Colors) {
+    for (const auto& [k, v] : kColorTable) {
         auto fg = TermStyle { v, TermColor::kNone };
         auto bg = TermStyle { TermColor::kNone, v };
         fmt::print("{}{:^15}{}{}{:^15}{}",

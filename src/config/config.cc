@@ -43,6 +43,11 @@ static std::string config_doc_theme = R"foo(# Theme configuration
 #
 )foo";
 
+static std::string color_map_comment = R"foo(# Custom color map with aliases
+# E.g:
+#   red = '#FF1111'
+#   background = 'black')foo";
+
 static std::string config_doc_general = R"foo(# General configuration for ´diffy´
 # 
 # Configure default options. These can be overriden with command-line arguments.
@@ -285,26 +290,24 @@ diffy::config_apply_theme(const std::string& theme,
 
     // Update the color table
     {
-        const std::vector<std::string> palette_color_names = {
-            "black",      "red",           "green",      "yellow",    "blue",        "magenta",
-            "cyan",       "light_gray",    "dark_gray",  "light_red", "light_green", "light_yellow",
-            "light_blue", "light_magenta", "light_cyan", "white",
-        };
-
+        if (config_file_table_value["color_map"].key_comments.empty()) {
+            config_file_table_value["color_map"].key_comments.push_back(color_map_comment);
+        }
         if (!config_file_table_value.lookup_value_by_path("color_map.red")) {
             config_file_table_value.set_value_at("color_map.red", {"red"});
         }
 
         auto& color_values = config_file_table_value.lookup_value_by_path("color_map")->get();
 
-        for (const auto& color : palette_color_names) {
-            if (color_values.contains(color)) {
-                auto& v = color_values[color];
-                auto term_color = TermColor::parse_value(v);
-                if (term_color) {
-                    color_map_set(color, *term_color);
+        if (color_values.is_table()) {
+            color_values.as_table().for_each([&](const std::string& key, Value& value) {
+                if (value.is_string()) {
+                    auto term_color = TermColor::parse_value(value);
+                    if (term_color) {
+                        color_map_set(key, *term_color);
+                    }
                 }
-            }
+            });
         }
     }
 
