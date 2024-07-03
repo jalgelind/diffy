@@ -1,4 +1,4 @@
-project('diffy', 'cpp', version : '23.11B',
+project('diffy', 'cpp', version : '24.07',
   default_options : [
   'cpp_std=c++20',
 ])
