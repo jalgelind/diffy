@@ -4,6 +4,7 @@
 #include "myers_linear.hpp"
 
 #include <gsl/span>
+#include <cstdint>
 #include <map>
 #include <numeric>  // std::accumulate
 #include <set>
@@ -52,13 +53,15 @@ struct Patience : public Algorithm<Unit> {
     std::vector<Match>
     index_unique_lines(const Slice& s) {
         struct record {
-            std::uint16_t a_count = 0;
-            std::uint16_t b_count = 0;
+            std::uint32_t a_count = 0;
+            std::uint32_t b_count = 0;
             int64_t a_index = 0;
             int64_t b_index = 0;
         };
 
         std::unordered_map<uint32_t, record> records;
+        const auto total_span = static_cast<size_t>((s.a_high - s.a_low) + (s.b_high - s.b_low));
+        records.reserve(total_span);
 
         for (auto i = s.a_low; i < s.a_high; i++) {
             const auto& a = A[i].hash();
@@ -73,6 +76,7 @@ struct Patience : public Algorithm<Unit> {
         }
 
         std::vector<Match> matches;
+        matches.reserve(records.size());
         for (const auto& kv : records) {
             if (kv.second.a_count == 1 && kv.second.b_count == 1) {
                 matches.push_back({kv.second.a_index, kv.second.b_index});
@@ -87,6 +91,7 @@ struct Patience : public Algorithm<Unit> {
     Match*
     patience_sort(std::vector<Match>& matches) {
         std::vector<Match*> stacks;
+        stacks.reserve(matches.size());
 
         for (auto& match : matches) {
             auto it = std::lower_bound(stacks.begin(), stacks.end(), &match,
@@ -160,36 +165,31 @@ struct Patience : public Algorithm<Unit> {
             assert(b_index <= b_next);
 
             Slice subslice = {a_index, a_next, b_index, b_next};
-            auto adjust_head = [this](Slice& slice) {
-                std::vector<Edit> head;
-                while (!slice.empty() && A[slice.a_low] == B[slice.b_low]) {
-                    head.push_back({EditType::Common, EditIndex(slice.a_low), EditIndex(slice.b_low)});
-                    slice.a_low += 1;
-                    slice.b_low += 1;
-                }
-                return head;
-            };
-            auto adjust_tail = [this](Slice& slice) {
-                std::vector<Edit> tail;
-                while (!slice.empty() && A[slice.a_high - 1] == B[slice.b_high - 1]) {
-                    slice.a_high -= 1;
-                    slice.b_high -= 1;
-                    tail.push_back({EditType::Common, EditIndex(slice.a_high), EditIndex(slice.b_high)});
-                }
-                return tail;
-            };
-
-            auto head = adjust_head(subslice);
-            auto tail = adjust_tail(subslice);
-
-            for (const auto& e : head) {
-                edit_sequence.push_back(e);
+            while (!subslice.empty() && A[subslice.a_low] == B[subslice.b_low]) {
+                edit_sequence.push_back({EditType::Common, EditIndex(subslice.a_low), EditIndex(subslice.b_low)});
+                subslice.a_low += 1;
+                subslice.b_low += 1;
             }
-            for (const auto& e : do_diff(subslice)) {
-                edit_sequence.push_back(e);
+
+            const auto tail_a_high = subslice.a_high;
+            const auto tail_b_high = subslice.b_high;
+            int64_t tail_count = 0;
+            while (!subslice.empty() && A[subslice.a_high - 1] == B[subslice.b_high - 1]) {
+                subslice.a_high -= 1;
+                subslice.b_high -= 1;
+                tail_count += 1;
             }
-            for (auto it = tail.rbegin(); it != tail.rend(); ++it) {
-                edit_sequence.push_back(*it);
+
+            if (!subslice.empty()) {
+                auto recursive_edits = do_diff(subslice);
+                edit_sequence.insert(edit_sequence.end(), recursive_edits.begin(), recursive_edits.end());
+            }
+
+            const auto a_tail_start = tail_a_high - tail_count;
+            const auto b_tail_start = tail_b_high - tail_count;
+            for (int64_t offset = 0; offset < tail_count; ++offset) {
+                edit_sequence.push_back({EditType::Common, EditIndex(a_tail_start + offset),
+                                         EditIndex(b_tail_start + offset)});
             }
 
             if (match == nullptr) {
