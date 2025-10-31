@@ -2,6 +2,7 @@
 
 #include "util/hash.hpp"
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -9,28 +10,29 @@ using namespace diffy;
 
 namespace {
 
+template <std::size_t N>
+constexpr std::array<bool, 256>
+make_lookup(const char (&chars)[N]) {
+    std::array<bool, 256> table{};
+    for (std::size_t i = 0; i + 1 < N; ++i) {
+        table[static_cast<unsigned char>(chars[i])] = true;
+    }
+    return table;
+}
+
+constexpr auto delimiter_table = make_lookup(".,+-*/|(){}<>[]!\"'#$%^&*=:;");
+constexpr auto whitespace_table = make_lookup(" \t\r\n\f\v");
+
 bool
 is_delimiter(char c) {
-    const char delimiters[] = ".,+-*/|(){}<>[]!\"'#$%^&*=:;";
-    for (const auto delimiter : delimiters) {
-        if (delimiter == c) {
-            return true;
-        }
-    }
-    return false;
+    return delimiter_table[static_cast<unsigned char>(c)];
 }
 
 }  // namespace
 
 bool
 diffy::is_whitespace(char c) {
-    const char whitespaces[] = " \t\r\n\f\v";
-    for (const auto whitespace : whitespaces) {
-        if (whitespace == c) {
-            return true;
-        }
-    }
-    return false;
+    return whitespace_table[static_cast<unsigned char>(c)];
 }
 
 bool

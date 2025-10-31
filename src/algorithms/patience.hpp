@@ -89,14 +89,15 @@ struct Patience : public Algorithm<Unit> {
         std::vector<Match*> stacks;
 
         for (auto& match : matches) {
-            const auto& found = std::lower_bound(stacks.cbegin(), stacks.cend(), &match,
-                                                 [](Match* a, Match* b) { return a->b_index < b->b_index; });
+            auto it = std::lower_bound(stacks.begin(), stacks.end(), &match,
+                                       [](Match* a, Match* b) { return a->b_index < b->b_index; });
 
-            if (found != stacks.end()) {
-                match.prev = *found;
-                stacks.insert(found, &match);
-            } else if (stacks.empty()) {
-                stacks.insert(stacks.begin(), &match);
+            if (it != stacks.end()) {
+                match.prev = (it == stacks.begin()) ? nullptr : *(it - 1);
+                *it = &match;
+            } else {
+                match.prev = stacks.empty() ? nullptr : stacks.back();
+                stacks.push_back(&match);
             }
         }
 
@@ -173,9 +174,7 @@ struct Patience : public Algorithm<Unit> {
                 while (!slice.empty() && A[slice.a_high - 1] == B[slice.b_high - 1]) {
                     slice.a_high -= 1;
                     slice.b_high -= 1;
-                    // opt: push_back and reverse iteration?
-                    tail.insert(tail.begin(),
-                                {EditType::Common, EditIndex(slice.a_high), EditIndex(slice.b_high)});
+                    tail.push_back({EditType::Common, EditIndex(slice.a_high), EditIndex(slice.b_high)});
                 }
                 return tail;
             };
@@ -189,8 +188,8 @@ struct Patience : public Algorithm<Unit> {
             for (const auto& e : do_diff(subslice)) {
                 edit_sequence.push_back(e);
             }
-            for (const auto& e : tail) {
-                edit_sequence.push_back(e);
+            for (auto it = tail.rbegin(); it != tail.rend(); ++it) {
+                edit_sequence.push_back(*it);
             }
 
             if (match == nullptr) {
