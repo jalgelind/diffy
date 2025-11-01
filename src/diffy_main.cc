@@ -426,11 +426,10 @@ Side by side options:
     auto hunks = diffy::compose_hunks(result.edit_sequence, opts.context_lines);
 
     if (opts.column_view) {
-        const auto& annotated_hunks = annotate_hunks(
-            diff_input, hunks,
-            opts.line_granularity ? diffy::EditGranularity::Line : diffy::EditGranularity::Token,
-            opts.ignore_whitespace);
-        diffy::column_view_diff_render(diff_input, annotated_hunks, cv_ui_opts, opts);
+        auto granularity =
+            opts.line_granularity ? diffy::EditGranularity::Line : diffy::EditGranularity::Token;
+        diffy::column_view_diff_render(
+            diff_input, hunks, granularity, opts.ignore_whitespace, cv_ui_opts, opts);
     } else if (opts.unified) {
         bool success = diffy::unified_diff_render(
             diff_input, hunks, [](std::string_view line) {

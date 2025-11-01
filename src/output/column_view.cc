@@ -2,6 +2,8 @@
 
 #include "processing/diff_hunk.hpp"
 #include "processing/diff_hunk_annotate.hpp"
+#include "util/ordered_task_queue.hpp"
+#include "util/thread_pool.hpp"
 #include "util/tty.hpp"
 #include "util/utf8decode.hpp"
 
@@ -15,8 +17,8 @@
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
-#include <future>
 #include <gsl/span>
+#include <memory>
 #include <numeric>
 #include <stack>
 #include <string_view>
@@ -606,7 +608,9 @@ print_display_columns_tty(const DisplayColumns& columns,
 
 void
 diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
-                               const std::vector<AnnotatedHunk>& hunks,
+                               const std::vector<Hunk>& hunks,
+                               EditGranularity granularity,
+                               bool ignore_whitespace,
                                ColumnViewState& config,
                                const diffy::ProgramOptions& options) {
     int64_t width = options.width;
@@ -674,22 +678,24 @@ diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
         return;
     }
 
-    auto build_columns = [&](const AnnotatedHunk& hunk) {
-        return make_hunk_display_columns(diff_input, hunk, config);
-    };
+    const ColumnViewState worker_state = config;
+    auto& pool = global_thread_pool();
+    const std::size_t capacity = std::max<std::size_t>(1, pool.thread_count() * 2);
+    auto queue = std::make_shared<OrderedTaskQueue<DisplayColumns>>(capacity);
 
-    if (hunks.size() == 1) {
-        emit_columns(build_columns(hunks.front()));
-        return;
+    for (std::size_t idx = 0; idx < hunks.size(); ++idx) {
+        pool.enqueue([queue, worker_state, &diff_input, &hunks, granularity, ignore_whitespace, idx] {
+            try {
+                auto annotated = annotate_hunk(diff_input, hunks[idx], granularity, ignore_whitespace);
+                auto columns = make_hunk_display_columns(diff_input, annotated, worker_state);
+                queue->push(idx, std::move(columns));
+            } catch (...) {
+                queue->push_exception(idx, std::current_exception());
+            }
+        });
     }
 
-    std::vector<std::future<DisplayColumns>> tasks;
-    tasks.reserve(hunks.size());
-    for (const auto& hunk : hunks) {
-        tasks.emplace_back(std::async(std::launch::async, build_columns, std::cref(hunk)));
-    }
-
-    for (auto& task : tasks) {
-        emit_columns(task.get());
+    for (std::size_t idx = 0; idx < hunks.size(); ++idx) {
+        emit_columns(queue->pop(idx));
     }
 }

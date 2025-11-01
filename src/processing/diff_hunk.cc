@@ -4,6 +4,8 @@
 #include <future>
 #include <utility>
 
+#include "util/thread_pool.hpp"
+
 using namespace diffy;
 
 namespace {
@@ -203,10 +205,11 @@ diffy::compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t conte
         return {build_hunk(hunk_ranges_with_context.front())};
     }
 
+    auto& pool = global_thread_pool();
     std::vector<std::future<Hunk>> tasks;
     tasks.reserve(hunk_ranges_with_context.size());
     for (const auto& range : hunk_ranges_with_context) {
-        tasks.emplace_back(std::async(std::launch::async, build_hunk, range));
+        tasks.emplace_back(pool.enqueue([&, range] { return build_hunk(range); }));
     }
 
     std::vector<Hunk> hunks;

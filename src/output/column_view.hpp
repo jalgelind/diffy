@@ -25,7 +25,9 @@ struct ColumnViewState {
 
 void
 column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
-                        const std::vector<AnnotatedHunk>& hunks,
+                        const std::vector<Hunk>& hunks,
+                        EditGranularity granularity,
+                        bool ignore_whitespace,
                         ColumnViewState& config,
                         const diffy::ProgramOptions& options);
 
