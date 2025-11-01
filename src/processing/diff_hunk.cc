@@ -1,5 +1,7 @@
 #include "diff_hunk.hpp"
 
+#include <cstddef>
+
 using namespace diffy;
 
 namespace {
@@ -20,9 +22,9 @@ find_hunk_ranges(const std::vector<Edit>& edit_sequence) {
         const EditType etype = edit_sequence[i].type;
         const bool in_hunk = curr.start != -1;
         if (!in_hunk && etype != EditType::Common) {
-            curr.start = static_cast<int>(i);
+            curr.start = static_cast<int64_t>(i);
         } else if (in_hunk) {
-            curr.end = static_cast<int>(i);
+            curr.end = static_cast<int64_t>(i);
             if (etype == EditType::Common) {
                 curr.end -= 1;
                 hunk_ranges.push_back({-1, -1});
@@ -32,7 +34,7 @@ find_hunk_ranges(const std::vector<Edit>& edit_sequence) {
 
     HunkRange& last = *(hunk_ranges.end() - 1);
     if (last.start != -1 && last.end == -1) {
-        last.end = static_cast<int>(edit_sequence.size() - 1);
+        last.end = static_cast<int64_t>(edit_sequence.size() - 1);
     } else if (last.start == -1) {
         hunk_ranges.pop_back();
     }
@@ -59,7 +61,7 @@ extend_hunk_ranges(const std::vector<Edit>& edit_sequence,
         // of this chunk and at the start of the next one.
         if (n && n->start - h->end < context_size * 2 + 2) {
             context_ranges[i] = {h->start, n->end};
-            auto erase_pos = context_ranges.begin() + static_cast<int>(i) + 1;
+            auto erase_pos = context_ranges.begin() + static_cast<std::ptrdiff_t>(i) + 1;
             context_ranges.erase(erase_pos);
             i -= 1;
             continue;
@@ -117,8 +119,10 @@ diffy::compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t conte
         int64_t b_insertion_point = -1;
     };
     std::vector<InsertionPoint> insertion_points;
+    insertion_points.reserve(edit_sequence.size());
     {
-        int a_count = 0, b_count = 0;
+        int64_t a_count = 0;
+        int64_t b_count = 0;
         for (auto i = 0u; i < edit_sequence.size(); i++) {
             switch (edit_sequence[i].type) {
                 case EditType::Insert:
