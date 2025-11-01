@@ -47,23 +47,29 @@ get_file_timestamp(const std::string& path, char timestamp[256]) {
 
 }  // namespace
 
-std::vector<std::string>
-diffy::unified_diff_render(const DiffInput<Line>& diff_input, const std::vector<Hunk>& hunks) {
-    std::vector<std::string> udiff;
-
+bool
+diffy::unified_diff_render(const DiffInput<Line>& diff_input,
+                           const std::vector<Hunk>& hunks,
+                           const std::function<void(std::string_view)>& emit_line) {
     char timestamp[2][256];
     if (!get_file_timestamp(diff_input.A_name, timestamp[0])) {
         // TODO: Should return error code if this fails
-        return udiff;
+        return false;
     }
 
     if (!get_file_timestamp(diff_input.B_name, timestamp[1])) {
         // TODO: Should return error code if this fails
-        return udiff;
+        return false;
     }
 
-    udiff.push_back(fmt::format("--- {}\t{}\n", diff_input.A_name, timestamp[0]));
-    udiff.push_back(fmt::format("+++ {}\t{}\n", diff_input.B_name, timestamp[1]));
+    {
+        std::string header = fmt::format("--- {}\t{}\n", diff_input.A_name, timestamp[0]);
+        emit_line(header);
+    }
+    {
+        std::string header = fmt::format("+++ {}\t{}\n", diff_input.B_name, timestamp[1]);
+        emit_line(header);
+    }
 
     auto format_change = [](const int64_t start, const int64_t count) -> std::string {
         if (count == 1)
@@ -72,8 +78,12 @@ diffy::unified_diff_render(const DiffInput<Line>& diff_input, const std::vector<
     };
 
     for (const auto& hunk : hunks) {
-        udiff.push_back(fmt::format("@@ -{} +{} @@\n", format_change(hunk.from_start, hunk.from_count),
-                                    format_change(hunk.to_start, hunk.to_count)));
+        {
+            std::string header = fmt::format(
+                "@@ -{} +{} @@\n", format_change(hunk.from_start, hunk.from_count),
+                format_change(hunk.to_start, hunk.to_count));
+            emit_line(header);
+        }
         for (const auto& e : hunk.edit_units) {
             std::string& text = e.a_index.valid ? diff_input.A[static_cast<long>(e.a_index)].line
                                                 : diff_input.B[static_cast<long>(e.b_index)].line;
@@ -83,9 +93,10 @@ diffy::unified_diff_render(const DiffInput<Line>& diff_input, const std::vector<
             else if (e.type == EditType::Delete)
                 op = "-";
 
-            udiff.push_back(fmt::format("{:1}{}", op, text));
+            std::string line = fmt::format("{:1}{}", op, text);
+            emit_line(line);
         }
     }
 
-    return udiff;
+    return true;
 }

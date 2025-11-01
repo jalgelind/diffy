@@ -4,9 +4,14 @@
 #include "processing/diff_hunk.hpp"
 #include "util/readlines.hpp"
 
+#include <functional>
+#include <string_view>
+
 namespace diffy {
 
-std::vector<std::string>
-unified_diff_render(const DiffInput<Line>& diff_input, const std::vector<Hunk>& hunks);
+bool
+unified_diff_render(const DiffInput<Line>& diff_input,
+                    const std::vector<Hunk>& hunks,
+                    const std::function<void(std::string_view)>& emit_line);
 
 }  // namespace diffy

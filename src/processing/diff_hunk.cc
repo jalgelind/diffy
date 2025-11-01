@@ -1,6 +1,8 @@
 #include "diff_hunk.hpp"
 
 #include <cstddef>
+#include <future>
+#include <utility>
 
 using namespace diffy;
 
@@ -143,10 +145,13 @@ diffy::compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t conte
         }
     }
 
-    std::vector<Hunk> hunks;
-    for (const auto& hunk_range : hunk_ranges_with_context) {
-        size_t range_start = hunk_range.start;
-        size_t range_end = hunk_range.end;
+    if (hunk_ranges_with_context.empty()) {
+        return {};
+    }
+
+    auto build_hunk = [&](const HunkRange& hunk_range) -> Hunk {
+        const size_t range_start = static_cast<size_t>(hunk_range.start);
+        const size_t range_end = static_cast<size_t>(hunk_range.end);
 
         assert(range_start < edit_sequence.size());
         assert(range_end < edit_sequence.size());
@@ -158,8 +163,8 @@ diffy::compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t conte
         // 'b' start index to the first insertion/common line within the same
         // hunk.
         if (edit_sequence[range_start].type == EditType::Delete) {
-            for (auto i = range_start; i <= range_end; i++) {
-                auto& u = edit_sequence[i];
+            for (size_t i = range_start; i <= range_end; i++) {
+                const auto& u = edit_sequence[i];
                 if (u.type != EditType::Delete) {
                     b_line_index_start = insertion_points[i].b_insertion_point;
                     break;
@@ -170,7 +175,8 @@ diffy::compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t conte
         int64_t a_count = 0;
         int64_t b_count = 0;
         std::vector<Edit> edit_units;
-        for (auto i = range_start; i <= range_end; i++) {
+        edit_units.reserve(range_end - range_start + 1);
+        for (size_t i = range_start; i <= range_end; i++) {
             const auto& e = edit_sequence[i];
             switch (e.type) {
                 case EditType::Insert:
@@ -187,10 +193,26 @@ diffy::compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t conte
                     assert(0 && "Unexpected type");
                     break;
             }
-            edit_units.push_back(edit_sequence[i]);
+            edit_units.push_back(e);
         }
 
-        hunks.push_back({a_line_index_start, a_count, b_line_index_start, b_count, edit_units});
+        return {a_line_index_start, a_count, b_line_index_start, b_count, std::move(edit_units)};
+    };
+
+    if (hunk_ranges_with_context.size() == 1) {
+        return {build_hunk(hunk_ranges_with_context.front())};
+    }
+
+    std::vector<std::future<Hunk>> tasks;
+    tasks.reserve(hunk_ranges_with_context.size());
+    for (const auto& range : hunk_ranges_with_context) {
+        tasks.emplace_back(std::async(std::launch::async, build_hunk, range));
+    }
+
+    std::vector<Hunk> hunks;
+    hunks.reserve(tasks.size());
+    for (auto& task : tasks) {
+        hunks.push_back(task.get());
     }
 
     return hunks;

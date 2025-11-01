@@ -25,6 +25,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -431,15 +432,18 @@ Side by side options:
             opts.ignore_whitespace);
         diffy::column_view_diff_render(diff_input, annotated_hunks, cv_ui_opts, opts);
     } else if (opts.unified) {
-        auto unified_lines = diffy::unified_diff_render(diff_input, hunks);
-        auto num_lines = unified_lines.size();
-        for (auto i = 0u; i < num_lines; i++) {
-            const auto& line = unified_lines[i];
-            if (line[line.size() - 1] == '\n')
-                printf("%s", line.c_str());
-            else {
-                printf("%s\n", line.c_str());
-            }
+        bool success = diffy::unified_diff_render(
+            diff_input, hunks, [](std::string_view line) {
+                if (!line.empty() && line.back() == '\n') {
+                    std::fwrite(line.data(), sizeof(char), line.size(), stdout);
+                } else {
+                    std::fwrite(line.data(), sizeof(char), line.size(), stdout);
+                    std::fputc('\n', stdout);
+                }
+            });
+
+        if (!success) {
+            return -1;
         }
 
         // TODO(ja): This differs from how ´diff´ does it. ´diff´ also warns about missing newline before
