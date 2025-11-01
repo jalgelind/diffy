@@ -4,6 +4,7 @@
 #include <future>
 #include <utility>
 
+#include "util/ordered_task_queue.hpp"
 #include "util/thread_pool.hpp"
 
 using namespace diffy;
@@ -106,7 +107,7 @@ extend_hunk_ranges(const std::vector<Edit>& edit_sequence,
 }  // namespace
 
 // Compose a list of Hunks from a sequence of edits.
-std::vector<Hunk>
+diffy::HunkStream
 diffy::compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t context_size) {
     // DEBUG("compose_hunks: context lines = {}", context_size);
 
@@ -201,22 +202,26 @@ diffy::compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t conte
         return {a_line_index_start, a_count, b_line_index_start, b_count, std::move(edit_units)};
     };
 
-    if (hunk_ranges_with_context.size() == 1) {
-        return {build_hunk(hunk_ranges_with_context.front())};
-    }
-
+    const std::size_t hunk_count = hunk_ranges_with_context.size();
     auto& pool = global_thread_pool();
-    std::vector<std::future<Hunk>> tasks;
-    tasks.reserve(hunk_ranges_with_context.size());
-    for (const auto& range : hunk_ranges_with_context) {
-        tasks.emplace_back(pool.enqueue([&, range] { return build_hunk(range); }));
+    const std::size_t capacity = std::max<std::size_t>(1, pool.thread_count() * 2);
+    auto queue = std::make_shared<OrderedTaskQueue<Hunk>>(capacity);
+
+    if (hunk_count == 1) {
+        queue->push(0, build_hunk(hunk_ranges_with_context.front()));
+        return {1, std::move(queue)};
     }
 
-    std::vector<Hunk> hunks;
-    hunks.reserve(tasks.size());
-    for (auto& task : tasks) {
-        hunks.push_back(task.get());
+    for (std::size_t idx = 0; idx < hunk_count; ++idx) {
+        const auto range = hunk_ranges_with_context[idx];
+        pool.enqueue([queue, build_hunk, range, idx] {
+            try {
+                queue->push(idx, build_hunk(range));
+            } catch (...) {
+                queue->push_exception(idx, std::current_exception());
+            }
+        });
     }
 
-    return hunks;
+    return {hunk_count, std::move(queue)};
 }

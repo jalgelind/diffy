@@ -11,7 +11,7 @@ namespace diffy {
 
 bool
 unified_diff_render(const DiffInput<Line>& diff_input,
-                    const std::vector<Hunk>& hunks,
+                    const HunkStream& hunks,
                     const std::function<void(std::string_view)>& emit_line);
 
 }  // namespace diffy

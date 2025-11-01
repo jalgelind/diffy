@@ -11,6 +11,7 @@
 #include <ctime>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace diffy;
@@ -64,7 +65,7 @@ format_change(int64_t start, int64_t count) {
 
 bool
 diffy::unified_diff_render(const DiffInput<Line>& diff_input,
-                           const std::vector<Hunk>& hunks,
+                           const HunkStream& hunks,
                            const std::function<void(std::string_view)>& emit_line) {
     char timestamp[2][256];
     if (!get_file_timestamp(diff_input.A_name, timestamp[0])) {
@@ -94,10 +95,10 @@ diffy::unified_diff_render(const DiffInput<Line>& diff_input,
     const std::size_t capacity = std::max<std::size_t>(1, pool.thread_count() * 2);
     auto queue = std::make_shared<OrderedTaskQueue<std::vector<std::string>>>(capacity);
 
-    for (std::size_t idx = 0; idx < hunks.size(); ++idx) {
-        pool.enqueue([queue, &diff_input, &hunks, idx] {
+    for (std::size_t idx = 0; idx < hunks.count; ++idx) {
+        Hunk hunk = hunks.queue->pop(idx);
+        pool.enqueue([queue, &diff_input, idx, hunk = std::move(hunk)]() mutable {
             try {
-                const auto& hunk = hunks[idx];
                 std::vector<std::string> lines;
                 lines.reserve(hunk.edit_units.size() + 1);
                 lines.push_back(fmt::format("@@ -{} +{} @@\n",
@@ -125,7 +126,7 @@ diffy::unified_diff_render(const DiffInput<Line>& diff_input,
         });
     }
 
-    for (std::size_t idx = 0; idx < hunks.size(); ++idx) {
+    for (std::size_t idx = 0; idx < hunks.count; ++idx) {
         auto lines = queue->pop(idx);
         for (auto& line : lines) {
             emit_line(line);

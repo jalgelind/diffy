@@ -15,6 +15,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <gsl/span>
@@ -23,6 +24,7 @@
 #include <stack>
 #include <string_view>
 #include <tuple>
+#include <utility>
 
 namespace fs = std::filesystem;
 
@@ -233,36 +235,47 @@ make_display_lines(const gsl::span<diffy::Line>& content_strings,
 
 void
 insert_alignment_rows(DisplayColumns& columns) {
-    std::size_t ia = 0u, ib = 0u;
+    std::ptrdiff_t ia = 0;
+    std::ptrdiff_t ib = 0;
 
     DisplayLine empty;
 
     auto& left = columns[0];
     auto& right = columns[1];
 
-    while (ia < left.size() || ib < right.size()) {
-        auto left_line = ia < left.size() ? left[ia] : empty;
-        auto right_line = ib < right.size() ? right[ib] : empty;
+    while (static_cast<std::size_t>(ia) < left.size() || static_cast<std::size_t>(ib) < right.size()) {
+        auto left_line = static_cast<std::size_t>(ia) < left.size() ? left[static_cast<std::size_t>(ia)] : empty;
+        auto right_line = static_cast<std::size_t>(ib) < right.size() ? right[static_cast<std::size_t>(ib)] : empty;
 
         auto left_type = left_line.type;
         auto right_type = right_line.type;
 
         if (left_type == EditType::Delete && right_type == EditType::Common) {
-            right.insert(right.begin() + ia, empty);
-            ia -= 2;
-            ib -= 2;
+            right.insert(right.begin() + static_cast<std::size_t>(ia), empty);
+            if (ia > 0) {
+                --ia;
+            }
+            if (ib > 0) {
+                --ib;
+            }
+            continue;
         }
 
         if (right_type == EditType::Insert && left_type == EditType::Common) {
-            left.insert(left.begin() + ib,
+            left.insert(left.begin() + static_cast<std::size_t>(ib),
                                 empty);  // TODO: replace `empty` with `{}` and may get stuck in an infinite
                                          // loop. Figure out why.
-            ia -= 2;
-            ib -= 2;
+            if (ia > 0) {
+                --ia;
+            }
+            if (ib > 0) {
+                --ib;
+            }
+            continue;
         }
 
-        ia++;
-        ib++;
+        ++ia;
+        ++ib;
     }
 }
 
@@ -608,7 +621,7 @@ print_display_columns_tty(const DisplayColumns& columns,
 
 void
 diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
-                               const std::vector<Hunk>& hunks,
+                               const HunkStream& hunks,
                                EditGranularity granularity,
                                bool ignore_whitespace,
                                ColumnViewState& config,
@@ -637,10 +650,9 @@ diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
 
     int64_t line_number_digits = 4;
     int64_t line_number_digits_padding = 0;
-    if (config.settings.show_line_numbers && hunks.size() > 0) {
-        auto& last_hunk = *(hunks.end() - 1);
-        int64_t line_number_max =
-            std::max(last_hunk.from_start + last_hunk.from_count, last_hunk.to_start + last_hunk.to_count);
+    if (config.settings.show_line_numbers) {
+        int64_t line_number_max = static_cast<int64_t>(
+            std::max(diff_input.A.size(), diff_input.B.size()));
         int64_t line_number_max_digits = fmt::format("{}", line_number_max + 1).size();
         line_number_digits = line_number_max_digits;
         line_number_digits_padding = 2;
@@ -683,10 +695,12 @@ diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
     const std::size_t capacity = std::max<std::size_t>(1, pool.thread_count() * 2);
     auto queue = std::make_shared<OrderedTaskQueue<DisplayColumns>>(capacity);
 
-    for (std::size_t idx = 0; idx < hunks.size(); ++idx) {
-        pool.enqueue([queue, worker_state, &diff_input, &hunks, granularity, ignore_whitespace, idx] {
+    for (std::size_t idx = 0; idx < hunks.count; ++idx) {
+        Hunk hunk = hunks.queue->pop(idx);
+        pool.enqueue([queue, worker_state, &diff_input, granularity, ignore_whitespace, idx,
+                      hunk = std::move(hunk)]() mutable {
             try {
-                auto annotated = annotate_hunk(diff_input, hunks[idx], granularity, ignore_whitespace);
+                auto annotated = annotate_hunk(diff_input, hunk, granularity, ignore_whitespace);
                 auto columns = make_hunk_display_columns(diff_input, annotated, worker_state);
                 queue->push(idx, std::move(columns));
             } catch (...) {
@@ -695,7 +709,7 @@ diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
         });
     }
 
-    for (std::size_t idx = 0; idx < hunks.size(); ++idx) {
+    for (std::size_t idx = 0; idx < hunks.count; ++idx) {
         emit_columns(queue->pop(idx));
     }
 }
