@@ -87,6 +87,7 @@ src_test = [
 #  'src/util/config_parser/config_tokenizer_tests.cc',
   'src/util/bipolar_array_tests.cc',
   'src/util/utf8decode_tests.cc',
+  'src/algorithms/streaming_hybrid_tests.cc',
 ]
 
 hash = run_command('git', 'rev-parse', '--short', 'HEAD', check: true)

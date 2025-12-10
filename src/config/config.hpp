@@ -9,7 +9,7 @@
 
 namespace diffy {
 
-enum class Algo { kInvalid, kMyersGreedy, kMyersLinear, kPatience };
+enum class Algo { kInvalid, kMyersGreedy, kMyersLinear, kPatience, kStreamingHybrid };
 
 Algo
 algo_from_string(std::string s);
@@ -28,6 +28,9 @@ struct ProgramOptions {
 
     bool ignore_line_endings = false;
     bool ignore_whitespace = false;
+
+    int64_t thread_count = 0;  // 0 means use hardware concurrency
+    bool enable_streaming = false;  // Enable parallel streaming for streaming-hybrid
 
     std::string left_file;
     std::string right_file;

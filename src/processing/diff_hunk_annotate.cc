@@ -3,8 +3,13 @@
 #include "algorithms/myers_linear.hpp"
 #include "algorithms/patience.hpp"
 #include "processing/tokenizer.hpp"
+#include "util/ordered_task_queue.hpp"
+#include "util/thread_pool.hpp"
 
 #include <fmt/format.h>
+
+#include <algorithm>
+#include <memory>
 
 using namespace diffy;
 
@@ -92,166 +97,187 @@ annotate_tokens_in_hunk(const DiffInput<TokenEdit>& diff_input,
     return ahunk;
 }
 
-std::vector<AnnotatedHunk>
-annotate_tokens(const DiffInput<diffy::Line>& diff_input,
-                const std::vector<Hunk>& hunks,
-                bool ignore_whitespace) {
-    // TODO: This could be threaded.
-    std::vector<AnnotatedHunk> output;
+AnnotatedHunk
+annotate_tokens_for_hunk(const DiffInput<diffy::Line>& diff_input,
+                         const Hunk& hunk,
+                         bool ignore_whitespace) {
     std::vector<TokenEdit> a;
     std::vector<TokenEdit> b;
 
-    for (auto& hunk : hunks) {
-        a.clear();
-        b.clear();
+    AnnotatedHunk ahunk;
+    ahunk.from_start = hunk.from_start;
+    ahunk.from_count = hunk.from_count;
+    ahunk.to_start = hunk.to_start;
+    ahunk.to_count = hunk.to_count;
 
-        AnnotatedHunk ahunk;
-        ahunk.from_start = hunk.from_start;
-        ahunk.from_count = hunk.from_count;
-        ahunk.to_start = hunk.to_start;
-        ahunk.to_count = hunk.to_count;
+    ahunk.a_lines.resize(static_cast<size_t>(hunk.from_count));
+    ahunk.b_lines.resize(static_cast<size_t>(hunk.to_count));
 
-        ahunk.a_lines.resize(static_cast<size_t>(hunk.from_count));
-        ahunk.b_lines.resize(static_cast<size_t>(hunk.to_count));
+    if (hunk.edit_units.empty()) {
+        return ahunk;
+    }
 
-        // Figure out how many context lines there are at the beginning and
-        // end of the hunk.
-        std::vector<Edit>::size_type context_head = 0;
-        for (auto i = 0U; i < hunk.edit_units.size(); i++) {
-            if (hunk.edit_units[i].type != EditType::Common) {
-                context_head = i;
-                break;
-            }
+    std::size_t context_head = 0;
+    std::size_t context_tail = hunk.edit_units.size() - 1;
+    bool found_change = false;
+    for (std::size_t i = 0; i < hunk.edit_units.size(); ++i) {
+        if (hunk.edit_units[i].type != EditType::Common) {
+            context_head = i;
+            found_change = true;
+            break;
         }
-
-        std::vector<Edit>::size_type context_tail = 0;
-        for (auto i = hunk.edit_units.size() - 1; i > 0; i--) {
+    }
+    if (found_change) {
+        for (std::size_t i = hunk.edit_units.size(); i-- > 0;) {
             if (hunk.edit_units[i].type != EditType::Common) {
                 context_tail = i;
                 break;
             }
         }
-
-        // Run diff on all tokens in the hunk, except for the context lines.
-        std::vector<Edit>::size_type edit_iter = 0;
-        std::size_t a_hunk_line_index = 0;
-        std::size_t b_hunk_line_index = 0;
-        for (; edit_iter < hunk.edit_units.size(); edit_iter++) {
-            const auto& edit = hunk.edit_units[edit_iter];
-            if (edit.a_index.valid) {
-                const auto& input_line = diff_input.A[static_cast<long>(edit.a_index)].line;
-
-                if (edit_iter >= context_head && edit_iter <= context_tail) {
-                    for (const auto& token : tokenize(input_line)) {
-                        a.push_back({a_hunk_line_index, token, input_line});
-                    }
-                } else {
-                    for (const auto& token : tokenize(input_line)) {
-                        ahunk.a_lines[a_hunk_line_index].segments.push_back(
-                            {token.start, token.length, token.flags, edit.type});
-                    }
-                }
-
-                ahunk.a_lines[a_hunk_line_index].type = edit.type;
-                ahunk.a_lines[a_hunk_line_index].line_index = edit.a_index;
-                a_hunk_line_index++;
-            }
-
-            if (edit.b_index.valid) {
-                const auto& input_line = diff_input.B[static_cast<long>(edit.b_index)].line;
-                if (edit_iter >= context_head && edit_iter <= context_tail) {
-                    for (const auto& token : tokenize(input_line)) {
-                        b.push_back({b_hunk_line_index, token, input_line});
-                    }
-                } else {
-                    for (const auto& token : tokenize(input_line)) {
-                        ahunk.b_lines[b_hunk_line_index].segments.push_back(
-                            {token.start, token.length, token.flags, edit.type});
-                    }
-                }
-
-                ahunk.b_lines[b_hunk_line_index].type = edit.type;
-                ahunk.b_lines[b_hunk_line_index].line_index = edit.b_index;
-                b_hunk_line_index++;
-            }
-        }
-
-        DiffInput<TokenEdit> hunk_input{a, b, "left side", "right side"};
-        Patience<TokenEdit> diff_context(hunk_input);
-        auto result = diff_context.compute();
-        if (result.status != diffy::DiffResultStatus::OK) {
-            // TODO: report error.
-            assert(0 && "bad diff");
-        }
-
-        output.push_back(annotate_tokens_in_hunk(hunk_input, result, ahunk, ignore_whitespace));
+    } else {
+        context_tail = context_head;
     }
-    return output;
+
+    std::size_t a_hunk_line_index = 0;
+    std::size_t b_hunk_line_index = 0;
+    for (std::size_t edit_iter = 0; edit_iter < hunk.edit_units.size(); ++edit_iter) {
+        const auto& edit = hunk.edit_units[edit_iter];
+        if (edit.a_index.valid) {
+            const auto& input_line = diff_input.A[static_cast<long>(edit.a_index)].line;
+            const auto tokens = tokenize(input_line);
+            if (edit_iter >= context_head && edit_iter <= context_tail) {
+                for (const auto& token : tokens) {
+                    a.push_back({a_hunk_line_index, token, input_line});
+                }
+            } else {
+                for (const auto& token : tokens) {
+                    ahunk.a_lines[a_hunk_line_index].segments.push_back(
+                        {token.start, token.length, token.flags, edit.type});
+                }
+            }
+
+            ahunk.a_lines[a_hunk_line_index].type = edit.type;
+            ahunk.a_lines[a_hunk_line_index].line_index = edit.a_index;
+            a_hunk_line_index++;
+        }
+
+        if (edit.b_index.valid) {
+            const auto& input_line = diff_input.B[static_cast<long>(edit.b_index)].line;
+            const auto tokens = tokenize(input_line);
+            if (edit_iter >= context_head && edit_iter <= context_tail) {
+                for (const auto& token : tokens) {
+                    b.push_back({b_hunk_line_index, token, input_line});
+                }
+            } else {
+                for (const auto& token : tokens) {
+                    ahunk.b_lines[b_hunk_line_index].segments.push_back(
+                        {token.start, token.length, token.flags, edit.type});
+                }
+            }
+
+            ahunk.b_lines[b_hunk_line_index].type = edit.type;
+            ahunk.b_lines[b_hunk_line_index].line_index = edit.b_index;
+            b_hunk_line_index++;
+        }
+    }
+
+    DiffInput<TokenEdit> hunk_input{a, b, "left side", "right side"};
+    Patience<TokenEdit> diff_context(hunk_input);
+    auto result = diff_context.compute();
+    if (result.status != diffy::DiffResultStatus::OK) {
+        assert(!"bad diff");
+    }
+
+    return annotate_tokens_in_hunk(hunk_input, result, ahunk, ignore_whitespace);
 }
 
-std::vector<AnnotatedHunk>
-annotate_lines(const DiffInput<diffy::Line>& diff_input,
-               const std::vector<Hunk>& hunks,
-               bool ignore_whitespace) {
-    std::vector<AnnotatedHunk> output;
+AnnotatedHunk
+annotate_lines_for_hunk(const DiffInput<diffy::Line>& diff_input,
+                        const Hunk& hunk,
+                        bool ignore_whitespace) {
+    AnnotatedHunk ahunk;
+    ahunk.from_start = hunk.from_start;
+    ahunk.from_count = hunk.from_count;
+    ahunk.to_start = hunk.to_start;
+    ahunk.to_count = hunk.to_count;
 
-    for (auto& hunk : hunks) {
-        AnnotatedHunk ahunk;
-        ahunk.from_start = hunk.from_start;
-        ahunk.from_count = hunk.from_count;
-        ahunk.to_start = hunk.to_start;
-        ahunk.to_count = hunk.to_count;
-
-        for (auto& edit : hunk.edit_units) {
-            if (edit.a_index.valid) {
-                const auto& a_line = diff_input.A[static_cast<long>(edit.a_index)].line;
-                ahunk.a_lines.push_back({edit.type, edit.a_index, {}});
-                for (const auto& token : tokenize(a_line)) {
-                    auto edit_type = edit.type;
-                    if (ignore_whitespace && (token.flags & (TokenFlagSpace | TokenFlagTab))) {
-                        edit_type = EditType::Common;
-                    }
-                    ahunk.a_lines.back().segments.push_back(
-                        {token.start, token.length, token.flags, edit_type});
+    for (const auto& edit : hunk.edit_units) {
+        if (edit.a_index.valid) {
+            const auto& a_line = diff_input.A[static_cast<long>(edit.a_index)].line;
+            ahunk.a_lines.push_back({edit.type, edit.a_index, {}});
+            for (const auto& token : tokenize(a_line)) {
+                auto edit_type = edit.type;
+                if (ignore_whitespace && (token.flags & (TokenFlagSpace | TokenFlagTab))) {
+                    edit_type = EditType::Common;
                 }
-            }
-
-            if (edit.b_index.valid) {
-                const auto& b_line = diff_input.B[static_cast<long>(edit.b_index)].line;
-                ahunk.b_lines.push_back({edit.type, edit.b_index, {}});
-                for (const auto& token : tokenize(b_line)) {
-                    auto edit_type = edit.type;
-                    if (ignore_whitespace && (token.flags & (TokenFlagSpace | TokenFlagTab))) {
-                        edit_type = EditType::Common;
-                    }
-                    ahunk.b_lines.back().segments.push_back(
-                        {token.start, token.length, token.flags, edit_type});
-                }
+                ahunk.a_lines.back().segments.push_back(
+                    {token.start, token.length, token.flags, edit_type});
             }
         }
-        output.push_back(ahunk);
+
+        if (edit.b_index.valid) {
+            const auto& b_line = diff_input.B[static_cast<long>(edit.b_index)].line;
+            ahunk.b_lines.push_back({edit.type, edit.b_index, {}});
+            for (const auto& token : tokenize(b_line)) {
+                auto edit_type = edit.type;
+                if (ignore_whitespace && (token.flags & (TokenFlagSpace | TokenFlagTab))) {
+                    edit_type = EditType::Common;
+                }
+                ahunk.b_lines.back().segments.push_back(
+                    {token.start, token.length, token.flags, edit_type});
+            }
+        }
     }
-    return output;
+
+    return ahunk;
 }
 
 }  // namespace
 
-// TODO: Report failure?
+AnnotatedHunk
+diffy::annotate_hunk(const DiffInput<diffy::Line>& diff_input,
+                     const Hunk& hunk,
+                     EditGranularity granularity,
+                     bool ignore_whitespace) {
+    switch (granularity) {
+        case EditGranularity::Line:
+            return annotate_lines_for_hunk(diff_input, hunk, ignore_whitespace);
+        case EditGranularity::Token:
+            return annotate_tokens_for_hunk(diff_input, hunk, ignore_whitespace);
+        default:
+            break;
+    }
+    return {};
+}
+
 std::vector<AnnotatedHunk>
 diffy::annotate_hunks(const DiffInput<diffy::Line>& diff_input,
                       const std::vector<Hunk>& hunks,
                       EditGranularity granularity,
                       bool ignore_whitespace) {
-    std::vector<AnnotatedHunk> hunks_annotated;
-    switch (granularity) {
-        case EditGranularity::Line:
-            hunks_annotated = annotate_lines(diff_input, hunks, ignore_whitespace);
-            break;
-        case EditGranularity::Token:
-            hunks_annotated = annotate_tokens(diff_input, hunks, ignore_whitespace);
-            break;
-        default:
-            break;
+    std::vector<AnnotatedHunk> output(hunks.size());
+    if (hunks.empty()) {
+        return output;
     }
-    return hunks_annotated;
+
+    auto& pool = global_thread_pool();
+    const std::size_t capacity = std::max<std::size_t>(1, pool.thread_count() * 2);
+    auto queue = std::make_shared<OrderedTaskQueue<AnnotatedHunk>>(capacity);
+
+    for (std::size_t idx = 0; idx < hunks.size(); ++idx) {
+        pool.enqueue([queue, &diff_input, &hunks, granularity, ignore_whitespace, idx] {
+            try {
+                auto annotated = annotate_hunk(diff_input, hunks[idx], granularity, ignore_whitespace);
+                queue->push(idx, std::move(annotated));
+            } catch (...) {
+                queue->push_exception(idx, std::current_exception());
+            }
+        });
+    }
+
+    for (std::size_t idx = 0; idx < hunks.size(); ++idx) {
+        output[idx] = queue->pop(idx);
+    }
+
+    return output;
 }

@@ -1,6 +1,7 @@
 #include "algorithms/myers_greedy.hpp"
 #include "algorithms/myers_linear.hpp"
 #include "algorithms/patience.hpp"
+#include "algorithms/streaming_hybrid.hpp"
 #include "config/config.hpp"
 #include "output/column_view.hpp"
 #include "output/unified.hpp"
@@ -10,6 +11,7 @@
 #include "util/color.hpp"
 #include "util/hash.hpp"
 #include "util/readlines.hpp"
+#include "util/thread_pool.hpp"
 #include "util/tty.hpp"
 
 #include <musl/getopt.h>
@@ -25,6 +27,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -107,6 +110,9 @@ compute_diff(diffy::Algo algorithm,
         case diffy::Algo::kPatience: {
             *result = diffy::Patience<diffy::Line>(diff_input).compute();
         } break;
+        case diffy::Algo::kStreamingHybrid: {
+            *result = diffy::StreamingHybrid<diffy::Line>(diff_input).compute();
+        } break;
         case diffy::Algo::kInvalid:
             /* fall-through */
         default: {
@@ -149,9 +155,10 @@ Compare files line by line, side by side
 Options:
     -v, --version                show program version and exit
     -a --algorithm [algorithm]   which algorithm to use for line diffing
-                                    myers-linear (ml)
-                                    myers-greedy (mg)
-                                    patience     (p)
+                                    myers-linear     (ml)
+                                    myers-greedy     (mg)
+                                    patience         (p)
+                                    streaming-hybrid (s)
     -u, -U [context_lines]       show unified output, optional context line count
     -s, -S [context_lines]       show side-by-side column output, optional context line count
 
@@ -197,9 +204,10 @@ Side by side options:
                                                {"ignore-whitespace", no_argument, 0, 'w'},
                                                {"no-ignore-whitespace", no_argument, 0, 'W'},
                                                {"list-colors", no_argument, 0, '1'},
+                                               {"jobs", required_argument, 0, 'j'},
                                                {0, 0, 0, 0}};
         int c = 0, option_index = 0;
-        while ((c = getopt_long(in_argc, in_argv, "a:hlsS:uU:W:o:n:iIwW", long_options, &option_index)) >= 0) {
+        while ((c = getopt_long(in_argc, in_argv, "a:hlsS:uU:W:o:n:iIwWj:", long_options, &option_index)) >= 0) {
             switch (c) {
                 case 'v':
                     fmt::print("version: {}\n", DIFFY_VERSION);
@@ -246,6 +254,9 @@ Side by side options:
                     break;
                 case 'w':
                     opts.ignore_whitespace = true;
+                    break;
+                case 'j':
+                    opts.thread_count = atoi(optarg);
                     break;
                 case 'W': {
                     if (optarg) {
@@ -403,6 +414,9 @@ Side by side options:
         return 0;
     }
 
+    // Initialize thread pool with specified thread count
+    diffy::initialize_global_thread_pool(opts.thread_count);
+
     auto left_line_data = diffy::readlines(opts.left_file, opts.ignore_line_endings);
     auto right_line_data = diffy::readlines(opts.right_file, opts.ignore_line_endings);
 
@@ -425,21 +439,23 @@ Side by side options:
     auto hunks = diffy::compose_hunks(result.edit_sequence, opts.context_lines);
 
     if (opts.column_view) {
-        const auto& annotated_hunks = annotate_hunks(
-            diff_input, hunks,
-            opts.line_granularity ? diffy::EditGranularity::Line : diffy::EditGranularity::Token,
-            opts.ignore_whitespace);
-        diffy::column_view_diff_render(diff_input, annotated_hunks, cv_ui_opts, opts);
+        auto granularity =
+            opts.line_granularity ? diffy::EditGranularity::Line : diffy::EditGranularity::Token;
+        diffy::column_view_diff_render(
+            diff_input, hunks, granularity, opts.ignore_whitespace, cv_ui_opts, opts);
     } else if (opts.unified) {
-        auto unified_lines = diffy::unified_diff_render(diff_input, hunks);
-        auto num_lines = unified_lines.size();
-        for (auto i = 0u; i < num_lines; i++) {
-            const auto& line = unified_lines[i];
-            if (line[line.size() - 1] == '\n')
-                printf("%s", line.c_str());
-            else {
-                printf("%s\n", line.c_str());
-            }
+        bool success = diffy::unified_diff_render(
+            diff_input, hunks, [](std::string_view line) {
+                if (!line.empty() && line.back() == '\n') {
+                    std::fwrite(line.data(), sizeof(char), line.size(), stdout);
+                } else {
+                    std::fwrite(line.data(), sizeof(char), line.size(), stdout);
+                    std::fputc('\n', stdout);
+                }
+            });
+
+        if (!success) {
+            return -1;
         }
 
         // TODO(ja): This differs from how ´diff´ does it. ´diff´ also warns about missing newline before
@@ -454,7 +470,7 @@ Side by side options:
             printf("\\ No newline at end of file\n");
         }
 
-        return 1;
+        return result.status == diffy::DiffResultStatus::NoChanges ? 0 : 1;
     }
 
     return 0;

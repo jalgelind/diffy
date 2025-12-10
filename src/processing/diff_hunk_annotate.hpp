@@ -52,4 +52,10 @@ annotate_hunks(const DiffInput<Line>& diff_input,
                const EditGranularity granularity,
                bool ignore_whitespace);
 
+AnnotatedHunk
+annotate_hunk(const DiffInput<Line>& diff_input,
+              const Hunk& hunk,
+              EditGranularity granularity,
+              bool ignore_whitespace);
+
 }  // namespace diffy

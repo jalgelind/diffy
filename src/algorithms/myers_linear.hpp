@@ -239,8 +239,10 @@ struct MyersLinear : public Algorithm<Unit> {
 
         std::vector<Coordinate> path;
         bool found = find_path(0, 0, N, M, path);
-        if (!found)
+        if (!found) {
+            result.status = DiffResultStatus::Failed;
             return result;
+        }
 
         auto solution = walk_snakes(path);
 

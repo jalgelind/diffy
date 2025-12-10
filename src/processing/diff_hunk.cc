@@ -1,5 +1,13 @@
 #include "diff_hunk.hpp"
 
+#include <cstddef>
+#include <future>
+#include <memory>
+#include <utility>
+
+#include "util/ordered_task_queue.hpp"
+#include "util/thread_pool.hpp"
+
 using namespace diffy;
 
 namespace {
@@ -20,9 +28,9 @@ find_hunk_ranges(const std::vector<Edit>& edit_sequence) {
         const EditType etype = edit_sequence[i].type;
         const bool in_hunk = curr.start != -1;
         if (!in_hunk && etype != EditType::Common) {
-            curr.start = static_cast<int>(i);
+            curr.start = static_cast<int64_t>(i);
         } else if (in_hunk) {
-            curr.end = static_cast<int>(i);
+            curr.end = static_cast<int64_t>(i);
             if (etype == EditType::Common) {
                 curr.end -= 1;
                 hunk_ranges.push_back({-1, -1});
@@ -32,7 +40,7 @@ find_hunk_ranges(const std::vector<Edit>& edit_sequence) {
 
     HunkRange& last = *(hunk_ranges.end() - 1);
     if (last.start != -1 && last.end == -1) {
-        last.end = static_cast<int>(edit_sequence.size() - 1);
+        last.end = static_cast<int64_t>(edit_sequence.size() - 1);
     } else if (last.start == -1) {
         hunk_ranges.pop_back();
     }
@@ -59,7 +67,7 @@ extend_hunk_ranges(const std::vector<Edit>& edit_sequence,
         // of this chunk and at the start of the next one.
         if (n && n->start - h->end < context_size * 2 + 2) {
             context_ranges[i] = {h->start, n->end};
-            auto erase_pos = context_ranges.begin() + static_cast<int>(i) + 1;
+            auto erase_pos = context_ranges.begin() + static_cast<std::ptrdiff_t>(i) + 1;
             context_ranges.erase(erase_pos);
             i -= 1;
             continue;
@@ -100,7 +108,7 @@ extend_hunk_ranges(const std::vector<Edit>& edit_sequence,
 }  // namespace
 
 // Compose a list of Hunks from a sequence of edits.
-std::vector<Hunk>
+diffy::HunkStream
 diffy::compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t context_size) {
     // DEBUG("compose_hunks: context lines = {}", context_size);
 
@@ -117,8 +125,10 @@ diffy::compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t conte
         int64_t b_insertion_point = -1;
     };
     std::vector<InsertionPoint> insertion_points;
+    insertion_points.reserve(edit_sequence.size());
     {
-        int a_count = 0, b_count = 0;
+        int64_t a_count = 0;
+        int64_t b_count = 0;
         for (auto i = 0u; i < edit_sequence.size(); i++) {
             switch (edit_sequence[i].type) {
                 case EditType::Insert:
@@ -139,10 +149,13 @@ diffy::compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t conte
         }
     }
 
-    std::vector<Hunk> hunks;
-    for (const auto& hunk_range : hunk_ranges_with_context) {
-        size_t range_start = hunk_range.start;
-        size_t range_end = hunk_range.end;
+    if (hunk_ranges_with_context.empty()) {
+        return {};
+    }
+
+    auto build_hunk = [&](const HunkRange& hunk_range) -> Hunk {
+        const size_t range_start = static_cast<size_t>(hunk_range.start);
+        const size_t range_end = static_cast<size_t>(hunk_range.end);
 
         assert(range_start < edit_sequence.size());
         assert(range_end < edit_sequence.size());
@@ -154,8 +167,8 @@ diffy::compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t conte
         // 'b' start index to the first insertion/common line within the same
         // hunk.
         if (edit_sequence[range_start].type == EditType::Delete) {
-            for (auto i = range_start; i <= range_end; i++) {
-                auto& u = edit_sequence[i];
+            for (size_t i = range_start; i <= range_end; i++) {
+                const auto& u = edit_sequence[i];
                 if (u.type != EditType::Delete) {
                     b_line_index_start = insertion_points[i].b_insertion_point;
                     break;
@@ -166,7 +179,8 @@ diffy::compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t conte
         int64_t a_count = 0;
         int64_t b_count = 0;
         std::vector<Edit> edit_units;
-        for (auto i = range_start; i <= range_end; i++) {
+        edit_units.reserve(range_end - range_start + 1);
+        for (size_t i = range_start; i <= range_end; i++) {
             const auto& e = edit_sequence[i];
             switch (e.type) {
                 case EditType::Insert:
@@ -183,11 +197,83 @@ diffy::compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t conte
                     assert(0 && "Unexpected type");
                     break;
             }
-            edit_units.push_back(edit_sequence[i]);
+            edit_units.push_back(e);
         }
 
-        hunks.push_back({a_line_index_start, a_count, b_line_index_start, b_count, edit_units});
+        return {a_line_index_start, a_count, b_line_index_start, b_count, std::move(edit_units)};
+    };
+
+    const std::size_t hunk_count = hunk_ranges_with_context.size();
+    auto& pool = global_thread_pool();
+    const std::size_t capacity = std::max<std::size_t>(1, pool.thread_count() * 2);
+    auto queue = std::make_shared<OrderedTaskQueue<Hunk>>(capacity);
+
+    if (hunk_count == 1) {
+        queue->push(0, build_hunk(hunk_ranges_with_context.front()));
+        return {1, std::move(queue)};
     }
 
-    return hunks;
+    // Need to capture edit_sequence and insertion_points for thread safety
+    auto edit_seq_ptr = std::make_shared<const std::vector<Edit>>(edit_sequence);
+    auto insertion_pts_ptr = std::make_shared<const std::vector<InsertionPoint>>(insertion_points);
+
+    for (std::size_t idx = 0; idx < hunk_count; ++idx) {
+        const auto range = hunk_ranges_with_context[idx];
+        pool.enqueue([queue, edit_seq_ptr, insertion_pts_ptr, range, idx] {
+            try {
+                const auto& edit_sequence = *edit_seq_ptr;
+                const auto& insertion_points = *insertion_pts_ptr;
+
+                const size_t range_start = static_cast<size_t>(range.start);
+                const size_t range_end = static_cast<size_t>(range.end);
+
+                assert(range_start < edit_sequence.size());
+                assert(range_end < edit_sequence.size());
+
+                auto a_line_index_start = insertion_points[range_start].a_insertion_point;
+                auto b_line_index_start = insertion_points[range_start].b_insertion_point;
+
+                if (edit_sequence[range_start].type == EditType::Delete) {
+                    for (size_t i = range_start; i <= range_end; i++) {
+                        const auto& u = edit_sequence[i];
+                        if (u.type != EditType::Delete) {
+                            b_line_index_start = insertion_points[i].b_insertion_point;
+                            break;
+                        }
+                    }
+                }
+
+                int64_t a_count = 0;
+                int64_t b_count = 0;
+                std::vector<Edit> edit_units;
+                edit_units.reserve(range_end - range_start + 1);
+                for (size_t i = range_start; i <= range_end; i++) {
+                    const auto& e = edit_sequence[i];
+                    switch (e.type) {
+                        case EditType::Insert:
+                            b_count++;
+                            break;
+                        case EditType::Delete:
+                            a_count++;
+                            break;
+                        case EditType::Common:
+                            a_count++;
+                            b_count++;
+                            break;
+                        default:
+                            assert(0 && "Unexpected type");
+                            break;
+                    }
+                    edit_units.push_back(e);
+                }
+
+                Hunk hunk = {a_line_index_start, a_count, b_line_index_start, b_count, std::move(edit_units)};
+                queue->push(idx, std::move(hunk));
+            } catch (...) {
+                queue->push_exception(idx, std::current_exception());
+            }
+        });
+    }
+
+    return {hunk_count, std::move(queue)};
 }

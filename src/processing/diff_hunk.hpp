@@ -7,6 +7,10 @@
 */
 
 #include "algorithms/algorithm.hpp"
+#include "util/ordered_task_queue.hpp"
+
+#include <cstddef>
+#include <memory>
 
 namespace diffy {
 
@@ -19,7 +23,14 @@ struct Hunk {
     std::vector<Edit> edit_units;
 };
 
-std::vector<Hunk>
+struct HunkStream {
+    std::size_t count = 0;
+    std::shared_ptr<OrderedTaskQueue<Hunk>> queue;
+
+    bool empty() const noexcept { return count == 0; }
+};
+
+HunkStream
 compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t context_size);
 
 }  // namespace diffy

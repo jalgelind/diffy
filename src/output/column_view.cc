@@ -2,6 +2,8 @@
 
 #include "processing/diff_hunk.hpp"
 #include "processing/diff_hunk_annotate.hpp"
+#include "util/ordered_task_queue.hpp"
+#include "util/thread_pool.hpp"
 #include "util/tty.hpp"
 #include "util/utf8decode.hpp"
 
@@ -9,12 +11,20 @@
 
 #include <fmt/format.h>
 
+#include <algorithm>
+#include <cassert>
+#include <cstdio>
 #include <cstdlib>
+#include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <gsl/span>
+#include <memory>
 #include <numeric>
 #include <stack>
+#include <string_view>
 #include <tuple>
+#include <utility>
 
 namespace fs = std::filesystem;
 
@@ -225,36 +235,47 @@ make_display_lines(const gsl::span<diffy::Line>& content_strings,
 
 void
 insert_alignment_rows(DisplayColumns& columns) {
-    std::size_t ia = 0u, ib = 0u;
+    std::ptrdiff_t ia = 0;
+    std::ptrdiff_t ib = 0;
 
     DisplayLine empty;
 
     auto& left = columns[0];
     auto& right = columns[1];
 
-    while (ia < left.size() || ib < right.size()) {
-        auto left_line = ia < left.size() ? left[ia] : empty;
-        auto right_line = ib < right.size() ? right[ib] : empty;
+    while (static_cast<std::size_t>(ia) < left.size() || static_cast<std::size_t>(ib) < right.size()) {
+        auto left_line = static_cast<std::size_t>(ia) < left.size() ? left[static_cast<std::size_t>(ia)] : empty;
+        auto right_line = static_cast<std::size_t>(ib) < right.size() ? right[static_cast<std::size_t>(ib)] : empty;
 
         auto left_type = left_line.type;
         auto right_type = right_line.type;
 
         if (left_type == EditType::Delete && right_type == EditType::Common) {
-            right.insert(right.begin() + ia, empty);
-            ia -= 2;
-            ib -= 2;
+            right.insert(right.begin() + static_cast<std::size_t>(ia), empty);
+            if (ia > 0) {
+                --ia;
+            }
+            if (ib > 0) {
+                --ib;
+            }
+            continue;
         }
 
         if (right_type == EditType::Insert && left_type == EditType::Common) {
-            left.insert(left.begin() + ib,
+            left.insert(left.begin() + static_cast<std::size_t>(ib),
                                 empty);  // TODO: replace `empty` with `{}` and may get stuck in an infinite
                                          // loop. Figure out why.
-            ia -= 2;
-            ib -= 2;
+            if (ia > 0) {
+                --ia;
+            }
+            if (ib > 0) {
+                --ib;
+            }
+            continue;
         }
 
-        ia++;
-        ib++;
+        ++ia;
+        ++ib;
     }
 }
 
@@ -417,31 +438,10 @@ make_header_columns(const std::string& left_name,
     return {{ col_left, col_right }};
 }
 
-std::vector<DisplayColumns>
-make_display_columns(const DiffInput<diffy::Line>& diff_input,
-                     const std::vector<AnnotatedHunk>& hunks,
-                     const ColumnViewState& config,
-                     const ProgramOptions& options) {
-    std::vector<DisplayColumns> hunk_columns;
-
-    std::string a_title = diff_input.A_name;
-    auto a_permissions = options.left_file_permissions;
-    std::string b_title = diff_input.B_name;
-    auto b_permissions = options.right_file_permissions;
-
-    for (const auto& column : make_header_columns(a_title, a_permissions, b_title, b_permissions, config)) {
-        hunk_columns.push_back(column);
-    }
-
-    if (hunks.empty()) {
-        // TODO: output a descriptive message mentioning that the files differ in permissions?
-        //       there might also be other issues:
-        //         * ?
-        // TODO: would be nice to support borders and customization of the empty space between hunks
-        // TODO: some hunk context? maybe iterate up until line avg(indentation of changed lines) < something above it
-        return hunk_columns;
-    }
-
+DisplayColumns
+make_hunk_display_columns(const DiffInput<diffy::Line>& diff_input,
+                          const AnnotatedHunk& hunk,
+                          const ColumnViewState& config) {
     auto make_rows = [&config](const auto& content_strings, const auto& lines) {
         std::vector<DisplayLine> rows;
         for (const auto& line : lines) {
@@ -452,44 +452,30 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
         }
 
         if (rows.empty()) {
-            // Empty line between hunks
-            // TODO(ja): doesn't work
-            //std::string squiggles = "﹏﹏﹏﹏﹏﹏";
-            //DisplayLine squiggly_line {{{squiggles, utf8_len(squiggles), 0, EditType::Meta}}, utf8_len(squiggles)};
-            //rows.push_back(squiggly_line);
             rows.push_back(DisplayLine {});
         }
 
         return rows;
     };
 
-    for (const auto& hunk : hunks) {
-        DisplayColumns columns{
-            make_rows(diff_input.A, hunk.a_lines),
-            make_rows(diff_input.B, hunk.b_lines),
-        };
+    DisplayColumns columns{
+        make_rows(diff_input.A, hunk.a_lines),
+        make_rows(diff_input.B, hunk.b_lines),
+    };
 
-        insert_alignment_rows(columns);
+    insert_alignment_rows(columns);
 
-        // @cleanup
-        auto diff = static_cast<int64_t>(columns[0].size()) - static_cast<int64_t>(columns[1].size());
+    auto diff = static_cast<int64_t>(columns[0].size()) - static_cast<int64_t>(columns[1].size());
 
-        if (diff < 0) {
-            for (int i = 0; i < -diff; i++) {
-                columns[0].push_back({});
-            }
-        } else if (diff > 0) {
-            for (int i = 0; i < diff; i++) {
-                columns[1].push_back({});
-            }
-        }
-
-        assert(columns[0].size() == columns[1].size());
-
-        hunk_columns.push_back(columns);
+    if (diff < 0) {
+        columns[0].insert(columns[0].end(), static_cast<size_t>(-diff), DisplayLine {});
+    } else if (diff > 0) {
+        columns[1].insert(columns[1].end(), static_cast<size_t>(diff), DisplayLine {});
     }
 
-    return hunk_columns;
+    assert(columns[0].size() == columns[1].size());
+
+    return columns;
 }
 
 // Transform the segments into a list of display commands, i.e "set color", "write text"
@@ -521,9 +507,10 @@ render_display_line(const ColumnViewState& config,
 }
 
 void
-print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnViewState& config) {
-    auto print_display_lines = [](const DisplayLine& left, const DisplayLine& right,
-                                  const ColumnViewState& config) {
+print_display_columns_tty(const DisplayColumns& columns,
+                          const ColumnViewState& config,
+                          const std::function<void(std::string_view)>& emit_line) {
+    auto print_display_lines = [&](const DisplayLine& left, const DisplayLine& right) {
         std::vector<DisplayCommand> display_commands;
 
         // color stack? do we have the line meta data somewhere here to decide if we should
@@ -618,29 +605,25 @@ print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnV
                 full += command.style + command.text + "\033[0m";
             }
         }
-        puts(full.c_str());
+        full.push_back('\n');
+        emit_line(full);
     };  // print_display_lines
 
-    for (const auto& columns : rows) {
-        const auto& left = columns[0];
-        const auto& right = columns[1];
-        auto max_idx = std::max(left.size(), right.size());
-        for (size_t idx = 0; idx < max_idx; idx++) {
-            print_display_lines(left[idx], right[idx], config);
-        }
-        // Empty line between hunks.
-        // TODO(ja): doesn't work
-        if (columns.empty()) {
-            DisplayLine dl;
-            print_display_lines(dl, dl, config);
-        }
+    assert(columns.size() >= 2);
+    const auto& left = columns[0];
+    const auto& right = columns[1];
+    auto max_idx = std::max(left.size(), right.size());
+    for (size_t idx = 0; idx < max_idx; idx++) {
+        print_display_lines(left[idx], right[idx]);
     }
 }
 }  // namespace
 
 void
 diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
-                               const std::vector<AnnotatedHunk>& hunks,
+                               const HunkStream& hunks,
+                               EditGranularity granularity,
+                               bool ignore_whitespace,
                                ColumnViewState& config,
                                const diffy::ProgramOptions& options) {
     int64_t width = options.width;
@@ -667,10 +650,9 @@ diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
 
     int64_t line_number_digits = 4;
     int64_t line_number_digits_padding = 0;
-    if (config.settings.show_line_numbers && hunks.size() > 0) {
-        auto& last_hunk = *(hunks.end() - 1);
-        int64_t line_number_max =
-            std::max(last_hunk.from_start + last_hunk.from_count, last_hunk.to_start + last_hunk.to_count);
+    if (config.settings.show_line_numbers) {
+        int64_t line_number_max = static_cast<int64_t>(
+            std::max(diff_input.A.size(), diff_input.B.size()));
         int64_t line_number_max_digits = fmt::format("{}", line_number_max + 1).size();
         line_number_digits = line_number_max_digits;
         line_number_digits_padding = 2;
@@ -687,7 +669,47 @@ diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
     if (config.max_row_length < 5)
         config.max_row_length = 5;
 
-    auto display_columns = make_display_columns(diff_input, hunks, config, options);
+    auto emit_line = [](std::string_view line) {
+        std::fwrite(line.data(), sizeof(char), line.size(), stdout);
+    };
 
-    print_display_columns_tty(display_columns, config);
+    auto emit_columns = [&](const DisplayColumns& columns) {
+        print_display_columns_tty(columns, config, emit_line);
+    };
+
+    std::string a_title = diff_input.A_name;
+    auto a_permissions = options.left_file_permissions;
+    std::string b_title = diff_input.B_name;
+    auto b_permissions = options.right_file_permissions;
+
+    for (const auto& column : make_header_columns(a_title, a_permissions, b_title, b_permissions, config)) {
+        emit_columns(column);
+    }
+
+    if (hunks.empty()) {
+        return;
+    }
+
+    const ColumnViewState worker_state = config;
+    auto& pool = global_thread_pool();
+    const std::size_t capacity = std::max<std::size_t>(1, pool.thread_count() * 2);
+    auto queue = std::make_shared<OrderedTaskQueue<DisplayColumns>>(capacity);
+
+    for (std::size_t idx = 0; idx < hunks.count; ++idx) {
+        Hunk hunk = hunks.queue->pop(idx);
+        pool.enqueue([queue, worker_state, &diff_input, granularity, ignore_whitespace, idx,
+                      hunk = std::move(hunk)]() mutable {
+            try {
+                auto annotated = annotate_hunk(diff_input, hunk, granularity, ignore_whitespace);
+                auto columns = make_hunk_display_columns(diff_input, annotated, worker_state);
+                queue->push(idx, std::move(columns));
+            } catch (...) {
+                queue->push_exception(idx, std::current_exception());
+            }
+        });
+    }
+
+    for (std::size_t idx = 0; idx < hunks.count; ++idx) {
+        emit_columns(queue->pop(idx));
+    }
 }

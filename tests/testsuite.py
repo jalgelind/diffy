@@ -148,7 +148,8 @@ def main(argv):
     patch_configs = (
         *[(f'mg{n}', f'-I -W -a mg -U{n}') for n in range(2)],
         *[(f'ml{n}', f'-I -W -a ml -U{n}') for n in range(2)],
-        *[(f'p{n}', f'-I -W -a p -U{n}') for n in range(2)]
+        *[(f'p{n}', f'-I -W -a p -U{n}') for n in range(2)],
+        *[(f's{n}', f'-I -W -a s -U{n}') for n in range(2)]
     )
 
     crash_configs = (

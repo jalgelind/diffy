@@ -383,5 +383,7 @@ diffy::algo_from_string(std::string s) {
         return Algo::kMyersGreedy;
     else if (s == "ml" || s == "myers-linear")
         return Algo::kMyersLinear;
+    else if (s == "s" || s == "streaming" || s == "streaming-hybrid")
+        return Algo::kStreamingHybrid;
     return Algo::kInvalid;
 }

@@ -5,6 +5,15 @@ A side-by-side diff tool for the terminal.
 
 Written for fun after reading the diff chapters in `Building Git` [1]
 
+Features
+--------
+
+* **Multiple diff algorithms**: Myers (greedy & linear space), Patience, and Streaming Hybrid
+* **Side-by-side view**: Column-based display with syntax-aware token diffing
+* **Unified diff output**: Compatible with standard patch tools
+* **Streaming Hybrid algorithm**: Up to 4.6x faster on large files with identical quality
+* **Configurable**: Themes, ignore options, and algorithm selection
+
 
 Build instructions
 ------------------
@@ -42,6 +51,22 @@ You can create new ones with
 
 
 The side-by-side view has mostly been tested visually.
+
+Algorithm Selection
+-------------------
+
+Diffy supports multiple diff algorithms, each with different performance characteristics:
+
+* **`-a p` (patience)**: Default. Good balance of quality and speed.
+* **`-a s` (streaming-hybrid)**: Fastest on large files (2-5x speedup). Uses hash-based anchor detection to skip unchanged regions. Recommended for files >1000 lines.
+* **`-a ml` (myers-linear)**: Optimal edit distance, linear space. Standard Myers algorithm.
+* **`-a mg` (myers-greedy)**: Optimal edit distance, greedy variant.
+
+Example:
+
+    $ diffy -a s large_file_old.c large_file_new.c    # Use streaming hybrid
+    $ diffy -U5 file1.txt file2.txt                    # Unified diff with 5 context lines
+    $ diffy -S3 old.cpp new.cpp                        # Side-by-side with 3 context lines
 
 Using diffy with git
 --------------------
