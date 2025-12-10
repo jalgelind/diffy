@@ -99,5 +99,7 @@
         "queue": "cpp",
         "*.tcc": "cpp",
         "__tuple_03": "cpp"
-    }
+    },
+    "C_Cpp.default.compileCommands": "/Users/johannes/code/diffy/builddir/compile_commands.json",
+    "C_Cpp.default.configurationProvider": "mesonbuild.mesonbuild"
 }
