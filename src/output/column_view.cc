@@ -520,10 +520,11 @@ render_display_line(const ColumnViewState& config,
     }
 }
 
-void
-print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnViewState& config) {
+std::vector<std::string>
+build_display_lines(const std::vector<DisplayColumns>& rows, const ColumnViewState& config) {
+    std::vector<std::string> out;
     auto print_display_lines = [](const DisplayLine& left, const DisplayLine& right,
-                                  const ColumnViewState& config) {
+                                  const ColumnViewState& config) -> std::string {
         std::vector<DisplayCommand> display_commands;
 
         // color stack? do we have the line meta data somewhere here to decide if we should
@@ -618,7 +619,7 @@ print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnV
                 full += command.style + command.text + "\033[0m";
             }
         }
-        puts(full.c_str());
+        return full;
     };  // print_display_lines
 
     for (const auto& columns : rows) {
@@ -626,37 +627,25 @@ print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnV
         const auto& right = columns[1];
         auto max_idx = std::max(left.size(), right.size());
         for (size_t idx = 0; idx < max_idx; idx++) {
-            print_display_lines(left[idx], right[idx], config);
+            out.push_back(print_display_lines(left[idx], right[idx], config));
         }
         // Empty line between hunks.
         // TODO(ja): doesn't work
         if (columns.empty()) {
             DisplayLine dl;
-            print_display_lines(dl, dl, config);
+            out.push_back(print_display_lines(dl, dl, config));
         }
     }
+    return out;
 }
 }  // namespace
 
-void
-diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
-                               const std::vector<AnnotatedHunk>& hunks,
-                               ColumnViewState& config,
-                               const diffy::ProgramOptions& options) {
-    int64_t width = options.width;
-    int dummy_height = 0;
-    if (width == 0) {
-        int tmp_width = 0;
-        tty_get_term_size(&dummy_height, &tmp_width);
-        width = static_cast<int64_t>(tmp_width);
-    }
-
-    // If we fail to figure out the width of the terminal, default to 80.
-    // NOTE: We hit this when running in lldb.
-    if (width == 0) {
-        width = 80;
-    }
-
+std::vector<std::string>
+diffy::column_view_render_lines(const DiffInput<diffy::Line>& diff_input,
+                                const std::vector<AnnotatedHunk>& hunks,
+                                ColumnViewState& config,
+                                const diffy::ProgramOptions& options,
+                                int64_t width) {
     int64_t frame_characters = 0;
     if (!config.chars.column_separator.empty()) {
         frame_characters += utf8_len(config.chars.column_separator);
@@ -689,5 +678,29 @@ diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
 
     auto display_columns = make_display_columns(diff_input, hunks, config, options);
 
-    print_display_columns_tty(display_columns, config);
+    return build_display_lines(display_columns, config);
+}
+
+void
+diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
+                               const std::vector<AnnotatedHunk>& hunks,
+                               ColumnViewState& config,
+                               const diffy::ProgramOptions& options) {
+    int64_t width = options.width;
+    int dummy_height = 0;
+    if (width == 0) {
+        int tmp_width = 0;
+        tty_get_term_size(&dummy_height, &tmp_width);
+        width = static_cast<int64_t>(tmp_width);
+    }
+
+    // If we fail to figure out the width of the terminal, default to 80.
+    // NOTE: We hit this when running in lldb.
+    if (width == 0) {
+        width = 80;
+    }
+
+    for (const auto& line : column_view_render_lines(diff_input, hunks, config, options, width)) {
+        puts(line.c_str());
+    }
 }
