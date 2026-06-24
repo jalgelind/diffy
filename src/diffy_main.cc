@@ -156,7 +156,7 @@ Options:
     -s, -S [context_lines]       show side-by-side column output, optional context line count
 
     -o, --old-file               custom name to give the old-file (left)
-    -n, --new-file               custom name to give the old-file (right)
+    -n, --new-file               custom name to give the new-file (right)
 
     -i, --ignore-line-endings    ignore changes to line endings
     -I, --no-ignore-line-endings inverse of --ignore-line-endings
@@ -182,24 +182,30 @@ Side by side options:
         puts(help.c_str());
     };
 
+    // Long-only option code, kept above the ASCII range so it doesn't collide
+    // with the short options. The short `-W` stays overloaded (numeric -> width,
+    // otherwise no-ignore-whitespace) for backwards compatibility.
+    constexpr int kOptNoIgnoreWhitespace = 256;
+
     auto parse_args = [&](int in_argc, char* in_argv[]) {
-        static struct option long_options[] = {{"help", no_argument, 0, 'h'},
-                                               {"side-by-side", optional_argument, 0, 'S'},
-                                               {"line", optional_argument, 0, 'l'},
-                                               {"unified", optional_argument, 0, 'U'},
-                                               {"version", no_argument, 0, 'v'},
-                                               {"width", optional_argument, 0, 'W'},
-                                               {"algorithm", optional_argument, 0, 'a'},
-                                               {"old-file", optional_argument, 0, 'o'},
-                                               {"new-file", optional_argument, 0, 'n'},
-                                               {"ignore-line-endings", no_argument, 0, 'i'},
-                                               {"no-ignore-line-endings", no_argument, 0, 'I'},
-                                               {"ignore-whitespace", no_argument, 0, 'w'},
-                                               {"no-ignore-whitespace", no_argument, 0, 'W'},
-                                               {"list-colors", no_argument, 0, '1'},
-                                               {0, 0, 0, 0}};
+        static struct option long_options[] = {
+            {"help", no_argument, 0, 'h'},
+            {"side-by-side", optional_argument, 0, 'S'},
+            {"line", optional_argument, 0, 'l'},
+            {"unified", optional_argument, 0, 'U'},
+            {"version", no_argument, 0, 'v'},
+            {"width", optional_argument, 0, 'W'},
+            {"algorithm", optional_argument, 0, 'a'},
+            {"old-file", optional_argument, 0, 'o'},
+            {"new-file", optional_argument, 0, 'n'},
+            {"ignore-line-endings", no_argument, 0, 'i'},
+            {"no-ignore-line-endings", no_argument, 0, 'I'},
+            {"ignore-whitespace", no_argument, 0, 'w'},
+            {"no-ignore-whitespace", no_argument, 0, kOptNoIgnoreWhitespace},
+            {"list-colors", no_argument, 0, '1'},
+            {0, 0, 0, 0}};
         int c = 0, option_index = 0;
-        while ((c = getopt_long(in_argc, in_argv, "a:hlsS:uU:W:o:n:iIwW", long_options, &option_index)) >= 0) {
+        while ((c = getopt_long(in_argc, in_argv, "a:hlsS:uU:W:o:n:iIw", long_options, &option_index)) >= 0) {
             switch (c) {
                 case 'v':
                     fmt::print("version: {}\n", DIFFY_VERSION);
@@ -248,19 +254,20 @@ Side by side options:
                     opts.ignore_whitespace = true;
                     break;
                 case 'W': {
-                    if (optarg) {
-                        if (isdigit(optarg[0])) {
-                            opts.width = atoi(optarg);
-                        } else {
-                            opts.ignore_whitespace = false;
-                            optind--;
-                        }
-                    } else {
-                        // Only happens when we don't provide any positional arguments
+                    // Short -W is overloaded: a numeric argument sets the column
+                    // width; anything else is the legacy spelling of
+                    // --no-ignore-whitespace (hand the consumed token back).
+                    if (optarg && isdigit(optarg[0])) {
+                        opts.width = atoi(optarg);
+                    } else if (optarg) {
                         opts.ignore_whitespace = false;
+                        optind--;
                     }
                     break;
                 }
+                case kOptNoIgnoreWhitespace:
+                    opts.ignore_whitespace = false;
+                    break;
                 case 'u':
                 case 's':
                 case 'U':
@@ -304,22 +311,6 @@ Side by side options:
         if (positional_count != 2) {
             show_help("error: missing positional arguments");
             return false;
-        }
-
-        if (0)
-        {
-            char** envp = environ;
-            while (*envp != NULL) {
-                printf("%s\n", *envp);
-                envp++;
-            }
-        }
-
-        if (0)
-        {
-            for (int i = optind; i < argc; i++) {
-                printf("arg %d: %s\n", i, argv[i]);
-            }
         }
 
         opts.left_file = argv[optind];
@@ -395,7 +386,7 @@ Side by side options:
                               cv_ui_opts.style);
 
     if (!parse_args(argc, argv)) {
-        return -1;
+        return 2;
     }
 
     if (opts.help) {
@@ -414,15 +405,19 @@ Side by side options:
 
     diffy::DiffResult result;
     if (!compute_diff(opts.algorithm, opts.ignore_whitespace, diff_input, &result)) {
-        return -1;
+        return 2;
     }
 
     if (result.status != diffy::DiffResultStatus::OK && result.status != diffy::DiffResultStatus::NoChanges) {
         puts("Diff compute failed");
-        return 1;
+        return 2;
     }
 
     auto hunks = diffy::compose_hunks(result.edit_sequence, opts.context_lines);
+
+    // Exit status follows `diff`'s convention: 0 = identical, 1 = differences,
+    // 2 = error (handled by the early returns above).
+    const int exit_code = hunks.empty() ? 0 : 1;
 
     if (opts.column_view) {
         const auto& annotated_hunks = annotate_hunks(
@@ -446,16 +441,17 @@ Side by side options:
         //           eof in the left file. When using this program with git it makes sense to skip this,
         //           since you don't really care if the issue was present in the previous revision.
         bool right_eof_newline = false;
-        if (right_line_data.size() > 0 && right_line_data.back().line.back() == '\n') {
-            right_eof_newline = true;
+        if (right_line_data.size() > 0) {
+            const std::string& last_line = right_line_data.back().line;
+            if (!last_line.empty() && last_line.back() == '\n') {
+                right_eof_newline = true;
+            }
         }
 
         if (!right_eof_newline) {
             printf("\\ No newline at end of file\n");
         }
-
-        return 1;
     }
 
-    return 0;
+    return exit_code;
 }

@@ -53,7 +53,6 @@ annotate_tokens_in_hunk(const DiffInput<TokenEdit>& diff_input,
                         const DiffResult& result,
                         AnnotatedHunk& ahunk,
                         bool ignore_whitespace) {
-    ;
     for (std::vector<Edit>::size_type j = 0; j < result.edit_sequence.size(); j++) {
         auto& token_edit = result.edit_sequence[j];
         auto a_idx = token_edit.a_index;
