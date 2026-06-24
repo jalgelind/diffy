@@ -27,7 +27,6 @@ get_file_timestamp(const std::string& path, char timestamp[256]) {
 
     struct stat st;
     if (stat(path.c_str(), &st) == -1) {
-        assert(0);
         return false;
     }
 
