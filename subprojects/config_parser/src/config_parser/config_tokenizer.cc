@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cstdlib>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -359,16 +360,22 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
             token.id = TokenId_Boolean;
             token.token_boolean_arg = tmp_bool;
         } else {
+            const char* number_begin = token_str.c_str();
+            const char* number_end = number_begin + token_str.size();
+
             int tmp_int = 0;
-            auto result = std::from_chars(token_str.data(), token_str.data() + token_str.size(), tmp_int);
-            if (result.ec != std::errc::invalid_argument) {
+            auto int_result = std::from_chars(number_begin, number_end, tmp_int);
+            // Require the whole token to parse: "12abc" and out-of-range values
+            // must not be classified as integers.
+            if (int_result.ec == std::errc{} && int_result.ptr == number_end) {
                 token.id = TokenId_Integer;
                 token.token_int_arg = tmp_int;
             } else {
-                int tmp_float = 0.0f;
-                auto result =
-                    std::from_chars(token_str.data(), token_str.data() + token_str.size(), tmp_float);
-                if (result.ec != std::errc::invalid_argument) {
+                // std::from_chars for float is not available on all standard
+                // libraries, so use strtof and require the whole token to parse.
+                char* float_end = nullptr;
+                float tmp_float = std::strtof(number_begin, &float_end);
+                if (float_end == number_end && float_end != number_begin) {
                     token.id = TokenId_Float;
                     token.token_float_arg = tmp_float;
                 } else {

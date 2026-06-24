@@ -297,4 +297,40 @@ TEST_CASE("tokenizer") {
         REQUIRE(a[20].str_from(line) == "\"");
         REQUIRE((a[20].id & (TokenId_DoubleQuote)) == (TokenId_DoubleQuote));
     }
+
+    SUBCASE("plain integer") {
+        auto line = "12345";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        auto a = result.tokens;
+        REQUIRE(a.size() == 1);
+        REQUIRE(a[0].str_from(line) == "12345");
+        REQUIRE((a[0].id & TokenId_Integer) == TokenId_Integer);
+        REQUIRE(a[0].token_int_arg == 12345);
+    }
+
+    SUBCASE("float literal is tagged Float (regression D1)") {
+        auto line = "3.5";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        auto a = result.tokens;
+        REQUIRE(a.size() == 1);
+        REQUIRE(a[0].str_from(line) == "3.5");
+        REQUIRE((a[0].id & TokenId_Float) == TokenId_Float);
+        REQUIRE(a[0].token_float_arg == doctest::Approx(3.5f));
+    }
+
+    SUBCASE("digits followed by letters are an identifier, not an integer (regression D2)") {
+        auto line = "12abc";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        auto a = result.tokens;
+        REQUIRE(a.size() == 1);
+        REQUIRE(a[0].str_from(line) == "12abc");
+        REQUIRE((a[0].id & TokenId_Integer) != TokenId_Integer);
+        REQUIRE((a[0].id & TokenId_Identifier) == TokenId_Identifier);
+    }
 }
