@@ -29,7 +29,7 @@ diffy::tty_get_term_size(int* rows, int* cols) {
         close(term_fd);
         return;
     }
-    if (term_fd)
+    if (term_fd >= 0)
         close(term_fd);
 
     char* env_cols = getenv("COLUMNS");
@@ -86,8 +86,10 @@ diffy::tty_get_capabilities() {
             switch (colors) {
                 case 16:
                     compat |= TermColorSupport_Ansi4bit;
+                    break;
                 case 256:
                     compat |= (TermColorSupport_Ansi4bit | TermColorSupport_Ansi8bit);
+                    break;
                 default:
                     break;
             }
