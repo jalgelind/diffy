@@ -30,7 +30,6 @@ ObjCSpaceBeforeProtocolList: false
 PenaltyBreakBeforeFirstCallParameter: 1
 PenaltyBreakComment: 300
 PenaltyBreakString: 1000
-PenaltyReturnTypeOnItsOwnLine: 0
 PenaltyBreakFirstLessLess: 120
 PenaltyExcessCharacter: 1000000
 PenaltyReturnTypeOnItsOwnLine: 200
@@ -39,7 +38,6 @@ DerivePointerAlignment: false
 PointerAlignment: Left
 
 SpacesBeforeTrailingComments: 2
-SpacesInContainerLiterals: true
 Cpp11BracedListStyle: true
 Standard:        Cpp11
 IndentWidth:     4

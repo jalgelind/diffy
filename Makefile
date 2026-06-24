@@ -18,6 +18,11 @@ test: | $(build_out)/debug/build.ninja
 	@ninja -C $(build_out)/debug diffy-test
 	@$(build_out)/debug/diffy-test
 
+# Integration test: diff every fixture pair, apply the unified output with
+# `patch`, and verify the result matches. Requires python3 and patch.
+integration-test: debug
+	@cd tests && python3 testsuite.py ../$(build_out)/debug/diffy
+
 clean:
 	rm -rf out
 
@@ -33,4 +38,4 @@ install: release
 	cp out/release/diffy $(LOCAL_BIN_DIR)/diffy
 
 
-.PHONY: all debug debugoptimized release clean test install
+.PHONY: all debug debugoptimized release clean test integration-test install
