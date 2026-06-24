@@ -90,11 +90,11 @@ TermColor::parse_hex(const std::string& s) {
         // '#ABC'
         case 4: {
             long color24 = strtol(&s[1], nullptr, 16);
+            // Expand each 4-bit nibble to a full byte (0xF -> 0xFF).
             uint8_t r = ((color24 >> 8) & 0x0F) * 17;
             uint8_t g = ((color24 >> 4) & 0x0F) * 17;
             uint8_t b = ((color24 >> 0) & 0x0F) * 17;
-            return TermColor(TermColor::Kind::Color24bit,
-                (r | r << 8), (g | g << 4), (b | b << 0));
+            return TermColor(TermColor::Kind::Color24bit, r, g, b);
         } break;
         // '#AABBCC'
         case 7: {
@@ -122,8 +122,12 @@ TermColor::parse_string(const std::string& s) {
     // Is it a 256color palette index?
     if (s[0] == 'P' || s[0] == 'p') {
         int palette_index = 0;
-        auto result = std::from_chars(s.data()+1, s.data() + s.size(), palette_index);
-        if (result.ec == std::errc::invalid_argument) {
+        const char* begin = s.data() + 1;
+        const char* end = s.data() + s.size();
+        auto result = std::from_chars(begin, end, palette_index);
+        // Require the whole suffix to parse and stay within the 256-color range,
+        // so 'P300' and 'P12x' are rejected rather than silently truncated.
+        if (result.ec != std::errc{} || result.ptr != end || palette_index < 0 || palette_index > 255) {
             return {};
         }
         return TermColor(TermColor::Kind::Color8bit, palette_index, 0, 0);
@@ -283,11 +287,15 @@ std::optional<TermStyle>
 TermStyle::parse_value(Value::Table table) {
     TermStyle c;
 
-    auto attr_value_array = table["attr"];
-
+    // Guard against missing/mistyped 'attr': OrderedMap::operator[] would insert a
+    // default-constructed Value (a Table), and as_array() on it throws.
     std::vector<std::string> attributes;
-    for (auto& attr_node : attr_value_array.as_array()) {
-        attributes.push_back(attr_node.as_string());
+    if (table.contains("attr") && table["attr"].is_array()) {
+        for (auto& attr_node : table["attr"].as_array()) {
+            if (attr_node.is_string()) {
+                attributes.push_back(attr_node.as_string());
+            }
+        }
     }
     c.attr = color_encode_attributes(attributes);
 
@@ -298,7 +306,7 @@ TermStyle::parse_value(Value::Table table) {
         }
     }
 
-    if (table.contains("fg")) {
+    if (table.contains("bg")) {
         auto color = TermColor::parse_value(table["bg"]);
         if (color) {
             c.bg = *color;
