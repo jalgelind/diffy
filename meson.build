@@ -20,8 +20,6 @@ endif
 
 add_global_arguments(defines, language : 'cpp')
 
-add_global_arguments(['-std=c++20'], language : 'cpp')
-
 cmake = import('cmake')
 
 crc32c_opts = cmake.subproject_options()
