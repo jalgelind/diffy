@@ -772,3 +772,23 @@ over the corpus; reverting the renderer fixes flips 5/6 theme tests to red while
 the oracle self-check stays green (proving the tests bite). New formatting
 deviations introduced: **zero** (clang-format 17, checked against the HEAD
 baseline).
+
+## Bundled themes (follow-up)
+
+First-run setup now seeds four popular, **fully self-contained** example themes
+next to `theme_default` — `theme_dracula`, `theme_nord`, `theme_solarized_dark`,
+and `theme_github_light` (the light one doubles as the "looks the same on any
+terminal" case). Each sets a foreground *and* background on every element plus a
+base `style.background`, so it renders identically regardless of the terminal's
+default colors — exercising exactly the inverted-theme rendering above.
+
+- Stored as raw `.conf` text in `config.cc` (hex colors can't round-trip through
+  `TermStyle::to_value()`, which only emits palette names; the load path parses
+  hex into `48;2` truecolor fine). Exposed via `config_bundled_themes()`.
+- `config_write_bundled_themes()` writes each on first run, **skipping any that
+  already exist** so user edits are never clobbered; listed in the generated
+  `diffy.conf` comment for discoverability.
+- Tested: each bundled theme parses (`cfg_parse_value_tree`) and renders a mixed
+  diff with **no terminal-default gaps** (`theme_tests.cc`). Smoke-tested
+  end-to-end on the binary with a sandboxed `HOME` — first run creates all four,
+  and `theme_dracula` renders with the expected truecolor backgrounds.

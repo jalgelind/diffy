@@ -73,6 +73,35 @@ row_with(const std::vector<std::string>& rows, const std::string& needle) {
     return "";
 }
 
+// Parse a theme .conf string and compile its [style] table into a ColumnViewState,
+// the same fg/bg/attr → escape-code path config_apply_theme uses (sans disk I/O).
+ColumnViewState
+load_theme_conf(const std::string& conf) {
+    ColumnViewState c;
+    ParseResult pr;
+    Value root;
+    REQUIRE(cfg_parse_value_tree(conf, pr, root));
+    auto apply = [&](const char* key, std::string& dest) {
+        if (auto v = root.lookup_value_by_path(std::string("style.") + key); v && v->get().is_table()) {
+            if (auto st = TermStyle::parse_value(v->get().as_table()); st)
+                dest = st->to_ansi();
+        }
+    };
+    apply("background", c.style.background);
+    apply("header", c.style.header);
+    apply("delete_line", c.style.delete_line);
+    apply("delete_token", c.style.delete_token);
+    apply("delete_line_number", c.style.delete_line_number);
+    apply("insert_line", c.style.insert_line);
+    apply("insert_token", c.style.insert_token);
+    apply("insert_line_number", c.style.insert_line_number);
+    apply("common_line", c.style.common_line);
+    apply("common_line_number", c.style.common_line_number);
+    apply("frame", c.style.frame);
+    apply("empty_cell", c.style.empty_cell);
+    return c;
+}
+
 }  // namespace
 
 // ---- TH-T0 self-check: the oracle behaves -----------------------------------
@@ -190,6 +219,31 @@ TEST_CASE("inverted theme: changed line is tinted whole, token highlight layered
     // over the line background (the token cells carry no bg of their own, TH-5).
     CHECK(row.find(kDeleteTokenFg) != std::string::npos);
     CHECK(row.find(kInsertTokenFg) != std::string::npos);
+}
+
+// ---- Bundled themes seeded on config setup are valid + self-contained -------
+
+TEST_CASE("bundled themes parse and render with no default-background gaps") {
+    auto themes = config_bundled_themes();
+    CHECK(themes.size() == 4);  // dracula, nord, solarized_dark, github_light
+
+    for (const auto& [name, conf] : themes) {
+        CAPTURE(name);
+        auto config = load_theme_conf(conf);
+
+        // Self-contained: the base background must be set, so the theme does not
+        // depend on the terminal's default colors.
+        CHECK_FALSE(config.style.background.empty());
+
+        // And it renders with no terminal-default holes over a mixed diff.
+        auto rows = render({"alpha", "beta", "gamma", "delta"},
+                           {"alpha", "BETA", "gamma", "epsilon", "delta"}, config);
+        REQUIRE(!rows.empty());
+        for (const auto& row : rows) {
+            CAPTURE(strip_ansi(row));
+            CHECK_FALSE(has_default_bg(row));
+        }
+    }
 }
 
 // ---- TH-T5: single background knob inherited by every cell (TH-4) -----------

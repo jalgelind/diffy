@@ -49,12 +49,123 @@ static std::string color_map_comment = R"foo(# Custom color map with aliases
 #   background = 'black')foo";
 
 static std::string config_doc_general = R"foo(# General configuration for ´diffy´
-# 
+#
 # Configure default options. These can be overriden with command-line arguments.
 #
 # To use another theme, update `theme` to point to another theme file; i.e:
 #   theme = 'custom_theme'  # load custom_theme.conf
-# 
+#
+# Bundled themes (created in the config directory on first run):
+#   theme_default, theme_dracula, theme_nord, theme_solarized_dark,
+#   theme_github_light
+#
+)foo";
+
+// Bundled themes written alongside the default theme on first-run setup. Each is
+// fully self-contained — it sets both a foreground and a background on every
+// element (and a base `style.background`) — so it renders identically regardless
+// of the terminal's default colors, unlike the foreground-only default theme.
+// Stored as raw .conf text because hex colors cannot round-trip through
+// TermStyle::to_value() (which only knows palette names); the load path parses
+// hex fine.
+static std::string theme_dracula_conf = R"foo(# Dracula — popular dark theme (https://draculatheme.com).
+# Self-contained: every element sets fg + bg, so it looks the same on any
+# terminal regardless of your default colors.
+
+[settings]
+word_wrap = true
+show_line_numbers = true
+context_colored_line_numbers = true
+line_number_align_right = false
+
+[style]
+background          = { fg = '#f8f8f2', bg = '#282a36', attr = [] }
+header              = { fg = '#f8f8f2', bg = '#44475a', attr = ['bold', 'underline'] }
+delete_line         = { fg = '#f8f8f2', bg = '#422a37', attr = [] }
+delete_token        = { fg = '#ff5555', bg = 'none',    attr = ['bold'] }
+delete_line_number  = { fg = '#ff5555', bg = '#422a37', attr = [] }
+insert_line         = { fg = '#f8f8f2', bg = '#243a32', attr = [] }
+insert_token        = { fg = '#50fa7b', bg = 'none',    attr = ['bold'] }
+insert_line_number  = { fg = '#50fa7b', bg = '#243a32', attr = [] }
+common_line         = { fg = '#f8f8f2', bg = '#282a36', attr = [] }
+common_line_number  = { fg = '#6272a4', bg = '#282a36', attr = [] }
+frame               = { fg = '#6272a4', bg = '#282a36', attr = [] }
+empty_cell          = { fg = '#6272a4', bg = '#282a36', attr = [] }
+)foo";
+
+static std::string theme_nord_conf = R"foo(# Nord — popular arctic dark theme (https://www.nordtheme.com).
+# Self-contained: every element sets fg + bg.
+
+[settings]
+word_wrap = true
+show_line_numbers = true
+context_colored_line_numbers = true
+line_number_align_right = false
+
+[style]
+background          = { fg = '#d8dee9', bg = '#2e3440', attr = [] }
+header              = { fg = '#eceff4', bg = '#434c5e', attr = ['bold', 'underline'] }
+delete_line         = { fg = '#d8dee9', bg = '#3b2f33', attr = [] }
+delete_token        = { fg = '#bf616a', bg = 'none',    attr = ['bold'] }
+delete_line_number  = { fg = '#bf616a', bg = '#3b2f33', attr = [] }
+insert_line         = { fg = '#d8dee9', bg = '#323a30', attr = [] }
+insert_token        = { fg = '#a3be8c', bg = 'none',    attr = ['bold'] }
+insert_line_number  = { fg = '#a3be8c', bg = '#323a30', attr = [] }
+common_line         = { fg = '#d8dee9', bg = '#2e3440', attr = [] }
+common_line_number  = { fg = '#4c566a', bg = '#2e3440', attr = [] }
+frame               = { fg = '#434c5e', bg = '#2e3440', attr = [] }
+empty_cell          = { fg = '#4c566a', bg = '#2e3440', attr = [] }
+)foo";
+
+static std::string theme_solarized_dark_conf =
+    R"foo(# Solarized Dark — popular low-contrast theme (Ethan Schoonover).
+# Self-contained: every element sets fg + bg.
+
+[settings]
+word_wrap = true
+show_line_numbers = true
+context_colored_line_numbers = true
+line_number_align_right = false
+
+[style]
+background          = { fg = '#839496', bg = '#002b36', attr = [] }
+header              = { fg = '#93a1a1', bg = '#073642', attr = ['bold', 'underline'] }
+delete_line         = { fg = '#839496', bg = '#3a2a2d', attr = [] }
+delete_token        = { fg = '#dc322f', bg = 'none',    attr = ['bold'] }
+delete_line_number  = { fg = '#dc322f', bg = '#3a2a2d', attr = [] }
+insert_line         = { fg = '#839496', bg = '#2a3a2d', attr = [] }
+insert_token        = { fg = '#859900', bg = 'none',    attr = ['bold'] }
+insert_line_number  = { fg = '#859900', bg = '#2a3a2d', attr = [] }
+common_line         = { fg = '#839496', bg = '#002b36', attr = [] }
+common_line_number  = { fg = '#586e75', bg = '#002b36', attr = [] }
+frame               = { fg = '#586e75', bg = '#002b36', attr = [] }
+empty_cell          = { fg = '#586e75', bg = '#002b36', attr = [] }
+)foo";
+
+static std::string theme_github_light_conf =
+    R"foo(# GitHub Light — popular light theme. A light background makes this a good
+# example of a theme that is unaffected by (typically dark) terminal defaults.
+# Self-contained: every element sets fg + bg.
+
+[settings]
+word_wrap = true
+show_line_numbers = true
+context_colored_line_numbers = true
+line_number_align_right = false
+
+[style]
+background          = { fg = '#1f2328', bg = '#ffffff', attr = [] }
+header              = { fg = '#0969da', bg = '#ddf4ff', attr = ['bold', 'underline'] }
+delete_line         = { fg = '#1f2328', bg = '#ffebe9', attr = [] }
+delete_token        = { fg = '#cf222e', bg = 'none',    attr = ['bold'] }
+delete_line_number  = { fg = '#cf222e', bg = '#ffd7d5', attr = [] }
+insert_line         = { fg = '#1f2328', bg = '#e6ffec', attr = [] }
+insert_token        = { fg = '#116329', bg = 'none',    attr = ['bold'] }
+insert_line_number  = { fg = '#116329', bg = '#ccffd8', attr = [] }
+common_line         = { fg = '#1f2328', bg = '#ffffff', attr = [] }
+common_line_number  = { fg = '#6e7781', bg = '#ffffff', attr = [] }
+frame               = { fg = '#d0d7de', bg = '#ffffff', attr = [] }
+empty_cell          = { fg = '#6e7781', bg = '#ffffff', attr = [] }
 )foo";
 
 enum class ConfigVariableType {
@@ -67,6 +178,37 @@ enum class ConfigVariableType {
 std::string
 diffy::config_get_directory() {
     return fmt::format("{}/diffy", sago::getConfigHome());
+}
+
+std::vector<std::pair<std::string, std::string>>
+diffy::config_bundled_themes() {
+    return {
+        {"theme_dracula", theme_dracula_conf},
+        {"theme_nord", theme_nord_conf},
+        {"theme_solarized_dark", theme_solarized_dark_conf},
+        {"theme_github_light", theme_github_light_conf},
+    };
+}
+
+// Write the bundled example themes into the config directory, skipping any that
+// already exist so user edits are never clobbered. Called once on first-run
+// setup (when the default theme is created).
+static void
+config_write_bundled_themes(const std::string& config_root) {
+    std::error_code ec;
+    std::filesystem::create_directories(config_root, ec);
+    for (const auto& [name, content] : diffy::config_bundled_themes()) {
+        const std::string path = fmt::format("{}/{}.conf", config_root, name);
+        if (std::filesystem::exists(path))
+            continue;
+        FILE* f = fopen(path.c_str(), "wb");
+        if (!f) {
+            fmt::print(stderr, "warning: could not write bundled theme '{}'\n", path);
+            continue;
+        }
+        fwrite(content.c_str(), content.size(), 1, f);
+        fclose(f);
+    }
 }
 
 enum class ConfigLoadResult {
@@ -272,6 +414,9 @@ diffy::config_apply_theme(const std::string& theme,
             if (theme == "theme_default") {
                 fmt::print("warning: could not find default theme, creating file:\n\t{}\n", config_path);
                 flush_config_to_disk = true;
+                // First-run setup: also seed the bundled example themes so users
+                // have ready-to-use alternatives (`theme = 'theme_dracula'`, ...).
+                config_write_bundled_themes(config_root);
             }
         } break;
     };

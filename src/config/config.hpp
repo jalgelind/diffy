@@ -4,6 +4,8 @@
 
 #include <string>
 #include <filesystem>
+#include <utility>
+#include <vector>
 
 #include <config_parser/config_parser.hpp>
 
@@ -160,6 +162,12 @@ struct ColumnViewSettings {
 
 std::string
 config_get_directory();
+
+// The bundled, self-contained example themes seeded on first-run setup, as
+// {file-stem, .conf-content} pairs (e.g. {"theme_dracula", "..."}). Exposed so
+// tests can validate the shipped theme content.
+std::vector<std::pair<std::string, std::string>>
+config_bundled_themes();
 
 void
 config_apply_options(diffy::ProgramOptions& program_options);
