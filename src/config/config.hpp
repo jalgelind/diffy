@@ -41,6 +41,16 @@ struct ProgramOptions {
 
 struct ColumnViewTextStyle {
     // clang-format off
+    // Base background painted under every cell. Specific styles below layer on
+    // top, so a fully inverted ("filled background") theme can be expressed by
+    // setting this single key. kNone by default → no background, byte-identical
+    // to the historical fg-only rendering.
+    TermStyle background = TermStyle {
+        TermColor::kNone,
+        TermColor::kNone,
+        TermStyle::Attribute::None
+    };
+
     TermStyle header = TermStyle {
         TermColor::kWhite,
         TermColor::kNone,
@@ -116,6 +126,7 @@ struct ColumnViewTextStyle {
 };
 
 struct ColumnViewTextStyleEscapeCodes {
+    std::string background;
     std::string header;
     std::string delete_line;
     std::string delete_token;

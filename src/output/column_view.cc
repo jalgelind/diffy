@@ -302,7 +302,7 @@ color_code_file_permissions(const std::string& delete_style,
                 // Reset the style in case we enable any attributes that isn't set in the normal style
                 styled_left += delete_style + left[i] + "\033[0m" + normal_style;
              }
-            styled_right += insert_style + right[i] + + "\033[0m" + normal_style;
+            styled_right += insert_style + right[i] + "\033[0m" + normal_style;
         } else {
             styled_left += left[i];
             styled_right += right[i];
@@ -465,31 +465,54 @@ make_hunk_columns(const DiffInput<diffy::Line>& diff_input,
     return columns;
 }
 
-// Transform the segments into a list of display commands, i.e "set color", "write text"
+// The base style (background tint) for a whole row of the given edit type.
+// Used for padding and as the layer under each body segment, so an inverted
+// theme fills the full column width with the line's own color. Returns "" for
+// the historical fg-only themes (delete_line/insert_line/common_line unset),
+// keeping output byte-identical for them.
+const std::string&
+line_style(const ColumnViewState& config, EditType type) {
+    switch (type) {
+        case EditType::Insert:
+            return config.style.insert_line;
+        case EditType::Delete:
+            return config.style.delete_line;
+        case EditType::Common:
+            return config.style.common_line;
+        default:
+            return config.style.empty_cell;
+    }
+}
+
+// Transform the segments into a list of display commands, i.e "set color", "write text".
+// Each segment is painted with the line's base style (its background) and, for changed
+// tokens, the token style layered on top — so token highlights sit over the line tint
+// rather than clearing it back to the terminal default.
 void
 render_display_line(const ColumnViewState& config,
                     std::vector<DisplayCommand>* output,
                     const DisplayLine& line) {
+    // Compose the layered token styles once per line, not once per segment: the
+    // line's base tint with the token style on top, so highlights sit over the
+    // tint instead of clearing it.
+    const std::string& base = line_style(config, line.type);
+    const std::string insert_style = base + config.style.insert_token;
+    const std::string delete_style = base + config.style.delete_token;
     for (const auto& segment : line.segments) {
-        std::string style = "";
         switch (segment.type) {
             case EditType::Insert:
-                style = config.style.insert_token;
+                output->push_back(DisplayCommand::with_style(insert_style, segment.text));
                 break;
             case EditType::Delete:
-                style = config.style.delete_token;
+                output->push_back(DisplayCommand::with_style(delete_style, segment.text));
                 break;
-            case EditType::Common:
-                style = config.style.common_line;
-                break;
-            case EditType::Meta:
-                // TODO: We need DisplayType or something, "Meta" is a hack that doesn't scale
-                // style = config.style.header;
-                break;
+            // Common (unchanged) and Meta segments keep the line's own background,
+            // so the tint of a delete/insert line covers its context too.
+            // TODO: "Meta" is a hack that doesn't scale; it needs its own DisplayType.
             default:
+                output->push_back(DisplayCommand::with_style(base, segment.text));
                 break;
         }
-        output->push_back(DisplayCommand::with_style(style, segment.text));
     }
 }
 
@@ -505,7 +528,9 @@ render_display_line_pair(const DisplayLine& left, const DisplayLine& right, cons
     display_commands.push_back(
         DisplayCommand::with_style(config.style.empty_cell, config.chars.edge_separator));
     if (config.settings.show_line_numbers) {
-        std::string style = "";
+        // Fall back to the row's base style (not "") so the number cell still
+        // carries a background under an inverted theme when not context-colored.
+        std::string style = line_style(config, left.type);
         if (config.settings.context_colored_line_numbers) {
             switch (left.type) {
                 case EditType::Insert:
@@ -533,8 +558,10 @@ render_display_line_pair(const DisplayLine& left, const DisplayLine& right, cons
     render_display_line(config, &display_commands, left);
     assert(config.max_row_length >= left.line_length);
 
+    // Pad with the row's own style so a delete/insert highlight spans the full
+    // column width, not just the text.
     display_commands.push_back(DisplayCommand::with_style(
-        config.style.common_line, std::string(config.max_row_length - left.line_length, ' ')));
+        line_style(config, left.type), std::string(config.max_row_length - left.line_length, ' ')));
 
     // Middle
     if (config.settings.context_colored_line_numbers) {
@@ -548,7 +575,9 @@ render_display_line_pair(const DisplayLine& left, const DisplayLine& right, cons
     // Right side
 
     if (config.settings.show_line_numbers) {
-        std::string style = "";
+        // Fall back to the row's base style (not "") so the number cell still
+        // carries a background under an inverted theme when not context-colored.
+        std::string style = line_style(config, right.type);
         if (config.settings.context_colored_line_numbers) {
             switch (right.type) {
                 case EditType::Insert:
@@ -576,17 +605,25 @@ render_display_line_pair(const DisplayLine& left, const DisplayLine& right, cons
     render_display_line(config, &display_commands, right);
     assert(config.max_row_length >= right.line_length);
 
+    // Pad with the row's own style so a delete/insert highlight spans the full
+    // column width, not just the text.
     display_commands.push_back(DisplayCommand::with_style(
-        config.style.common_line, std::string(config.max_row_length - right.line_length, ' ')));
+        line_style(config, right.type), std::string(config.max_row_length - right.line_length, ' ')));
 
     display_commands.push_back(
         DisplayCommand::with_style(config.style.empty_cell, config.chars.edge_separator));
 
+    // A single base background, painted under every cell, lets a fully inverted
+    // theme be expressed with one key; per-cell styles layer on top. Empty when
+    // unset, so default (fg-only) themes stay byte-identical.
+    const std::string& background = config.style.background;
+
     std::string full;
     for (const auto& command : display_commands) {
-        if (command.style.empty()) {
+        if (command.style.empty() && background.empty()) {
             full += command.text;
         } else {
+            full += background;
             full += command.style;
             full += command.text;
             full += "\033[0m";
