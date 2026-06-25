@@ -417,31 +417,13 @@ make_header_columns(const std::string& left_name,
     return {{ col_left, col_right }};
 }
 
-std::vector<DisplayColumns>
-make_display_columns(const DiffInput<diffy::Line>& diff_input,
-                     const std::vector<AnnotatedHunk>& hunks,
-                     const ColumnViewState& config,
-                     const ProgramOptions& options) {
-    std::vector<DisplayColumns> hunk_columns;
-
-    std::string a_title = diff_input.A_name;
-    auto a_permissions = options.left_file_permissions;
-    std::string b_title = diff_input.B_name;
-    auto b_permissions = options.right_file_permissions;
-
-    for (const auto& column : make_header_columns(a_title, a_permissions, b_title, b_permissions, config)) {
-        hunk_columns.push_back(column);
-    }
-
-    if (hunks.empty()) {
-        // TODO: output a descriptive message mentioning that the files differ in permissions?
-        //       there might also be other issues:
-        //         * ?
-        // TODO: would be nice to support borders and customization of the empty space between hunks
-        // TODO: some hunk context? maybe iterate up until line avg(indentation of changed lines) < something above it
-        return hunk_columns;
-    }
-
+// Build the display rows for a single hunk: both panes, alignment rows inserted,
+// padded to equal height. Rendered one hunk at a time so peak memory stays
+// bounded to a single hunk rather than the whole diff.
+DisplayColumns
+make_hunk_columns(const DiffInput<diffy::Line>& diff_input,
+                  const AnnotatedHunk& hunk,
+                  const ColumnViewState& config) {
     auto make_rows = [&config](const auto& content_strings, const auto& lines) {
         std::vector<DisplayLine> rows;
         for (const auto& line : lines) {
@@ -454,42 +436,35 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
         if (rows.empty()) {
             // Empty line between hunks
             // TODO(ja): doesn't work
-            //std::string squiggles = "﹏﹏﹏﹏﹏﹏";
-            //DisplayLine squiggly_line {{{squiggles, utf8_len(squiggles), 0, EditType::Meta}}, utf8_len(squiggles)};
-            //rows.push_back(squiggly_line);
-            rows.push_back(DisplayLine {});
+            rows.push_back(DisplayLine{});
         }
 
         return rows;
     };
 
-    for (const auto& hunk : hunks) {
-        DisplayColumns columns{
-            make_rows(diff_input.A, hunk.a_lines),
-            make_rows(diff_input.B, hunk.b_lines),
-        };
+    DisplayColumns columns{
+        make_rows(diff_input.A, hunk.a_lines),
+        make_rows(diff_input.B, hunk.b_lines),
+    };
 
-        insert_alignment_rows(columns);
+    insert_alignment_rows(columns);
 
-        // @cleanup
-        auto diff = static_cast<int64_t>(columns[0].size()) - static_cast<int64_t>(columns[1].size());
+    // @cleanup
+    auto diff = static_cast<int64_t>(columns[0].size()) - static_cast<int64_t>(columns[1].size());
 
-        if (diff < 0) {
-            for (int i = 0; i < -diff; i++) {
-                columns[0].push_back({});
-            }
-        } else if (diff > 0) {
-            for (int i = 0; i < diff; i++) {
-                columns[1].push_back({});
-            }
+    if (diff < 0) {
+        for (int i = 0; i < -diff; i++) {
+            columns[0].push_back({});
         }
-
-        assert(columns[0].size() == columns[1].size());
-
-        hunk_columns.push_back(columns);
+    } else if (diff > 0) {
+        for (int i = 0; i < diff; i++) {
+            columns[1].push_back({});
+        }
     }
 
-    return hunk_columns;
+    assert(columns[0].size() == columns[1].size());
+
+    return columns;
 }
 
 // Transform the segments into a list of display commands, i.e "set color", "write text"
@@ -520,132 +495,137 @@ render_display_line(const ColumnViewState& config,
     }
 }
 
-std::vector<std::string>
-build_display_lines(const std::vector<DisplayColumns>& rows, const ColumnViewState& config) {
-    std::vector<std::string> out;
-    auto print_display_lines = [](const DisplayLine& left, const DisplayLine& right,
-                                  const ColumnViewState& config) -> std::string {
-        std::vector<DisplayCommand> display_commands;
+// Render one left/right row pair into a single styled string.
+std::string
+render_display_line_pair(const DisplayLine& left, const DisplayLine& right, const ColumnViewState& config) {
+    std::vector<DisplayCommand> display_commands;
 
-        // color stack? do we have the line meta data somewhere here to decide if we should
-        // push header_background or content_background?
+    // color stack? do we have the line meta data somewhere here to decide if we should
+    // push header_background or content_background?
 
-        // Left side
-        display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell,
-            config.chars.edge_separator));
-        if (config.settings.show_line_numbers) {
-            std::string style = "";
-            if (config.settings.context_colored_line_numbers) {
-                switch (left.type) {
-                    case EditType::Insert:
-                        style = config.style.insert_line_number;
-                        break;
-                    case EditType::Delete:
-                        style = config.style.delete_line_number;
-                        break;
-                    case EditType::Common:
-                        style = config.style.common_line_number;
-                        break;
-                    case EditType::Meta:
-                        style = config.style.empty_cell;
-                        break;
-                    default:
-                        break;
-                }
-            }
-            display_commands.push_back(DisplayCommand::with_style(
-                style, format_line_number(left.line_number, config.line_number_digits_count,
-                                          config.settings.line_number_align_right)));
-            display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell, " "));
-        }
-
-        render_display_line(config, &display_commands, left);
-        assert(config.max_row_length >= left.line_length);
-
-        display_commands.push_back(DisplayCommand::with_style(
-            config.style.common_line, std::string(config.max_row_length - left.line_length, ' ')));
-
-        // Middle
+    // Left side
+    display_commands.push_back(
+        DisplayCommand::with_style(config.style.empty_cell, config.chars.edge_separator));
+    if (config.settings.show_line_numbers) {
+        std::string style = "";
         if (config.settings.context_colored_line_numbers) {
-            display_commands.push_back(
-                DisplayCommand::with_style(config.style.frame, config.chars.column_separator));
-        } else {
-            display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell,
-                config.chars.column_separator));
-        }
-
-        // Right side
-
-        if (config.settings.show_line_numbers) {
-            std::string style = "";
-            if (config.settings.context_colored_line_numbers) {
-                switch (right.type) {
-                    case EditType::Insert:
-                        style = config.style.insert_line_number;
-                        break;
-                    case EditType::Delete:
-                        style = config.style.delete_line_number;
-                        break;
-                    case EditType::Common:
-                        style = config.style.common_line_number;
-                        break;
-                    case EditType::Meta:
-                        style = config.style.empty_cell;
-                        break;
-                    default:
-                        break;
-                }
+            switch (left.type) {
+                case EditType::Insert:
+                    style = config.style.insert_line_number;
+                    break;
+                case EditType::Delete:
+                    style = config.style.delete_line_number;
+                    break;
+                case EditType::Common:
+                    style = config.style.common_line_number;
+                    break;
+                case EditType::Meta:
+                    style = config.style.empty_cell;
+                    break;
+                default:
+                    break;
             }
-            display_commands.push_back(DisplayCommand::with_style(
-                style, format_line_number(right.line_number, config.line_number_digits_count,
-                                          config.settings.line_number_align_right)));
-            display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell, " "));
         }
-
-        render_display_line(config, &display_commands, right);
-        assert(config.max_row_length >= right.line_length);
-
         display_commands.push_back(DisplayCommand::with_style(
-            config.style.common_line, std::string(config.max_row_length - right.line_length, ' ')));
+            style, format_line_number(left.line_number, config.line_number_digits_count,
+                                      config.settings.line_number_align_right)));
+        display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell, " "));
+    }
 
-        display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell,
-            config.chars.edge_separator));
+    render_display_line(config, &display_commands, left);
+    assert(config.max_row_length >= left.line_length);
 
-        std::string full;
-        for (auto& command : display_commands) {
-            if (command.style.empty()) {
-                full += command.text;
-            } else {
-                full += command.style + command.text + "\033[0m";
+    display_commands.push_back(DisplayCommand::with_style(
+        config.style.common_line, std::string(config.max_row_length - left.line_length, ' ')));
+
+    // Middle
+    if (config.settings.context_colored_line_numbers) {
+        display_commands.push_back(
+            DisplayCommand::with_style(config.style.frame, config.chars.column_separator));
+    } else {
+        display_commands.push_back(
+            DisplayCommand::with_style(config.style.empty_cell, config.chars.column_separator));
+    }
+
+    // Right side
+
+    if (config.settings.show_line_numbers) {
+        std::string style = "";
+        if (config.settings.context_colored_line_numbers) {
+            switch (right.type) {
+                case EditType::Insert:
+                    style = config.style.insert_line_number;
+                    break;
+                case EditType::Delete:
+                    style = config.style.delete_line_number;
+                    break;
+                case EditType::Common:
+                    style = config.style.common_line_number;
+                    break;
+                case EditType::Meta:
+                    style = config.style.empty_cell;
+                    break;
+                default:
+                    break;
             }
         }
-        return full;
-    };  // print_display_lines
+        display_commands.push_back(DisplayCommand::with_style(
+            style, format_line_number(right.line_number, config.line_number_digits_count,
+                                      config.settings.line_number_align_right)));
+        display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell, " "));
+    }
 
-    for (const auto& columns : rows) {
-        const auto& left = columns[0];
-        const auto& right = columns[1];
-        auto max_idx = std::max(left.size(), right.size());
-        for (size_t idx = 0; idx < max_idx; idx++) {
-            out.push_back(print_display_lines(left[idx], right[idx], config));
-        }
-        // Empty line between hunks.
-        // TODO(ja): doesn't work
-        if (columns.empty()) {
-            DisplayLine dl;
-            out.push_back(print_display_lines(dl, dl, config));
+    render_display_line(config, &display_commands, right);
+    assert(config.max_row_length >= right.line_length);
+
+    display_commands.push_back(DisplayCommand::with_style(
+        config.style.common_line, std::string(config.max_row_length - right.line_length, ' ')));
+
+    display_commands.push_back(
+        DisplayCommand::with_style(config.style.empty_cell, config.chars.edge_separator));
+
+    std::string full;
+    for (auto& command : display_commands) {
+        if (command.style.empty()) {
+            full += command.text;
+        } else {
+            full += command.style + command.text + "\033[0m";
         }
     }
-    return out;
+    return full;
 }
-}  // namespace
 
-std::vector<std::string>
-diffy::column_view_render_lines(const DiffInput<diffy::Line>& diff_input,
-                                const std::vector<AnnotatedHunk>& hunks,
-                                ColumnViewState& config,
-                                const diffy::ProgramOptions& options,
-                                int64_t width) {
+// Render every visual row of one DisplayColumns and hand each finished line to
+// `emit`. (`columns` always holds the {left, right} panes, so the empty() branch
+// is a no-op kept for parity with the original.)
+template <typename Emit>
+void
+emit_columns(const DisplayColumns& columns, const ColumnViewState& config, Emit& emit) {
+    const auto& left = columns[0];
+    const auto& right = columns[1];
+    auto max_idx = std::max(left.size(), right.size());
+    for (size_t idx = 0; idx < max_idx; idx++) {
+        emit(render_display_line_pair(left[idx], right[idx], config));
+    }
+    // Empty line between hunks.
+    // TODO(ja): doesn't work
+    if (columns.empty()) {
+        DisplayLine dl;
+        emit(render_display_line_pair(dl, dl, config));
+    }
+}
+
+// Render the column view one hunk at a time, handing each finished row to `emit`.
+// Streaming keeps peak memory to a single hunk's display rows instead of
+// materializing the whole diff before printing.
+template <typename Emit>
+void
+column_view_render_streaming(const DiffInput<diffy::Line>& diff_input,
+                             const std::vector<AnnotatedHunk>& hunks,
+                             ColumnViewState& config,
+                             const ProgramOptions& options,
+                             int64_t width,
+                             Emit emit) {
     int64_t frame_characters = 0;
     if (!config.chars.column_separator.empty()) {
         frame_characters += utf8_len(config.chars.column_separator);
@@ -676,9 +656,29 @@ diffy::column_view_render_lines(const DiffInput<diffy::Line>& diff_input,
     if (config.max_row_length < 5)
         config.max_row_length = 5;
 
-    auto display_columns = make_display_columns(diff_input, hunks, config, options);
+    // Header first, then each hunk built, emitted, and freed before the next.
+    for (const auto& column :
+         make_header_columns(diff_input.A_name, options.left_file_permissions, diff_input.B_name,
+                             options.right_file_permissions, config)) {
+        emit_columns(column, config, emit);
+    }
 
-    return build_display_lines(display_columns, config);
+    for (const auto& hunk : hunks) {
+        emit_columns(make_hunk_columns(diff_input, hunk, config), config, emit);
+    }
+}
+}  // namespace
+
+std::vector<std::string>
+diffy::column_view_render_lines(const DiffInput<diffy::Line>& diff_input,
+                                const std::vector<AnnotatedHunk>& hunks,
+                                ColumnViewState& config,
+                                const diffy::ProgramOptions& options,
+                                int64_t width) {
+    std::vector<std::string> out;
+    column_view_render_streaming(diff_input, hunks, config, options, width,
+                                 [&out](std::string line) { out.push_back(std::move(line)); });
+    return out;
 }
 
 void
@@ -700,7 +700,8 @@ diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
         width = 80;
     }
 
-    for (const auto& line : column_view_render_lines(diff_input, hunks, config, options, width)) {
-        puts(line.c_str());
-    }
+    // Stream: render and print one hunk at a time so the whole diff is never
+    // resident in memory at once.
+    column_view_render_streaming(diff_input, hunks, config, options, width,
+                                 [](std::string line) { puts(line.c_str()); });
 }
