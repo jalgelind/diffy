@@ -615,3 +615,160 @@ time-to-first-line through a pager), but it cannot subdivide one hunk.
   overhead per displayed line, not the segment text. (Trivial separable win noted:
   `transform_edit_line` takes `ColumnViewState` **by value**, copying the whole
   config per line — change to `const&`.)
+
+---
+
+# Theme / inverted color-scheme roadmap
+
+Goal: make a **fully inverted** theme — one that fills backgrounds rather than
+only recoloring text (e.g. a light-on-dark or GitHub-style block-highlight
+scheme) — render *cleanly*: every visible cell of every row painted with a
+configured background, no terminal-default gaps, deletion/insertion bars
+spanning the full column width.
+
+**Status: DONE.** All findings (TH-1..TH-6) fixed and all tests (TH-T0..TH-T5)
+landed, including the optional full-line-highlight (TH-2/TH-5) and single-knob
+(TH-4) features. Suite **39 cases / 1397 assertions, green** (debug + ASAN);
+integration patch round-trip green. Shipped an example
+`extras/theme_inverted.conf` and smoke-tested it on the binary (`diffy -s`).
+Red→green proven: reverting the renderer fixes flips the theme tests to failing
+(the oracle self-check stays green). New test files: `output/theme_tests.cc` +
+shared `output/render_test_util.hpp`; corpus no-gap sweep folded into
+`output/render_corpus_tests.cc`.
+
+**Behavior-neutrality (scoped):** the **default** theme is verified
+byte-identical pre/post across both renderers over the corpus. It is *not*
+neutral for every conceivable custom theme: TH-2 deliberately makes the
+unchanged context of a changed line take the line's tint
+(`delete_line`/`insert_line`) instead of `common_line`, and Meta/header padding
+take `empty_cell` instead of `common_line`. A theme that set `common_line` (or a
+distinct `empty_cell`) but left `delete_line`/`insert_line` empty would render
+differently — this is the intended whole-line-tint behavior, and the
+`style.background` knob backstops any unset cell.
+
+**Post-review follow-ups applied** (workflow code review, high effort): hoisted
+the per-segment token-style concat out of `render_display_line`'s loop; added a
+truecolor (`48;2`) theme variant so the production hex-color path is tested (was
+palette-only); folded the TH-T4 corpus sweep into the alignment pass so the diff
+pipeline runs once per fixture; de-duplicated the ANSI oracle + theme factories
+into `render_test_util.hpp`. Deferred (noted, low value): precompiling the
+`style.background` escape at config-load, and the by-value `DisplayCommand`
+copy — both pre-existing-architecture efficiency nits, not correctness issues.
+
+**Original problem (for context):** foreground recoloring worked; background-
+filled themes did **not** render cleanly. Three structural reasons, all in
+`src/output/column_view.cc` + `src/config/config.hpp`.
+
+## Model (why this is non-trivial)
+
+Rendering is **per-cell, fully reset**: each styled cell is emitted as
+`style + text + "\033[0m"` (`column_view.cc:585-594`). `\033[0m` clears fg, bg,
+*and* attributes, so there is **no persistent "page background"** — every cell
+must re-assert its own `bg` or the terminal default shows through. The default
+themes are all fg-only (`bg = kNone` everywhere, `config.hpp:44-114`), so this
+has never been exercised. An inverted theme stresses exactly the gaps below.
+
+## Findings (ranked)
+
+- [x] **TH-1 · Trailing padding ignores line type** — FIXED (`column_view.cc`).
+  Padding now uses a new `line_style(config, type)` helper keyed on the row's
+  edit type, so a deletion/insertion fills the full column width. Was
+  `config.style.common_line` regardless of type → partial-width bars. Regression:
+  `theme_tests.cc` "deletion fills the full column width" (common_line bg must
+  not leak into a deleted row).
+
+- [x] **TH-2 · Whole-line background is never applied** — FIXED
+  (`column_view.cc`). `render_display_line` now paints each segment with the
+  line's base style (`line_style`) and layers the token style on top, so the tint
+  of a delete/insert line covers its unchanged context too — not just the changed
+  tokens. Regression: `theme_tests.cc` "changed line is tinted whole" (common_line
+  bg appears nowhere on a fully-changed row; both delete/insert line bgs present).
+
+- [x] **TH-3 · Uncolored gaps punch holes** — FIXED (`column_view.cc`). The
+  line-number cell now falls back to the row's base style (not `""`) when
+  `context_colored_line_numbers=false`, so the number always carries a background.
+  (The `empty_cell` separators were already styled; an inverted theme sets that
+  key, and TH-4's global background backstops anything missed.) Regression:
+  `theme_tests.cc` "no default-bg gaps" runs the uncolored-line-number path.
+
+- [x] **TH-4 · No single background knob** — DONE (renderer + config). Added
+  `style.background` (`config.hpp`, wired through `config.cc` options +
+  escape-code compile). The renderer prepends it under every cell, so one key
+  fills the whole view; per-cell styles layer on top. Empty by default →
+  byte-identical to fg-only themes. Regression: `theme_tests.cc`
+  "style.background alone fills every cell". Example `extras/theme_inverted.conf`
+  ships and was smoke-tested on the binary.
+
+- [x] **TH-5 · Token cells full-reset the background** — FIXED (with TH-2). Token
+  cells now emit `line_base + token_style + text + "\033[0m"`; because the token
+  styles in a real inverted theme set only a foreground, the line background shows
+  through. Verified end-to-end: the example theme renders changed tokens as
+  `<line-bg> + <token-fg>` (highlight layered over the tint). Covered by the
+  token-foreground assertions in "changed line is tinted whole".
+
+- [x] **TH-6 · Cosmetic typo** — FIXED. Dropped the stray double unary plus in
+  `column_view.cc` (`right[i] + + "\033[0m"` → `right[i] + "\033[0m"`); also
+  removed 2 pre-existing clang-format deviations as a side effect.
+
+## Tests — prove the inverted scheme actually works
+
+Test-first, per the guiding principles: the assertions below describe the
+*correct* inverted output and therefore **fail before TH-1..3, pass after**.
+All drive the pure `column_view_render_lines(diff_input, hunks, config, options,
+width)` seam (P1a) with a hand-built `ColumnViewState` — **no disk, no
+`config.cc`** — exactly like `output/column_view_tests.cc` does today. The
+difference: here `config` sets backgrounds, so the rows contain ANSI and the
+tests assert *on* the escape codes.
+
+- [x] **TH-T0 · Test oracle `bg_runs(row)` + `inverted_theme()`** — DONE
+  (`output/theme_tests.cc`). `bg_runs` parses a styled row into
+  `vector<{bg_id, visible_codepoints}>`, tracking the active SGR background
+  (handles `0`/`49` reset, 16-color `40-47`/`100-107`, `48;5;n`, `48;2;r;g;b`, and
+  skips `38;…` foregrounds). Helpers `bg_set`/`has_default_bg` on top. A self-check
+  test pins the oracle (fg-change ≠ bg; bg-under-fg stays active). `inverted_theme()`
+  sets a **distinct 256-color** bg on every key; token keys set fg-only (proves
+  layering). A separate `bg_only_theme` path covers TH-T5.
+
+- [x] **TH-T1 · Full-width deletion bar** — DONE. Deletes a middle line; asserts
+  the deleted row contains the `delete_line` bg and **no** `common_line`/
+  `common_line_number` bg (the padding no longer leaks common). Red before TH-1.
+
+- [x] **TH-T2 · No default-background gaps, whole row** — DONE. Mixed
+  insert/delete/common/length-mismatch diff; asserts `has_default_bg` is false for
+  **every** row, run once with `context_colored_line_numbers=true` and once
+  `false` (the TH-3 path). The headline "fully inverted works" guarantee.
+
+- [x] **TH-T3 · Whole-line tint + token layering** — DONE. Partially-changed line;
+  asserts both the delete-line and insert-line bgs are present, `common_line` bg
+  is absent (so unchanged segments took the line tint, TH-2), and the delete/insert
+  **token foregrounds** are present (highlight layered over the tint, TH-5). Red
+  before TH-2.
+
+- [x] **TH-T4 · Corpus no-gap sweep** — DONE (`output/render_corpus_tests.cc`).
+  Re-runs the column-view pass over all **65** fixtures under `inverted_theme()`
+  and asserts no visible cell (padding spaces included — where TH-1 hid) is left on
+  the terminal-default background. Exercises tabs, multi-byte glyphs, wrapped
+  780-char lines.
+
+- [x] **TH-T5 · Single-knob inheritance** — DONE. Sets *only* `style.background`
+  and asserts every row is gap-free and every run is that one background — proving
+  the base color propagates to every cell (TH-4).
+
+## Execution sequence — COMPLETED
+
+Followed the test-first rule (red → green); all steps landed:
+
+1. [x] **TH-T0** oracle + `inverted_theme()` factory.
+2. [x] **TH-T1, TH-T2** → **TH-1** + **TH-3** (+ **TH-6** typo, same function).
+3. [x] **TH-T4** corpus sweep — confirms 1–2 across all 65 fixtures.
+4. [x] **TH-T3** → **TH-2** + **TH-5** (full-line tint + token layering).
+5. [x] **TH-T5** → **TH-4** (single `style.background` knob); shipped
+   `extras/theme_inverted.conf`, smoke-tested on the binary + `make
+   sanitize-address` green.
+
+**Verification recap:** 40 cases / 1388 assertions green (debug + ASAN);
+integration patch round-trip green; default-theme output byte-identical pre/post
+over the corpus; reverting the renderer fixes flips 5/6 theme tests to red while
+the oracle self-check stays green (proving the tests bite). New formatting
+deviations introduced: **zero** (clang-format 17, checked against the HEAD
+baseline).
