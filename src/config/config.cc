@@ -154,13 +154,17 @@ context_colored_line_numbers = true
 line_number_align_right = false
 
 [style]
+# On a light theme, recoloring the changed-token *foreground* clashes with the
+# dark context text (you get a black/green mix). GitHub instead keeps all text
+# dark and highlights changed words with a stronger *background*, so the tokens
+# below set a bg and keep the dark foreground.
 background          = { fg = '#1f2328', bg = '#ffffff', attr = [] }
 header              = { fg = '#0969da', bg = '#ddf4ff', attr = ['bold', 'underline'] }
 delete_line         = { fg = '#1f2328', bg = '#ffebe9', attr = [] }
-delete_token        = { fg = '#cf222e', bg = 'none',    attr = ['bold'] }
+delete_token        = { fg = '#1f2328', bg = '#ffc4c2', attr = ['bold'] }
 delete_line_number  = { fg = '#cf222e', bg = '#ffd7d5', attr = [] }
 insert_line         = { fg = '#1f2328', bg = '#e6ffec', attr = [] }
-insert_token        = { fg = '#116329', bg = 'none',    attr = ['bold'] }
+insert_token        = { fg = '#1f2328', bg = '#abf2bc', attr = ['bold'] }
 insert_line_number  = { fg = '#116329', bg = '#ccffd8', attr = [] }
 common_line         = { fg = '#1f2328', bg = '#ffffff', attr = [] }
 common_line_number  = { fg = '#6e7781', bg = '#ffffff', attr = [] }
