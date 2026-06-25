@@ -493,3 +493,125 @@ throwaway characterization goldens)
 
 Defer: Windows `getdelim`; config_parser malformed-input hardening until fuzzing
 confirms a live bug.
+
+---
+
+# Performance & memory roadmap (large diffs)
+
+Evidence-based: measured on a release build with `/usr/bin/time -l`. Inputs are
+synthetic — `bigN` = N lines with ~half the lines changed (scattered, large edit
+distance); `tail` = 20000 lines with a single change at the top (one big
+contiguous common region).
+
+## Measured baseline (peak resident set size · wall time)
+
+| input         | MyersGreedy   | MyersLinear  | Patience (default) |
+|---------------|---------------|--------------|--------------------|
+| 1000, ½-churn | 10.6 MB       | 2.9 MB       | 8.4 MB             |
+| 2000, ½-churn | 34.5 MB       | 3.6 MB       | 24.8 MB            |
+| 4000, ½-churn | 129.6 MB      | 4.5 MB       | 87.5 MB · 0.41s    |
+| 20000, 1-line | 8.3 MB        | 7.6 MB       | 9.8 MB · 0.00s     |
+
+Reading: MyersLinear is flat (linear space). MyersGreedy and **Patience** both
+grow ~quadratically with churn. The 20k contiguous-common case is cheap for all
+(a big common *block* is consumed by `adjust_head` in one pass) — the blow-up is
+specific to **scattered** common lines, which is the common real-world shape.
+
+## Findings (ranked)
+
+- [x] **PERF-1 · `patience_sort` broken LIS → Patience was O(N²)** — FIXED
+  (`patience.hpp`). Replaced with a standard patience-sort LIS (binary-search the
+  pile to replace its top, append a new pile when a card exceeds all tops, recover
+  via back-pointers). The old code dropped any card exceeding all pile tops, so it
+  kept only the first anchor and `do_diff` recursed ~N deep rebuilding maps.
+  **Result (4000/½):** 87.7 MB / 0.42s → 4.1 MB / ~0s; now O(N) like MyersLinear.
+  Largest single win. Verified by the reconstruct invariant + patch round-trip.
+
+- [x] **PERF-2 · MyersGreedy O(D·(N+M)) memory → OOM** — FIXED (`myers_greedy.hpp`).
+  `do_edit_distance` now bails (returns -2) once the snapshot trace would exceed a
+  256 MB budget, and `diff_impl` falls back to linear-space `MyersLinear`.
+  **Result (16000/½):** ~2 GB (would OOM) → bounded ~273 MB. Default
+  (Patience→MyersLinear) was already linear-space.
+
+- [x] **PERF-3 · `adjust_tail` was O(n²)** — FIXED. `push_back` + one
+  `std::reverse` instead of insert-at-front.
+
+- [x] **PERF-4 · `do_diff` copied through intermediate vectors** — FIXED. Now an
+  accumulator (`do_diff(slice, std::vector<Edit>& out)`) appends in place; the
+  MyersLinear fallback and `head` append directly too.
+
+- [x] **PERF-5 · Missing `reserve()`** — FIXED. `insertion_points` (compose_hunks),
+  the `records` map and `piles` (patience) now reserve up front.
+
+- [x] **PERF-6 · `Edit`/`EditIndex` were fat** — FIXED (`algorithm.hpp`).
+  `EditType` is now `: uint8_t` and `EditIndex::value` is `int32_t` (indices fit;
+  a >2e9-line file is unrealistic), shrinking `Edit` ~40 B → ~24 B. Verified by
+  the reconstruct + boundary tests (exercise up to 32768 lines). Small relative to
+  total RSS, so it does not move the table, but it halves `edit_sequence` memory.
+
+- [~] **PERF-7 · `annotate_tokens` per-hunk serial — DEFERRED (not a bottleneck).**
+  Measured column view (`-s`, which runs `annotate_tokens`) on 16000 lines /
+  half-changed: **0.10s / 96 MB**. Threading it would add complexity and race risk
+  for a path that is already sub-0.1s; revisit only if profiling later shows it
+  matters.
+
+## Results (release build, `/usr/bin/time -l`, ½-churn synthetic inputs)
+
+Patience (the default) — the headline:
+
+| lines | BEFORE          | AFTER           |
+|-------|-----------------|-----------------|
+| 1000  | 8.5 MB          | 2.7 MB          |
+| 2000  | 24.8 MB         | 3.2 MB          |
+| 4000  | 87.7 MB / 0.42s | 4.1 MB / ~0s    |
+| 8000  | 336 MB / 1.75s  | 5.8 MB / 0.01s  |
+| 16000 | ~1.4 GB (O(N²)) | 9.1 MB / 0.02s  |
+
+MyersGreedy (`-a mg`) — PERF-2 OOM guard:
+
+| lines | BEFORE             | AFTER (guarded) |
+|-------|--------------------|-----------------|
+| 4000  | 129.3 MB           | 129.3 MB        |
+| 8000  | ~520 MB            | 268.8 MB        |
+| 16000 | ~2 GB (OOM)        | 272.6 MB        |
+
+MyersLinear was already linear (2.9→8.1 MB) and is unchanged. All correctness
+gates green throughout (unit 34/1344 debug + ASAN, integration patch round-trip).
+
+## Streaming column-view output (PERF-8) — done, with caveats
+
+Refactored `column_view` to render and emit **one hunk at a time**
+(`column_view_render_streaming` + `emit_columns`); `column_view_diff_render`
+streams rows straight to `puts` (the test entry collects into a vector).
+Byte-identical to the pre-refactor golden; unit + ASAN + integration green.
+
+**Honest result:** this was a smaller win than projected, and the earlier
+"~500 MB worst case" prediction was wrong. Measured `-s` peak RSS at 100k lines:
+
+| change pattern        | hunks   | peak RSS |
+|-----------------------|---------|----------|
+| 1% scattered          | ~1000   | 54 → 42.5 MB |
+| 1-per-40 scattered    | ~2500   | 51 MB    |
+| 50% (one merged hunk) | **1**   | 495 → 491 MB (no change) |
+
+Why: streaming only bounds memory across *hunks*. At 50% churn the changes are
+within each other's context window, so `compose_hunks` merges everything into a
+**single giant hunk** — "one hunk at a time" is then the whole diff. Streaming
+does eliminate the materialized all-rows buffer (the ~10–20% drop in the
+multi-hunk cases) and starts output immediately for huge diffs (better
+time-to-first-line through a pager), but it cannot subdivide one hunk.
+
+- [x] **PERF-9 · `string_view` segments — ATTEMPTED, REVERTED (not worth it).**
+  Implemented `DisplayLineSegment::text` as a `std::string_view` viewing either the
+  source line or a render-scoped glyph pool (`std::deque<std::string>`, stable
+  addresses) for generated tab/space/etc. glyphs; switched the `utf8_*` helpers to
+  `string_view`. It was correct — byte-identical golden, ASAN-clean over all 65
+  fixtures, tabs/spaces render aligned. **But the worst-case win was only ~4%
+  (491 → 472 MB):** the saved bytes were just the smaller segment struct (48 → 32 B);
+  the 472 MB is dominated elsewhere (the `DisplayLine`/segment-vector overhead and
+  the annotated-hunk input), which `string_view` doesn't touch. Reverted — the
+  glyph-pool lifetime complexity wasn't justified by 4% on an unrealistic case.
+  If this is ever revisited, the lever is the `DisplayLine`/`std::vector<segment>`
+  overhead per displayed line, not the segment text. (Trivial separable win noted:
+  `transform_edit_line` takes `ColumnViewState` **by value**, copying the whole
+  config per line — change to `const&`.)
