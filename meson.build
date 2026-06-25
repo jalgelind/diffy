@@ -96,6 +96,7 @@ src_test = [
   'src/config/config_tests.cc',
   'src/output/column_view_tests.cc',
   'src/output/render_corpus_tests.cc',
+  'src/output/theme_tests.cc',
   'src/output/unified_tests.cc',
   'src/processing/diff_hunk_tests.cc',
   'src/processing/diff_hunk_annotate_tests.cc',

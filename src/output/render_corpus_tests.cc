@@ -5,11 +5,17 @@
 //
 // Key column-view invariant: every visual row has the same visible width and
 // none exceeds the terminal width — i.e. the panes stay aligned and never
-// overflow, for any real input.
+// overflow, for any real input. The same pass also checks that under a fully
+// inverted (truecolor) theme no visible cell is left on the terminal-default
+// background (TH-T4).
+//
+// The ANSI oracle (strip_ansi/has_default_bg) and theme factories live in
+// render_test_util.hpp.
 
 #include "algorithms/patience.hpp"
 #include "config/config.hpp"
 #include "output/column_view.hpp"
+#include "output/render_test_util.hpp"
 #include "output/unified.hpp"
 #include "processing/diff_hunk.hpp"
 #include "processing/diff_hunk_annotate.hpp"
@@ -23,29 +29,11 @@
 #include <vector>
 
 using namespace diffy;
+using namespace diffy::test;
 
 #ifdef DIFFY_TEST_CASES_DIR
 
 namespace {
-
-// Strip CSI escape sequences (ESC [ ... <final>). The header row always carries a
-// trailing reset code even when styling is disabled, so visible width must be
-// measured after stripping, exactly as a terminal would render it.
-std::string
-strip_ansi(const std::string& s) {
-    std::string out;
-    for (std::size_t i = 0; i < s.size();) {
-        if (s[i] == '\033' && i + 1 < s.size() && s[i + 1] == '[') {
-            std::size_t j = i + 2;
-            while (j < s.size() && !(s[j] >= '@' && s[j] <= '~'))
-                j++;
-            i = (j < s.size()) ? j + 1 : j;
-        } else {
-            out += s[i++];
-        }
-    }
-    return out;
-}
 
 std::vector<std::pair<std::string, std::string>>
 corpus_pairs() {
@@ -70,23 +58,29 @@ corpus_pairs() {
 
 }  // namespace
 
-TEST_CASE("column view stays aligned and within width over the whole corpus") {
+TEST_CASE("column view stays aligned, within width, and gap-free over the whole corpus") {
     const int64_t kWidth = 120;
     int checked = 0;
+
+    // An inverted (truecolor) theme reused across fixtures for the no-gap sweep
+    // (TH-T4). Truecolor exercises the 48;2 background path that hex theme colors
+    // compile to in config.cc.
+    const ColumnViewState inverted = inverted_theme_truecolor();
 
     for (const auto& [pa, pb] : corpus_pairs()) {
         CAPTURE(pa);
         auto a = readlines(pa, false);
         auto b = readlines(pb, false);
         DiffInput<Line> in{gsl::span<Line>{a}, gsl::span<Line>{b}, pa, pb};
+        // The expensive diff pipeline runs once and feeds both checks below.
         auto hunks = compose_hunks(Patience<Line>(in).compute().edit_sequence, 3);
         auto annotated = annotate_hunks(in, hunks, EditGranularity::Token, false);
-
-        // Default ColumnViewState has empty style escape codes, so rows carry no
-        // ANSI and utf8_len is the true visible width.
-        ColumnViewState config;
         ProgramOptions options;
-        auto rows = column_view_render_lines(in, annotated, config, options, kWidth);
+
+        // Alignment / width: a default ColumnViewState has empty style escape
+        // codes, so rows carry no ANSI and utf8_len is the true visible width.
+        ColumnViewState plain;
+        auto rows = column_view_render_lines(in, annotated, plain, options, kWidth);
 
         int64_t common_width = -1;
         int64_t max_width = 0;
@@ -102,6 +96,18 @@ TEST_CASE("column view stays aligned and within width over the whole corpus") {
         }
         REQUIRE(all_equal);            // every pane row is the same width
         REQUIRE(max_width <= kWidth);  // and never overflows the terminal
+
+        // No-gap (TH-T4): under the inverted theme, every visible cell — padding
+        // spaces included, where the TH-1 bug hid — must carry a background.
+        ColumnViewState inv = inverted;
+        auto inv_rows = column_view_render_lines(in, annotated, inv, options, kWidth);
+        for (const auto& row : inv_rows) {
+            if (has_default_bg(row)) {
+                CAPTURE(strip_ansi(row));
+                FAIL_CHECK("row has a terminal-default background gap");
+                break;
+            }
+        }
         checked++;
     }
 
