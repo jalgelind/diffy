@@ -31,6 +31,6 @@ struct Line {
 };
 
 std::vector<Line>
-readlines(std::string path, bool ignore_line_endings);
+readlines(const std::string& path, bool ignore_line_endings);
 
 }  // namespace diffy

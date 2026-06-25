@@ -94,7 +94,7 @@ right_trim(const std::string& s) {
 };  // namespace
 
 std::vector<diffy::Line>
-diffy::readlines(std::string path, bool ignore_line_endings) {
+diffy::readlines(const std::string& path, bool ignore_line_endings) {
     std::vector<diffy::Line> lines;
 
     char* line = nullptr;

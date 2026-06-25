@@ -28,7 +28,7 @@ struct DisplayCommand {
 
     static DisplayCommand
     with_style(std::string style, std::string text) {
-        return DisplayCommand{.style = style, .text = text};
+        return DisplayCommand{.style = std::move(style), .text = std::move(text)};
     }
 };
 
@@ -147,7 +147,7 @@ make_display_line_wrapped(const DisplayLine& input_line, int64_t limit) {
 DisplayLine
 transform_edit_line(const gsl::span<diffy::Line>& content_strings,
                     const EditLine& edit_line,
-                    const ColumnViewState config) {
+                    const ColumnViewState& config) {
     DisplayLine display_line;
     display_line.line_number = static_cast<int>(edit_line.line_index + 1);
     display_line.type = edit_line.type;
@@ -417,9 +417,7 @@ make_header_columns(const std::string& left_name,
     return {{ col_left, col_right }};
 }
 
-// Build the display rows for a single hunk: both panes, alignment rows inserted,
-// padded to equal height. Rendered one hunk at a time so peak memory stays
-// bounded to a single hunk rather than the whole diff.
+// Build the display rows for a single hunk: both panes, aligned and padded.
 DisplayColumns
 make_hunk_columns(const DiffInput<diffy::Line>& diff_input,
                   const AnnotatedHunk& hunk,
@@ -585,19 +583,19 @@ render_display_line_pair(const DisplayLine& left, const DisplayLine& right, cons
         DisplayCommand::with_style(config.style.empty_cell, config.chars.edge_separator));
 
     std::string full;
-    for (auto& command : display_commands) {
+    for (const auto& command : display_commands) {
         if (command.style.empty()) {
             full += command.text;
         } else {
-            full += command.style + command.text + "\033[0m";
+            full += command.style;
+            full += command.text;
+            full += "\033[0m";
         }
     }
     return full;
 }
 
-// Render every visual row of one DisplayColumns and hand each finished line to
-// `emit`. (`columns` always holds the {left, right} panes, so the empty() branch
-// is a no-op kept for parity with the original.)
+// Render every visual row of one DisplayColumns, handing each to `emit`.
 template <typename Emit>
 void
 emit_columns(const DisplayColumns& columns, const ColumnViewState& config, Emit& emit) {
@@ -615,9 +613,8 @@ emit_columns(const DisplayColumns& columns, const ColumnViewState& config, Emit&
     }
 }
 
-// Render the column view one hunk at a time, handing each finished row to `emit`.
-// Streaming keeps peak memory to a single hunk's display rows instead of
-// materializing the whole diff before printing.
+// Render the column view one hunk at a time, handing each row to `emit`. Peak
+// memory stays bounded to a single hunk rather than the whole diff.
 template <typename Emit>
 void
 column_view_render_streaming(const DiffInput<diffy::Line>& diff_input,
@@ -700,8 +697,6 @@ diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
         width = 80;
     }
 
-    // Stream: render and print one hunk at a time so the whole diff is never
-    // resident in memory at once.
     column_view_render_streaming(diff_input, hunks, config, options, width,
                                  [](std::string line) { puts(line.c_str()); });
 }

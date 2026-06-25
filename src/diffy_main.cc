@@ -182,9 +182,7 @@ Side by side options:
         puts(help.c_str());
     };
 
-    // Long-only option code, kept above the ASCII range so it doesn't collide
-    // with the short options. The short `-W` stays overloaded (numeric -> width,
-    // otherwise no-ignore-whitespace) for backwards compatibility.
+    // Above the ASCII range so it doesn't collide with the short options.
     constexpr int kOptNoIgnoreWhitespace = 256;
 
     auto parse_args = [&](int in_argc, char* in_argv[]) {
@@ -254,9 +252,8 @@ Side by side options:
                     opts.ignore_whitespace = true;
                     break;
                 case 'W': {
-                    // Short -W is overloaded: a numeric argument sets the column
-                    // width; anything else is the legacy spelling of
-                    // --no-ignore-whitespace (hand the consumed token back).
+                    // -W is overloaded: numeric arg sets width, anything else is
+                    // the legacy --no-ignore-whitespace (hand the token back).
                     if (optarg && isdigit(optarg[0])) {
                         opts.width = atoi(optarg);
                     } else if (optarg) {

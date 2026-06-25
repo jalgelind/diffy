@@ -44,9 +44,8 @@ struct MyersGreedy : public Algorithm<Unit> {
 
         const int64_t max = N + M;
 
-        // The greedy variant keeps a V-band snapshot per edit-step for
-        // backtracking, so memory is O(D * (N + M)). Bail to linear-space Myers
-        // (signalled by -2) if that trace would exceed this budget.
+        // Snapshots cost O(D * (N + M)); bail to linear-space Myers (-2) if the
+        // trace would exceed this budget.
         constexpr std::size_t kMaxTraceBytes = 256ull * 1024 * 1024;
         const std::size_t snapshot_bytes = static_cast<std::size_t>(2 * max + 1) * sizeof(IndexSizeType);
 

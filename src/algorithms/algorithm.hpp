@@ -30,9 +30,7 @@ enum class EditType : uint8_t {
     Meta,
 };
 
-// `value` is 32-bit: line/token indices fit comfortably (a file with >2e9 lines
-// is not a realistic input), and it keeps Edit small since edit_sequence is
-// O(N+M).
+// 32-bit value keeps Edit small; >2e9 lines isn't a realistic input.
 struct EditIndex {
     bool valid;
     int32_t value;

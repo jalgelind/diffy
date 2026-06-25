@@ -88,15 +88,8 @@ struct Patience : public Algorithm<Unit> {
 
     Match*
     patience_sort(std::vector<Match>& matches) {
-        // Standard patience sort for the longest increasing subsequence of
-        // b_index (matches are already sorted by a_index). `piles` holds the top
-        // card of each pile, kept sorted by b_index; each card remembers the top
-        // of the pile to its left, so the LIS is recovered by following prev.
-        //
-        // The previous implementation dropped any card whose b_index exceeded
-        // every pile top instead of starting a new pile, so for in-order matches
-        // it kept only the first anchor — making Patience degrade to O(N^2) on
-        // ordinary (scattered-change) input.
+        // Patience sort for the longest increasing subsequence of b_index
+        // (matches are sorted by a_index); recover the LIS via the prev links.
         std::vector<Match*> piles;
         piles.reserve(matches.size());
 
@@ -123,8 +116,7 @@ struct Patience : public Algorithm<Unit> {
         return match;
     }
 
-    // Appends this slice's edits to `out` (accumulator: avoids allocating and
-    // copying an intermediate vector per recursion level).
+    // Appends this slice's edits to `out`.
     void
     do_diff(const Slice& in_slice, std::vector<Edit>& out) {
         auto unique_lines = index_unique_lines(in_slice);
@@ -176,9 +168,7 @@ struct Patience : public Algorithm<Unit> {
             };
             auto adjust_tail = [this](Slice& slice) {
                 std::vector<Edit> tail;
-                // Collect trailing common lines with push_back (O(1)) and reverse once,
-                // instead of insert-at-front per line (which is O(n^2) for long common
-                // tails).
+                // push_back + reverse, not insert-at-front (which is O(n^2)).
                 while (!slice.empty() && A[slice.a_high - 1] == B[slice.b_high - 1]) {
                     slice.a_high -= 1;
                     slice.b_high -= 1;
