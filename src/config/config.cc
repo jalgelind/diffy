@@ -194,9 +194,21 @@ diffy::config_bundled_themes() {
     };
 }
 
+// Print a single "Creating initial configuration" header before the first
+// created file (lazily, so nothing prints when everything already exists), then
+// list each created file's name indented under it.
+static void
+announce_created_file(const std::string& config_root, const std::string& path) {
+    static bool header_printed = false;
+    if (!header_printed) {
+        fmt::print("Creating initial configuration in {}:\n", config_root);
+        header_printed = true;
+    }
+    fmt::print("  {}\n", std::filesystem::path(path).filename().string());
+}
+
 // Write the bundled example themes into the config directory, skipping any that
-// already exist so user edits are never clobbered. Called once on first-run
-// setup (when the default theme is created).
+// already exist so user edits are never clobbered.
 static void
 config_write_bundled_themes(const std::string& config_root) {
     std::error_code ec;
@@ -210,6 +222,7 @@ config_write_bundled_themes(const std::string& config_root) {
             fmt::print(stderr, "warning: could not write bundled theme '{}'\n", path);
             continue;
         }
+        announce_created_file(config_root, path);
         fwrite(content.c_str(), content.size(), 1, f);
         fclose(f);
     }
@@ -358,7 +371,7 @@ diffy::config_apply_options(diffy::ProgramOptions& program_options) {
             fmt::print("error: {}\n\twhile parsing: {}\n", config_parse_result.error, config_path);
         } break;
         case ConfigLoadResult::DoesNotExist: {
-            fmt::print("warning: could not find default config. creating file:\n\t{}\n", config_path);
+            announce_created_file(config_root, config_path);
             flush_config_to_disk = true;
         } break;
     };
@@ -403,12 +416,6 @@ diffy::config_apply_theme(const std::string& theme,
     const std::string config_root = diffy::config_get_directory();
     const std::string config_path = fmt::format("{}/{}", config_root, config_file_name);
 
-    // Ensure the bundled example themes exist (idempotent; skips any already on
-    // disk). Done on every run, not just first-run, so existing installs pick
-    // them up too — and a user who already set `theme = 'theme_dracula'` gets it
-    // created and loaded the same run.
-    config_write_bundled_themes(config_root);
-
     bool flush_config_to_disk = false;
 
     ParseResult config_parse_result;
@@ -422,11 +429,17 @@ diffy::config_apply_theme(const std::string& theme,
         } break;
         case ConfigLoadResult::DoesNotExist: {
             if (theme == "theme_default") {
-                fmt::print("warning: could not find default theme, creating file:\n\t{}\n", config_path);
+                announce_created_file(config_root, config_path);
                 flush_config_to_disk = true;
             }
         } break;
     };
+
+    // Ensure the bundled example themes exist (idempotent; skips any already on
+    // disk, so user edits are never clobbered). Done on every run, not just
+    // first-run, so existing installs pick them up too. Placed after the default
+    // theme so the created-files list reads default-first.
+    config_write_bundled_themes(config_root);
 
     if (!config_file_table_value.lookup_value_by_path("settings")) {
         config_file_table_value["settings"] = {Value::Table{}};
