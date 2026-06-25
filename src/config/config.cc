@@ -81,12 +81,12 @@ line_number_align_right = false
 [style]
 background          = { fg = '#f8f8f2', bg = '#282a36', attr = [] }
 header              = { fg = '#f8f8f2', bg = '#44475a', attr = ['bold', 'underline'] }
-delete_line         = { fg = '#f8f8f2', bg = '#422a37', attr = [] }
+delete_line         = { fg = '#f8f8f2', bg = '#5a2e3c', attr = [] }
 delete_token        = { fg = '#ff5555', bg = 'none',    attr = ['bold'] }
-delete_line_number  = { fg = '#ff5555', bg = '#422a37', attr = [] }
-insert_line         = { fg = '#f8f8f2', bg = '#243a32', attr = [] }
+delete_line_number  = { fg = '#ff5555', bg = '#5a2e3c', attr = [] }
+insert_line         = { fg = '#f8f8f2', bg = '#2e4a38', attr = [] }
 insert_token        = { fg = '#50fa7b', bg = 'none',    attr = ['bold'] }
-insert_line_number  = { fg = '#50fa7b', bg = '#243a32', attr = [] }
+insert_line_number  = { fg = '#50fa7b', bg = '#2e4a38', attr = [] }
 common_line         = { fg = '#f8f8f2', bg = '#282a36', attr = [] }
 common_line_number  = { fg = '#6272a4', bg = '#282a36', attr = [] }
 frame               = { fg = '#6272a4', bg = '#282a36', attr = [] }
@@ -105,12 +105,12 @@ line_number_align_right = false
 [style]
 background          = { fg = '#d8dee9', bg = '#2e3440', attr = [] }
 header              = { fg = '#eceff4', bg = '#434c5e', attr = ['bold', 'underline'] }
-delete_line         = { fg = '#d8dee9', bg = '#3b2f33', attr = [] }
+delete_line         = { fg = '#d8dee9', bg = '#4f343f', attr = [] }
 delete_token        = { fg = '#bf616a', bg = 'none',    attr = ['bold'] }
-delete_line_number  = { fg = '#bf616a', bg = '#3b2f33', attr = [] }
-insert_line         = { fg = '#d8dee9', bg = '#323a30', attr = [] }
+delete_line_number  = { fg = '#bf616a', bg = '#4f343f', attr = [] }
+insert_line         = { fg = '#d8dee9', bg = '#3a4d39', attr = [] }
 insert_token        = { fg = '#a3be8c', bg = 'none',    attr = ['bold'] }
-insert_line_number  = { fg = '#a3be8c', bg = '#323a30', attr = [] }
+insert_line_number  = { fg = '#a3be8c', bg = '#3a4d39', attr = [] }
 common_line         = { fg = '#d8dee9', bg = '#2e3440', attr = [] }
 common_line_number  = { fg = '#4c566a', bg = '#2e3440', attr = [] }
 frame               = { fg = '#434c5e', bg = '#2e3440', attr = [] }
@@ -130,12 +130,12 @@ line_number_align_right = false
 [style]
 background          = { fg = '#839496', bg = '#002b36', attr = [] }
 header              = { fg = '#93a1a1', bg = '#073642', attr = ['bold', 'underline'] }
-delete_line         = { fg = '#839496', bg = '#3a2a2d', attr = [] }
+delete_line         = { fg = '#839496', bg = '#46282c', attr = [] }
 delete_token        = { fg = '#dc322f', bg = 'none',    attr = ['bold'] }
-delete_line_number  = { fg = '#dc322f', bg = '#3a2a2d', attr = [] }
-insert_line         = { fg = '#839496', bg = '#2a3a2d', attr = [] }
+delete_line_number  = { fg = '#dc322f', bg = '#46282c', attr = [] }
+insert_line         = { fg = '#839496', bg = '#25462e', attr = [] }
 insert_token        = { fg = '#859900', bg = 'none',    attr = ['bold'] }
-insert_line_number  = { fg = '#859900', bg = '#2a3a2d', attr = [] }
+insert_line_number  = { fg = '#859900', bg = '#25462e', attr = [] }
 common_line         = { fg = '#839496', bg = '#002b36', attr = [] }
 common_line_number  = { fg = '#586e75', bg = '#002b36', attr = [] }
 frame               = { fg = '#586e75', bg = '#002b36', attr = [] }
