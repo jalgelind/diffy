@@ -23,20 +23,23 @@ struct Move {
     Coordinate to;
 };
 
-enum class EditType {
+enum class EditType : uint8_t {
     Delete,
     Insert,
     Common,
     Meta,
 };
 
+// `value` is 32-bit: line/token indices fit comfortably (a file with >2e9 lines
+// is not a realistic input), and it keeps Edit small since edit_sequence is
+// O(N+M).
 struct EditIndex {
     bool valid;
-    int64_t value;
+    int32_t value;
     EditIndex() : valid(false), value(0) {
     }
 
-    EditIndex(int64_t in_value) : valid(true), value(in_value) {
+    EditIndex(int64_t in_value) : valid(true), value(static_cast<int32_t>(in_value)) {
     }
 
     operator int64_t() const {
