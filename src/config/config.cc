@@ -403,6 +403,12 @@ diffy::config_apply_theme(const std::string& theme,
     const std::string config_root = diffy::config_get_directory();
     const std::string config_path = fmt::format("{}/{}", config_root, config_file_name);
 
+    // Ensure the bundled example themes exist (idempotent; skips any already on
+    // disk). Done on every run, not just first-run, so existing installs pick
+    // them up too — and a user who already set `theme = 'theme_dracula'` gets it
+    // created and loaded the same run.
+    config_write_bundled_themes(config_root);
+
     bool flush_config_to_disk = false;
 
     ParseResult config_parse_result;
@@ -418,9 +424,6 @@ diffy::config_apply_theme(const std::string& theme,
             if (theme == "theme_default") {
                 fmt::print("warning: could not find default theme, creating file:\n\t{}\n", config_path);
                 flush_config_to_disk = true;
-                // First-run setup: also seed the bundled example themes so users
-                // have ready-to-use alternatives (`theme = 'theme_dracula'`, ...).
-                config_write_bundled_themes(config_root);
             }
         } break;
     };
