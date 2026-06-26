@@ -123,4 +123,9 @@ add_ts_grammar(html       https://github.com/tree-sitter/tree-sitter-html.git   
 add_ts_grammar(css        https://github.com/tree-sitter/tree-sitter-css.git        v0.21.0)
 add_ts_grammar(json       https://github.com/tree-sitter/tree-sitter-json.git       v0.21.0)
 
+# Deferred (tasks #31/#32): PHP, Lua, Kotlin, Swift, YAML, TOML, Markdown, SQL,
+# CMake, Dockerfile. These live in third-party orgs whose tags/ABIs need
+# verifying against the bundled runtime before pinning — add_ts_grammar lines
+# go here, plus matching registry entries in language.cc.
+
 finalize_ts_queries(${CMAKE_CURRENT_BINARY_DIR}/ts_queries_generated.cc)

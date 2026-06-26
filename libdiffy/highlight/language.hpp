@@ -31,7 +31,7 @@ enum class Language {
     Html,
     Css,
     Json,
-    // (expanded in the grammar tasks)
+    // (expanded in the grammar tasks — see treesitter.cmake "Deferred")
 };
 
 // Pick a language from a file path (extension, then special filenames).
