@@ -11,6 +11,7 @@ namespace diffy {
 
 #include <tree_sitter/api.h>
 
+#include <algorithm>
 #include <cstring>
 
 namespace diffy {
@@ -25,6 +26,12 @@ namespace {
 // function_type annotation) are filtered out by the caller's multi-line check.
 bool
 is_scope_type(const char* type) {
+    // A declarator (C/C++ function_declarator) is a sub-part of a definition;
+    // skip it so we match the whole definition, including its return type, and
+    // so body changes resolve to the same enclosing label as signature changes.
+    if (std::strstr(type, "declarator") != nullptr) {
+        return false;
+    }
     static const char* const kw[] = {
         "function", "method",  "constructor", "class",     "struct", "impl",
         "namespace", "module", "interface",   "trait",     "enum",   "package",
@@ -39,31 +46,46 @@ is_scope_type(const char* type) {
 }
 
 // The definition's first line (its header), with leading indentation removed,
-// internal whitespace collapsed, a trailing " {" stripped, and truncated.
+// internal whitespace collapsed, and truncated. The signature is assembled
+// across lines (collapsing newlines to spaces) up to the body: the first '{'
+// for brace languages, or a line-final ':' for Python `def`/`class`. This keeps
+// the function name when the return type sits on its own line (e.g.
+// "std::string\nfoo(...)") instead of stopping at just the type.
 std::string
 header_label(std::string_view src, uint32_t start_byte) {
-    uint32_t end = start_byte;
-    while (end < src.size() && src[end] != '\n') {
-        ++end;
-    }
-    std::string_view raw = src.substr(start_byte, end - start_byte);
-
+    constexpr size_t kScan = 200;  // never walk more than this far for one label
     std::string out;
-    out.reserve(raw.size());
     bool pending_space = false;
-    for (char c : raw) {
-        const bool ws = (c == ' ' || c == '\t' || c == '\r');
+    const size_t limit = std::min<size_t>(src.size(), start_byte + kScan);
+    for (size_t i = start_byte; i < limit; ++i) {
+        const char c = src[i];
+        if (c == '{' || c == ';') {
+            break;  // body / statement end
+        }
+        const bool ws = (c == ' ' || c == '\t' || c == '\r' || c == '\n');
         if (ws) {
-            pending_space = !out.empty();  // drop leading; coalesce internal
-        } else {
-            if (pending_space) {
-                out += ' ';
-                pending_space = false;
+            pending_space = !out.empty();  // drop leading; coalesce internal + newlines
+            continue;
+        }
+        if (pending_space) {
+            out += ' ';
+            pending_space = false;
+        }
+        out += c;
+        if (c == ':') {
+            // Python `def f():` / `class C:` ends at a line-final colon. A C++
+            // ':' (inheritance, bitfield) is followed by more on the same line,
+            // so only stop when nothing but whitespace remains before a newline.
+            size_t j = i + 1;
+            while (j < src.size() && (src[j] == ' ' || src[j] == '\t' || src[j] == '\r')) {
+                ++j;
             }
-            out += c;
+            if (j >= src.size() || src[j] == '\n') {
+                break;
+            }
         }
     }
-    while (!out.empty() && (out.back() == '{' || out.back() == ' ')) {
+    while (!out.empty() && (out.back() == '{' || out.back() == ':' || out.back() == ' ')) {
         out.pop_back();
     }
 
