@@ -86,7 +86,41 @@ pick_folder() {
     }
     return chosen;
 #else
-    return std::nullopt;
+    // macOS / Linux: shell out to the platform's native folder chooser. Keeps the
+    // GUI free of AppKit/GTK link dependencies. Returns nullopt on cancel or when
+    // no chooser is available.
+    auto run = [](const char* cmd) -> std::optional<std::string> {
+        FILE* p = popen(cmd, "r");
+        if (!p) {
+            return std::nullopt;
+        }
+        std::string out;
+        char buf[4096];
+        size_t n;
+        while ((n = fread(buf, 1, sizeof(buf), p)) > 0) {
+            out.append(buf, n);
+        }
+        const int rc = pclose(p);
+        while (!out.empty() && (out.back() == '\n' || out.back() == '\r' || out.back() == ' ')) {
+            out.pop_back();
+        }
+        if (rc != 0 || out.empty()) {
+            return std::nullopt;
+        }
+        return out;
+    };
+#if defined(__APPLE__)
+    // AppleScript folder chooser; `try` swallows the error raised on Cancel.
+    return run(
+        "osascript -e 'try' "
+        "-e 'POSIX path of (choose folder with prompt \"Open a git repository\")' "
+        "-e 'end try' 2>/dev/null");
+#else
+    if (auto p = run("zenity --file-selection --directory 2>/dev/null")) {
+        return p;
+    }
+    return run("kdialog --getexistingdirectory ~ 2>/dev/null");
+#endif
 #endif
 }
 
