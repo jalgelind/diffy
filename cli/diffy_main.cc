@@ -10,7 +10,7 @@
 #include "util/color.hpp"
 #include "util/hash.hpp"
 #include "util/readlines.hpp"
-#include "util/tty.hpp"
+#include "tty.hpp"
 
 #include <musl/getopt.h>
 #include <sys/stat.h>
@@ -421,7 +421,24 @@ Side by side options:
             diff_input, hunks,
             opts.line_granularity ? diffy::EditGranularity::Line : diffy::EditGranularity::Token,
             opts.ignore_whitespace);
-        diffy::column_view_diff_render(diff_input, annotated_hunks, cv_ui_opts, opts);
+
+        // Terminal-width detection lives in the CLI now; the core renderer takes
+        // an explicit width so it stays free of any tty dependency.
+        int64_t width = opts.width;
+        if (width == 0) {
+            int term_height = 0, term_width = 0;
+            diffy::tty_get_term_size(&term_height, &term_width);
+            width = static_cast<int64_t>(term_width);
+        }
+        // Fall back to 80 columns when there's no tty (e.g. under a debugger).
+        if (width == 0) {
+            width = 80;
+        }
+
+        for (const auto& line :
+             diffy::column_view_render_lines(diff_input, annotated_hunks, cv_ui_opts, opts, width)) {
+            puts(line.c_str());
+        }
     } else if (opts.unified) {
         auto unified_lines = diffy::unified_diff_render(diff_input, hunks);
         auto num_lines = unified_lines.size();

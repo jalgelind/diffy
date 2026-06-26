@@ -65,46 +65,54 @@ config_parser_proj = subproject('config_parser')
 config_parser_dep = config_parser_proj.get_variable('config_parser_dep')
 config_parser_test_dep = config_parser_proj.get_variable('config_parser_test_dep')
 
-src = ['src/algorithms/myers_greedy.hpp',
-       'src/algorithms/myers_linear.hpp',
-       'src/config/config.hpp',
-       'src/config/config.cc',
-       'src/processing/tokenizer.hpp',
-       'src/processing/tokenizer.cc',
-       'src/processing/diff_hunk.hpp',
-       'src/processing/diff_hunk.cc',
-       'src/processing/diff_hunk_annotate.hpp',
-       'src/processing/diff_hunk_annotate.cc',
-       'src/output/unified.hpp',
-       'src/output/unified.cc',
-       'src/output/column_view.hpp',
-       'src/output/column_view.cc',
-       'src/util/color.hpp',
-       'src/util/color.cc',
-       'src/util/readlines.hpp',
-       'src/util/readlines.cc',
-       'src/util/tty.hpp',
-       'src/util/tty.cc',
-       'src/util/utf8decode.hpp',
-       'src/util/utf8decode.cc',
-       'src/util/hash.hpp',
-       'src/util/hash.cc'
+# NOTE: CMake is the primary build (and the only one that builds the GUI).
+# This Meson build is kept for the CLI + tests so `make` keeps working.
+# libdiffy is the shared diff core; tty lives with the CLI now.
+src = ['libdiffy/algorithms/myers_greedy.hpp',
+       'libdiffy/algorithms/myers_linear.hpp',
+       'libdiffy/config/config.hpp',
+       'libdiffy/config/config.cc',
+       'libdiffy/config/repos.cc',
+       'libdiffy/config/gui_config.cc',
+       'libdiffy/processing/tokenizer.hpp',
+       'libdiffy/processing/tokenizer.cc',
+       'libdiffy/processing/diff_hunk.hpp',
+       'libdiffy/processing/diff_hunk.cc',
+       'libdiffy/processing/diff_hunk_annotate.hpp',
+       'libdiffy/processing/diff_hunk_annotate.cc',
+       'libdiffy/render/diff_view_model.hpp',
+       'libdiffy/render/diff_view_model.cc',
+       'libdiffy/render/diff_pipeline.hpp',
+       'libdiffy/render/diff_pipeline.cc',
+       'libdiffy/output/unified.hpp',
+       'libdiffy/output/unified.cc',
+       'libdiffy/output/column_view.hpp',
+       'libdiffy/output/column_view.cc',
+       'libdiffy/util/color.hpp',
+       'libdiffy/util/color.cc',
+       'libdiffy/util/readlines.hpp',
+       'libdiffy/util/readlines.cc',
+       'libdiffy/util/utf8decode.hpp',
+       'libdiffy/util/utf8decode.cc',
+       'libdiffy/util/hash.hpp',
+       'libdiffy/util/hash.cc'
 ]
 
 src_test = [
-  'src/algorithms/algorithm_tests.cc',
-  'src/config/config_tests.cc',
-  'src/output/column_view_tests.cc',
-  'src/output/render_corpus_tests.cc',
-  'src/output/theme_tests.cc',
-  'src/output/unified_tests.cc',
-  'src/processing/diff_hunk_tests.cc',
-  'src/processing/diff_hunk_annotate_tests.cc',
-  'src/processing/tokenizer_tests.cc',
-  'src/util/bipolar_array_tests.cc',
-  'src/util/color_tests.cc',
-  'src/util/readlines_tests.cc',
-  'src/util/utf8decode_tests.cc',
+  'libdiffy/algorithms/algorithm_tests.cc',
+  'libdiffy/config/config_tests.cc',
+  'libdiffy/output/column_view_tests.cc',
+  'libdiffy/output/render_corpus_tests.cc',
+  'libdiffy/output/theme_tests.cc',
+  'libdiffy/output/unified_tests.cc',
+  'libdiffy/processing/diff_hunk_tests.cc',
+  'libdiffy/processing/diff_hunk_annotate_tests.cc',
+  'libdiffy/processing/tokenizer_tests.cc',
+  'libdiffy/render/diff_view_model_tests.cc',
+  'libdiffy/util/bipolar_array_tests.cc',
+  'libdiffy/util/color_tests.cc',
+  'libdiffy/util/readlines_tests.cc',
+  'libdiffy/util/utf8decode_tests.cc',
 ]
 
 # config_parser ships its own tests via config_parser_test_dep (linked below).
@@ -114,15 +122,16 @@ test_cases_dir = meson.current_source_dir() / 'tests' / 'test_cases'
 hash = run_command('git', 'rev-parse', '--short', 'HEAD', check: true)
 
 executable('diffy',
-            ['src/diffy_main.cc'] + src,
-            cpp_args : 
+            ['cli/diffy_main.cc', 'cli/tty.cc'] + src,
+            cpp_args :
               [
                 '-DDIFFY_VERSION="@0@"'.format(meson.project_version()),
                 '-DDIFFY_BUILD_HASH="@0@"'.format(
                     hash.stdout().strip())
               ],
             include_directories: include_directories([
-                'src',
+                'libdiffy',
+                'cli',
               ]),
             dependencies: [crc32c_dep,
                            GSL_dep,
@@ -133,12 +142,12 @@ executable('diffy',
           )
 
 test_executable = executable('diffy-test',
-              'src/diffy_test.cc', src, src_test,
+              'tests/diffy_test.cc', src, src_test,
               cpp_args : [
                 '-DDIFFY_TEST_CASES_DIR="@0@"'.format(test_cases_dir)
               ],
               include_directories: include_directories([
-                  'src',
+                  'libdiffy',
                 ]),
               dependencies: [crc32c_dep,
                              GSL_dep,

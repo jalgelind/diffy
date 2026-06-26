@@ -121,3 +121,31 @@ diffy::readlines(const std::string& path, bool ignore_line_endings) {
 
     return lines;
 }
+
+std::vector<diffy::Line>
+diffy::readlines_from_string(const std::string& content, bool ignore_line_endings) {
+    std::vector<diffy::Line> lines;
+
+    uint32_t i = 1;
+    std::string current;
+    auto flush = [&]() {
+        std::string sline = ignore_line_endings ? right_trim(current) : current;
+        uint32_t hash = hash::hash(sline.c_str(), static_cast<uint32_t>(sline.size()));
+        lines.push_back({i, hash, std::move(sline)});
+        i++;
+        current.clear();
+    };
+
+    for (char c : content) {
+        current.push_back(c);
+        if (c == '\n') {
+            flush();
+        }
+    }
+    // Trailing content with no final newline still counts as a line.
+    if (!current.empty()) {
+        flush();
+    }
+
+    return lines;
+}

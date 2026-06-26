@@ -1,5 +1,8 @@
 .vscode
 out/
+build/
+build-gui*/
 tests/_test_runner
 .ccls-cache/
 subprojects/.wraplock
+scratch/

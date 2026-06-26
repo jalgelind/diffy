@@ -1,5 +1,6 @@
 #pragma once
 
+#include "algorithms/algorithm.hpp"  // Algo, algo_from_string
 #include "util/color.hpp"
 
 #include <string>
@@ -10,11 +11,6 @@
 #include <config_parser/config_parser.hpp>
 
 namespace diffy {
-
-enum class Algo { kInvalid, kMyersGreedy, kMyersLinear, kPatience };
-
-Algo
-algo_from_string(std::string s);
 
 struct ProgramOptions {
     bool debug = false;

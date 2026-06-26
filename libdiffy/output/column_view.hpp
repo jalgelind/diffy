@@ -25,18 +25,13 @@ struct ColumnViewState {
 };
 
 // Render the side-by-side diff to one styled string per row, at an explicit width.
-// column_view_diff_render() wraps this with terminal-width detection.
+// This is the backend-agnostic entry point: the CLI supplies a terminal width
+// (see cli/tty), other frontends supply their own.
 std::vector<std::string>
 column_view_render_lines(const DiffInput<diffy::Line>& diff_input,
                          const std::vector<AnnotatedHunk>& hunks,
                          ColumnViewState& config,
                          const diffy::ProgramOptions& options,
                          int64_t width);
-
-void
-column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
-                        const std::vector<AnnotatedHunk>& hunks,
-                        ColumnViewState& config,
-                        const diffy::ProgramOptions& options);
 
 }  // namespace diffy

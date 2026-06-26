@@ -13,6 +13,13 @@ namespace diffy {
 using std::int64_t;
 using std::size_t;
 
+// Which line-diff algorithm to run. Lives here (not in config) so the render
+// pipeline can name it without pulling in the terminal/theme config types.
+enum class Algo { kInvalid, kMyersGreedy, kMyersLinear, kPatience };
+
+Algo
+algo_from_string(std::string s);
+
 struct Coordinate {
     int64_t x;
     int64_t y;

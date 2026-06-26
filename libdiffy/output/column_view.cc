@@ -2,7 +2,6 @@
 
 #include "processing/diff_hunk.hpp"
 #include "processing/diff_hunk_annotate.hpp"
-#include "util/tty.hpp"
 #include "util/utf8decode.hpp"
 
 #include <fcntl.h>
@@ -713,27 +712,4 @@ diffy::column_view_render_lines(const DiffInput<diffy::Line>& diff_input,
     column_view_render_streaming(diff_input, hunks, config, options, width,
                                  [&out](std::string line) { out.push_back(std::move(line)); });
     return out;
-}
-
-void
-diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
-                               const std::vector<AnnotatedHunk>& hunks,
-                               ColumnViewState& config,
-                               const diffy::ProgramOptions& options) {
-    int64_t width = options.width;
-    int dummy_height = 0;
-    if (width == 0) {
-        int tmp_width = 0;
-        tty_get_term_size(&dummy_height, &tmp_width);
-        width = static_cast<int64_t>(tmp_width);
-    }
-
-    // If we fail to figure out the width of the terminal, default to 80.
-    // NOTE: We hit this when running in lldb.
-    if (width == 0) {
-        width = 80;
-    }
-
-    column_view_render_streaming(diff_input, hunks, config, options, width,
-                                 [](std::string line) { puts(line.c_str()); });
 }

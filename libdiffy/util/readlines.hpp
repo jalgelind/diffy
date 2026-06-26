@@ -33,4 +33,11 @@ struct Line {
 std::vector<Line>
 readlines(const std::string& path, bool ignore_line_endings);
 
+// Split an in-memory buffer into Lines using the same rules as readlines():
+// each line keeps its trailing '\n' (a final line without one is kept as-is).
+// Used by frontends that already hold the content (e.g. the GUI reads git blobs
+// into memory rather than from a path).
+std::vector<Line>
+readlines_from_string(const std::string& content, bool ignore_line_endings);
+
 }  // namespace diffy
