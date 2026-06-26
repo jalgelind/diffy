@@ -1,4 +1,4 @@
-# Tree-sitter runtime + grammars, fetched and built from source.
+# Tree-sitter runtime + grammars, vendored as git submodules under subprojects/.
 #
 # Provides:
 #   - target `tree-sitter` (the C runtime)
@@ -6,29 +6,31 @@
 #   - a generated source defining diffy::ts_raw_queries() — each grammar's
 #     embedded queries/highlights.scm keyed by language name
 #
-# add_ts_grammar(<lang> <repo> <tag> [SUBDIR <dir>] [QUERY <relpath>])
-#   SUBDIR : grammar lives in a subdirectory (e.g. typescript/, tsx/, php/)
+# add_ts_grammar(<lang> <submodule-dir> [SUBDIR <dir>] [QUERY <relpath>] [LOCAL_QUERY <abs>])
+#   <submodule-dir> : directory name under subprojects/ (e.g. tree-sitter-c)
+#   SUBDIR : grammar lives in a subdirectory of the repo (e.g. typescript/, tsx/)
 #   QUERY  : highlights query path relative to the repo (default queries/highlights.scm)
-
-include(FetchContent)
+#   LOCAL_QUERY : an absolute path to a highlights query we ship (grammars w/ none)
 
 # The runtime and grammars are C; the top-level project only enables C++.
 enable_language(C)
 
-# --- runtime --------------------------------------------------------------
-# Populate only (SOURCE_SUBDIR points at a non-existent dir so MakeAvailable
-# skips the repo's own CMakeLists); we compile the amalgamation ourselves.
-FetchContent_Declare(treesitter
-  GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter.git
-  GIT_TAG v0.25.0
-  GIT_SHALLOW TRUE
-  SOURCE_SUBDIR __diffy_skip__)
-FetchContent_MakeAvailable(treesitter)
+# Root holding the tree-sitter submodules.
+set(DIFFY_TS_ROOT ${CMAKE_SOURCE_DIR}/subprojects)
 
-add_library(tree-sitter STATIC ${treesitter_SOURCE_DIR}/lib/src/lib.c)
+if(NOT EXISTS ${DIFFY_TS_ROOT}/tree-sitter/lib/src/lib.c)
+  message(FATAL_ERROR
+    "tree-sitter submodule not found at ${DIFFY_TS_ROOT}/tree-sitter.\n"
+    "Initialize submodules first:\n"
+    "    git submodule update --init --recursive\n"
+    "or configure with -DDIFFY_ENABLE_HIGHLIGHT=OFF to build without highlighting.")
+endif()
+
+# --- runtime --------------------------------------------------------------
+add_library(tree-sitter STATIC ${DIFFY_TS_ROOT}/tree-sitter/lib/src/lib.c)
 target_include_directories(tree-sitter
-  PUBLIC ${treesitter_SOURCE_DIR}/lib/include
-  PRIVATE ${treesitter_SOURCE_DIR}/lib/src)
+  PUBLIC ${DIFFY_TS_ROOT}/tree-sitter/lib/include
+  PRIVATE ${DIFFY_TS_ROOT}/tree-sitter/lib/src)
 set_target_properties(tree-sitter PROPERTIES C_STANDARD 11)
 # These are large generated/third-party C files; silence their warnings so a
 # global -Werror/-WX can't fail the build.
@@ -44,23 +46,21 @@ target_link_libraries(diffy_ts_grammars INTERFACE tree-sitter)
 
 set_property(GLOBAL PROPERTY DIFFY_TS_QUERIES "")
 
-function(add_ts_grammar lang repo tag)
-  # LOCAL_QUERY: use a highlights query we ship (for grammars that bundle none),
-  # given as an absolute path. QUERY: a path relative to the grammar repo.
+function(add_ts_grammar lang repo_dir)
   cmake_parse_arguments(G "" "SUBDIR;QUERY;LOCAL_QUERY" "" ${ARGN})
 
-  FetchContent_Declare(ts_${lang}
-    GIT_REPOSITORY ${repo}
-    GIT_TAG ${tag}
-    GIT_SHALLOW TRUE
-    SOURCE_SUBDIR __diffy_skip__)
-  FetchContent_MakeAvailable(ts_${lang})
-  set(root ${ts_${lang}_SOURCE_DIR})
+  set(root ${DIFFY_TS_ROOT}/${repo_dir})
 
   if(G_SUBDIR)
     set(gsrc ${root}/${G_SUBDIR}/src)
   else()
     set(gsrc ${root}/src)
+  endif()
+
+  if(NOT EXISTS ${gsrc}/parser.c)
+    message(FATAL_ERROR
+      "tree-sitter grammar '${lang}' missing at ${gsrc}.\n"
+      "Run: git submodule update --init --recursive")
   endif()
 
   set(sources ${gsrc}/parser.c)
@@ -109,29 +109,29 @@ function(finalize_ts_queries out_cc)
 endfunction()
 
 # --- the grammar set ------------------------------------------------------
-# Pinned to tags from the tree-sitter 0.21/0.22 era for language-ABI 14
-# compatibility with the runtime above. (lang repo tag [SUBDIR ..])
-add_ts_grammar(c          https://github.com/tree-sitter/tree-sitter-c.git          v0.21.4)
-add_ts_grammar(cpp        https://github.com/tree-sitter/tree-sitter-cpp.git        v0.22.0)
-add_ts_grammar(go         https://github.com/tree-sitter/tree-sitter-go.git         v0.21.0)
-add_ts_grammar(rust       https://github.com/tree-sitter/tree-sitter-rust.git       v0.21.2)
-add_ts_grammar(java       https://github.com/tree-sitter/tree-sitter-java.git       v0.21.0)
-add_ts_grammar(python     https://github.com/tree-sitter/tree-sitter-python.git     v0.21.0)
-add_ts_grammar(javascript https://github.com/tree-sitter/tree-sitter-javascript.git v0.21.4)
-add_ts_grammar(typescript https://github.com/tree-sitter/tree-sitter-typescript.git v0.21.2 SUBDIR typescript)
-add_ts_grammar(tsx        https://github.com/tree-sitter/tree-sitter-typescript.git v0.21.2 SUBDIR tsx)
-add_ts_grammar(ruby       https://github.com/tree-sitter/tree-sitter-ruby.git       v0.21.0)
-add_ts_grammar(bash       https://github.com/tree-sitter/tree-sitter-bash.git       v0.21.0)
-add_ts_grammar(c_sharp    https://github.com/tree-sitter/tree-sitter-c-sharp.git    v0.21.3)
-add_ts_grammar(html       https://github.com/tree-sitter/tree-sitter-html.git       v0.20.3)
-add_ts_grammar(css        https://github.com/tree-sitter/tree-sitter-css.git        v0.21.0)
-add_ts_grammar(lua        https://github.com/tree-sitter-grammars/tree-sitter-lua.git v0.2.0)
-add_ts_grammar(toml       https://github.com/ikatyang/tree-sitter-toml.git          v0.5.1)
-add_ts_grammar(cmake      https://github.com/uyha/tree-sitter-cmake.git             v0.5.0
+# Each <dir> is a submodule under subprojects/, pinned to a tag from the
+# tree-sitter 0.21/0.22 era for language-ABI 14 compatibility with the runtime.
+add_ts_grammar(c          tree-sitter-c)
+add_ts_grammar(cpp        tree-sitter-cpp)
+add_ts_grammar(go         tree-sitter-go)
+add_ts_grammar(rust       tree-sitter-rust)
+add_ts_grammar(java       tree-sitter-java)
+add_ts_grammar(python     tree-sitter-python)
+add_ts_grammar(javascript tree-sitter-javascript)
+add_ts_grammar(typescript tree-sitter-typescript SUBDIR typescript)
+add_ts_grammar(tsx        tree-sitter-typescript SUBDIR tsx)
+add_ts_grammar(ruby       tree-sitter-ruby)
+add_ts_grammar(bash       tree-sitter-bash)
+add_ts_grammar(c_sharp    tree-sitter-c-sharp)
+add_ts_grammar(html       tree-sitter-html)
+add_ts_grammar(css        tree-sitter-css)
+add_ts_grammar(lua        tree-sitter-lua)
+add_ts_grammar(toml       tree-sitter-toml)
+add_ts_grammar(cmake      tree-sitter-cmake
                LOCAL_QUERY ${CMAKE_CURRENT_SOURCE_DIR}/highlight/queries/cmake.scm)
-add_ts_grammar(markdown   https://github.com/tree-sitter-grammars/tree-sitter-markdown.git v0.1.7
+add_ts_grammar(markdown   tree-sitter-markdown
                SUBDIR tree-sitter-markdown QUERY tree-sitter-markdown/queries/highlights.scm)
-add_ts_grammar(json       https://github.com/tree-sitter/tree-sitter-json.git       v0.21.0)
+add_ts_grammar(json       tree-sitter-json)
 
 # More languages can be added with an add_ts_grammar line here plus a matching
 # registry entry in language.cc (extension, tree_sitter_<lang> binding, query
