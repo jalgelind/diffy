@@ -1,6 +1,8 @@
 #include "diff_bridge.hpp"
 
+#include "config/config.hpp"
 #include "highlight/highlight_palette.hpp"
+#include "util/color.hpp"
 
 #include <algorithm>
 #include <string>
@@ -14,62 +16,61 @@ shared(const std::string& s) {
     return slint::SharedString(s.c_str());
 }
 
-struct Rgb {
-    uint8_t r, g, b;
-};
-
 slint::Color
-color(Rgb c) {
-    return slint::Color::from_argb_uint8(255, c.r, c.g, c.b);
+rgb(uint8_t r, uint8_t g, uint8_t b) {
+    return slint::Color::from_argb_uint8(255, r, g, b);
 }
 
 slint::Color
-color_a(Rgb c, uint8_t a) {
-    return slint::Color::from_argb_uint8(a, c.r, c.g, c.b);
+transparent() {
+    return slint::Color::from_argb_uint8(0, 0, 0, 0);
 }
 
-// A small, crisp palette. Theme-file colour reuse (16-colour palette -> RGB) is a
-// future enhancement; this gives a clean, readable default for both variants.
-struct Palette {
-    Rgb common_fg;
-    Rgb delete_fg;
-    Rgb delete_token;
-    Rgb insert_fg;
-    Rgb insert_token;
-    Rgb delete_bg;
-    Rgb insert_bg;
-};
-
-Palette
-palette_for(const diffy::GuiSettings& settings) {
-    const bool light = settings.theme_variant == "light";
-    if (light) {
-        return Palette{
-            {0x24, 0x29, 0x2e}, {0x8b, 0x2f, 0x2f}, {0xc0, 0x2a, 0x2a},
-            {0x1f, 0x6f, 0x2f}, {0x18, 0x82, 0x3a}, {0xff, 0xe0, 0xe0}, {0xdc, 0xff, 0xdc},
-        };
+// One ANSI-16 SGR code (30-37/90-97 fg or 40-47/100-107 bg) -> an xterm RGB.
+slint::Color
+ansi16(int code) {
+    static const uint8_t base[8][3] = {{0, 0, 0},     {205, 49, 49},  {13, 188, 121}, {229, 229, 16},
+                                       {36, 114, 200}, {188, 63, 188}, {17, 168, 205}, {229, 229, 229}};
+    static const uint8_t bright[8][3] = {{102, 102, 102}, {241, 76, 76},   {35, 209, 139},
+                                         {245, 245, 67},  {59, 142, 234},  {214, 112, 214},
+                                         {41, 184, 219},  {255, 255, 255}};
+    bool br = (code >= 90 && code <= 97) || (code >= 100 && code <= 107);
+    int idx = code % 10;
+    if (idx > 7) {
+        idx = 7;
     }
-    return Palette{
-        {0xd4, 0xd4, 0xd4}, {0xc9, 0xa0, 0xa0}, {0xf4, 0x87, 0x71},
-        {0xa0, 0xc9, 0xa0}, {0x73, 0xc9, 0x91}, {0xff, 0x33, 0x33}, {0x33, 0xff, 0x33},
-    };
+    const uint8_t* t = br ? bright[idx] : base[idx];
+    return rgb(t[0], t[1], t[2]);
 }
 
+// xterm 256-palette index -> RGB.
 slint::Color
-span_color(const Palette& p, diffy::SpanStyle style) {
-    switch (style) {
-        case diffy::SpanStyle::Delete:
-            return color(p.delete_fg);
-        case diffy::SpanStyle::DeleteToken:
-            return color(p.delete_token);
-        case diffy::SpanStyle::Insert:
-            return color(p.insert_fg);
-        case diffy::SpanStyle::InsertToken:
-            return color(p.insert_token);
-        case diffy::SpanStyle::Common:
-        case diffy::SpanStyle::Meta:
+xterm256(int i) {
+    if (i < 8) return ansi16(30 + i);
+    if (i < 16) return ansi16(90 + (i - 8));
+    if (i >= 232) {
+        uint8_t v = static_cast<uint8_t>(8 + (i - 232) * 10);
+        return rgb(v, v, v);
+    }
+    i -= 16;
+    auto conv = [](int x) -> uint8_t { return x == 0 ? 0 : static_cast<uint8_t>(55 + x * 40); };
+    return rgb(conv(i / 36), conv((i % 36) / 6), conv(i % 6));
+}
+
+// A theme TermColor -> Slint colour. 24-bit carries real RGB; 4-/8-bit carry SGR
+// codes / palette indices in r; the terminal default falls back to `fallback`.
+slint::Color
+to_color(const diffy::TermColor& c, slint::Color fallback) {
+    using K = diffy::TermColor::Kind;
+    switch (c.kind) {
+        case K::Color24bit:
+            return rgb(c.r, c.g, c.b);
+        case K::Color8bit:
+            return xterm256(c.r);
+        case K::Color4bit:
+            return ansi16(c.r);  // r holds the SGR code; its colour family is what we want
         default:
-            return color(p.common_fg);
+            return fallback;  // DefaultColor / Reset / Ignore
     }
 }
 
@@ -79,26 +80,40 @@ is_bold(diffy::SpanStyle style) {
 }
 
 slint::Color
-cell_bg(const Palette& p, const diffy::DiffCell& cell) {
+cell_bg(const GuiTheme& t, const diffy::DiffCell& cell) {
     if (!cell.present) {
-        return slint::Color::from_argb_uint8(0, 0, 0, 0);
+        return transparent();
     }
     switch (cell.type) {
         case diffy::EditType::Delete:
-            return color_a(p.delete_bg, 28);
+            return t.delete_bg;
         case diffy::EditType::Insert:
-            return color_a(p.insert_bg, 28);
+            return t.insert_bg;
         default:
-            return slint::Color::from_argb_uint8(0, 0, 0, 0);
+            return transparent();  // common line -> window background shows through
     }
 }
 
-// Slint's Text has no glyph for a literal tab or other control characters, so
-// they render as "tofu" boxes. Expand tabs to the next tab stop and turn any
-// remaining control characters into a space. `col` tracks the running display
-// column across the spans of a line so tab stops line up. UTF-8 continuation
-// bytes (0x80-0xBF) are copied without advancing the column, so a multi-byte
-// codepoint counts as one column.
+// Foreground for a span: changed tokens keep the theme's add/remove accent (and
+// bold), syntax-highlighted text uses the tree-sitter palette, everything else
+// is the theme's default text colour.
+slint::Color
+span_fg(const GuiTheme& t, const diffy::StyledSpan& s) {
+    if (s.style == diffy::SpanStyle::DeleteToken) {
+        return t.delete_token;
+    }
+    if (s.style == diffy::SpanStyle::InsertToken) {
+        return t.insert_token;
+    }
+    if (s.syntax != diffy::HighlightGroup::None) {
+        const diffy::HlRgb c = diffy::syntax_color(s.syntax, !t.dark);
+        return rgb(c.r, c.g, c.b);
+    }
+    return t.fg;
+}
+
+// Expand tabs / replace control chars (Slint has no glyph for them). `col`
+// tracks the running display column so tab stops line up across spans.
 std::string
 sanitize(const std::string& in, int tab_width, int& col) {
     std::string out;
@@ -119,7 +134,7 @@ sanitize(const std::string& in, int tab_width, int& col) {
             ++i;
         } else {
             out.push_back(static_cast<char>(c));
-            ++col;  // count the leading byte of the codepoint
+            ++col;
             ++i;
             while (i < in.size() && (static_cast<unsigned char>(in[i]) & 0xc0) == 0x80) {
                 out.push_back(in[i]);
@@ -130,29 +145,8 @@ sanitize(const std::string& in, int tab_width, int& col) {
     return out;
 }
 
-// Foreground colour for a span: the tree-sitter syntax colour when the span is
-// highlighted, otherwise the diff-semantic colour. The diff background tint and
-// the bold emphasis on changed tokens are applied separately, so highlighted
-// text still reads as added/removed.
-slint::Color
-span_fg(const Palette& p, const diffy::StyledSpan& s, bool light) {
-    // Changed tokens keep their bright add/remove colour (and bold) so the
-    // word-level diff stays obvious; only the carried-along text on a changed
-    // line is syntax-coloured.
-    if (s.style == diffy::SpanStyle::DeleteToken || s.style == diffy::SpanStyle::InsertToken) {
-        return span_color(p, s.style);
-    }
-    if (s.syntax != diffy::HighlightGroup::None) {
-        const diffy::HlRgb c = diffy::syntax_color(s.syntax, light);
-        return slint::Color::from_argb_uint8(255, c.r, c.g, c.b);
-    }
-    return span_color(p, s.style);
-}
-
-// Build the Slint span list for a cell, report its display width (columns), and
-// accumulate the full line text (used for word-wrap rendering).
 std::shared_ptr<slint::VectorModel<DiffSpan>>
-make_spans(const Palette& p, const diffy::DiffCell& cell, int tab_width, bool light, int& out_width,
+make_spans(const GuiTheme& t, const diffy::DiffCell& cell, int tab_width, int& out_width,
            std::string& out_text) {
     auto spans = std::make_shared<slint::VectorModel<DiffSpan>>();
     int col = 0;
@@ -161,7 +155,7 @@ make_spans(const Palette& p, const diffy::DiffCell& cell, int tab_width, bool li
         std::string piece = sanitize(s.text, tab_width, col);
         out_text += piece;
         d.text = shared(piece);
-        d.color = span_fg(p, s, light);
+        d.color = span_fg(t, s);
         d.bold = is_bold(s.style);
         spans->push_back(d);
     }
@@ -171,11 +165,45 @@ make_spans(const Palette& p, const diffy::DiffCell& cell, int tab_width, bool li
 
 }  // namespace
 
+GuiTheme
+load_gui_theme(const std::string& theme_name) {
+    diffy::ColumnViewCharacters chars;
+    diffy::ColumnViewSettings view;
+    diffy::ColumnViewTextStyle style;
+    diffy::ColumnViewTextStyleEscapeCodes escapes;
+    diffy::config_apply_theme(theme_name, chars, view, style, escapes);
+
+    // Decide light/dark from the background luminance (only known for 24-bit).
+    auto lum = [](const diffy::TermColor& c) -> int {
+        if (c.kind == diffy::TermColor::Kind::Color24bit) {
+            return (2126 * c.r + 7152 * c.g + 722 * c.b) / 10000;
+        }
+        return -1;
+    };
+    const int L = lum(style.background.bg);
+    const bool dark = (L >= 0) ? (L < 128) : true;
+
+    const slint::Color def_bg = dark ? rgb(0x1e, 0x1e, 0x1e) : rgb(0xff, 0xff, 0xff);
+    const slint::Color def_fg = dark ? rgb(0xd4, 0xd4, 0xd4) : rgb(0x24, 0x29, 0x2e);
+
+    GuiTheme t;
+    t.dark = dark;
+    t.bg = to_color(style.background.bg, def_bg);
+    t.panel_bg = t.bg;
+    t.fg = to_color(style.common_line.fg, def_fg);
+    t.gutter_fg = to_color(style.common_line_number.fg, rgb(0x6e, 0x77, 0x81));
+    t.header_bg = to_color(style.header.bg, dark ? rgb(0x2d, 0x2d, 0x30) : rgb(0xdd, 0xf4, 0xff));
+    t.header_fg = to_color(style.header.fg, dark ? rgb(0x9c, 0xdc, 0xfe) : rgb(0x09, 0x69, 0xda));
+    t.accent = t.header_fg;
+    t.delete_bg = to_color(style.delete_line.bg, dark ? rgb(0x3a, 0x20, 0x20) : rgb(0xff, 0xeb, 0xe9));
+    t.insert_bg = to_color(style.insert_line.bg, dark ? rgb(0x20, 0x36, 0x20) : rgb(0xe6, 0xff, 0xec));
+    t.delete_token = to_color(style.delete_line_number.fg, dark ? rgb(0xf4, 0x87, 0x71) : rgb(0xcf, 0x22, 0x2e));
+    t.insert_token = to_color(style.insert_line_number.fg, dark ? rgb(0x73, 0xc9, 0x91) : rgb(0x11, 0x63, 0x29));
+    return t;
+}
+
 RowModel
-build_row_model(const diffy::DiffViewModel& model, const diffy::GuiSettings& settings) {
-    const Palette p = palette_for(settings);
-    const bool light = settings.theme_variant == "light";
-    const int tab_width = static_cast<int>(settings.tab_width);
+build_row_model(const diffy::DiffViewModel& model, const GuiTheme& theme, int tab_width) {
     RowModel result;
     result.rows = std::make_shared<slint::VectorModel<DiffRowData>>();
 
@@ -197,12 +225,12 @@ build_row_model(const diffy::DiffViewModel& model, const diffy::GuiSettings& set
         d.new_no = r.new_lineno ? shared(std::to_string(*r.new_lineno)) : slint::SharedString();
         d.left_present = r.left.present;
         d.right_present = r.right.present;
-        d.left_bg = cell_bg(p, r.left);
-        d.right_bg = cell_bg(p, r.right);
+        d.left_bg = cell_bg(theme, r.left);
+        d.right_bg = cell_bg(theme, r.right);
         int lw = 0, rw = 0;
         std::string lt, rt;
-        d.left_spans = make_spans(p, r.left, tab_width, light, lw, lt);
-        d.right_spans = make_spans(p, r.right, tab_width, light, rw, rt);
+        d.left_spans = make_spans(theme, r.left, tab_width, lw, lt);
+        d.right_spans = make_spans(theme, r.right, tab_width, rw, rt);
         d.left_text = shared(lt);
         d.right_text = shared(rt);
         result.max_cols = std::max(result.max_cols, std::max(lw, rw));

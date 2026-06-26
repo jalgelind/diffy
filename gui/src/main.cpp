@@ -166,6 +166,7 @@ run_selftest(const std::string& repo_path, const GuiSettings& settings) {
 
     // Find the first change that actually has file content to diff (skip
     // directories / empty entries), then run the full pipeline + bridge on it.
+    const auto theme = diffy::gui::load_gui_theme(settings.theme);
     for (const auto& f : files) {
         auto pair = r->diff_workdir_file(f.path);
         if (pair.old_text.empty() && pair.new_text.empty()) {
@@ -177,7 +178,8 @@ run_selftest(const std::string& repo_path, const GuiSettings& settings) {
             l.mode = mode;
             auto vm = build_diff_view_from_text(pair.old_text, pair.new_text, pair.old_name,
                                                 pair.new_name, p, l);
-            auto model = diffy::gui::build_row_model(vm, settings);
+            auto model = diffy::gui::build_row_model(vm, theme,
+                                                     static_cast<int>(settings.tab_width));
             std::fprintf(stderr, "selftest: '%s' (%s) [%s] -> %zu view rows, %d slint rows\n",
                          f.path.c_str(), f.status.c_str(),
                          mode == ViewMode::SideBySide ? "side-by-side" : "unified", vm.rows.size(),
@@ -279,12 +281,17 @@ main(int argc, char** argv) {
 #endif
     backend.set_mono_font(ss(mono));
     backend.set_font_size(static_cast<int>(settings.font_size));
-    if (settings.theme_variant == "light") {
-        backend.set_bg(slint::Color::from_argb_uint8(255, 0xff, 0xff, 0xff));
-        backend.set_panel_bg(slint::Color::from_argb_uint8(255, 0xf3, 0xf3, 0xf3));
-        backend.set_fg(slint::Color::from_argb_uint8(255, 0x24, 0x29, 0x2e));
-        backend.set_gutter_fg(slint::Color::from_argb_uint8(255, 0x8a, 0x8a, 0x8a));
-    }
+
+    // Colours come from the same theme .conf the CLI uses ([gui] theme), so the
+    // GUI matches `diffy`/`git diffy`. Built once (no runtime theme switch yet).
+    const auto gui_theme = diffy::gui::load_gui_theme(settings.theme);
+    backend.set_bg(gui_theme.bg);
+    backend.set_panel_bg(gui_theme.panel_bg);
+    backend.set_fg(gui_theme.fg);
+    backend.set_gutter_fg(gui_theme.gutter_fg);
+    backend.set_accent(gui_theme.accent);
+    backend.set_header_bg(gui_theme.header_bg);
+    backend.set_header_fg(gui_theme.header_fg);
     options.set_side_by_side(settings.view_mode() == ViewMode::SideBySide);
     options.set_show_line_numbers(settings.show_line_numbers);
     options.set_word_wrap(settings.word_wrap);
@@ -330,7 +337,8 @@ main(int argc, char** argv) {
 
         // build_row_model expands tabs and reports the widest line (in display
         // columns), which drives the horizontal scroll extent.
-        auto model = diffy::gui::build_row_model(vm, state.settings);
+        auto model = diffy::gui::build_row_model(vm, gui_theme,
+                                                 static_cast<int>(state.settings.tab_width));
         backend.set_max_cols(model.max_cols);
         backend.set_rows(model.rows);
     };

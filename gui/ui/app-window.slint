@@ -74,6 +74,8 @@ export global Backend {
     in property <color> fg: #d4d4d4;
     in property <color> gutter-fg: #6e7681;
     in property <color> accent: #0e639c;
+    in property <color> header-bg: #2d2d30;
+    in property <color> header-fg: #9cdcfe;
 
     callback open-repo(string);
     callback browse-repo();
@@ -201,12 +203,12 @@ component DiffRow inherits Rectangle {
 
     if rowdata.is-header : Rectangle {
         height: Backend.font-size * 1.6px;
-        background: #2d2d30;
+        background: Backend.header-bg;
         Rectangle { x: 0; width: 3px; background: Backend.accent; }
         Text {
             x: 12px;
             text: rowdata.header;
-            color: #9cdcfe;
+            color: Backend.header-fg;
             font-family: Backend.mono-font;
             font-size: Backend.font-size * 1px;
             vertical-alignment: center;
