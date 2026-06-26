@@ -208,6 +208,9 @@ build_diff_view(const DiffInput<Line>& input,
         header.kind = RowKind::HunkHeader;
         header.header_text = fmt::format("@@ -{},{} +{},{} @@", hunk.from_start + 1, hunk.from_count,
                                          hunk.to_start + 1, hunk.to_count);
+        if (!hunk.context.empty()) {
+            header.header_text += " " + hunk.context;
+        }
         model.rows.push_back(std::move(header));
 
         if (options.mode == ViewMode::SideBySide) {

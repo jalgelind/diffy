@@ -3,6 +3,7 @@
 #include "algorithms/patience.hpp"
 #include "config/config.hpp"
 #include "highlight/language.hpp"
+#include "highlight/scope.hpp"
 #include "highlight/syntax_highlighter.hpp"
 #include "output/column_view.hpp"
 #include "output/unified.hpp"
@@ -424,7 +425,7 @@ Side by side options:
     const int exit_code = hunks.empty() ? 0 : 1;
 
     if (opts.column_view) {
-        const auto& annotated_hunks = annotate_hunks(
+        auto annotated_hunks = annotate_hunks(
             diff_input, hunks,
             opts.line_granularity ? diffy::EditGranularity::Line : diffy::EditGranularity::Token,
             opts.ignore_whitespace);
@@ -451,8 +452,23 @@ Side by side options:
             std::string a_text, b_text;
             for (const auto& l : left_line_data) a_text += l.line;
             for (const auto& l : right_line_data) b_text += l.line;
-            a_hl = diffy::highlight_source(a_text, diffy::language_for_path(opts.left_file_name));
-            b_hl = diffy::highlight_source(b_text, diffy::language_for_path(opts.right_file_name));
+            const auto lang_a = diffy::language_for_path(opts.left_file_name);
+            const auto lang_b = diffy::language_for_path(opts.right_file_name);
+            a_hl = diffy::highlight_source(a_text, lang_a);
+            b_hl = diffy::highlight_source(b_text, lang_b);
+
+            // git-style hunk context: enclosing definition per hunk.
+            const auto a_outline = diffy::scope_outline(a_text, lang_a);
+            const auto b_outline = diffy::scope_outline(b_text, lang_b);
+            for (auto& h : annotated_hunks) {
+                int64_t a_change = -1, b_change = -1;
+                for (const auto& el : h.a_lines)
+                    if (el.type == diffy::EditType::Delete) { a_change = el.line_index; break; }
+                for (const auto& el : h.b_lines)
+                    if (el.type == diffy::EditType::Insert) { b_change = el.line_index; break; }
+                h.context = diffy::hunk_context(a_outline, b_outline, a_change, b_change, h.from_start,
+                                                h.to_start);
+            }
         }
 
         for (const auto& line : diffy::column_view_render_lines(diff_input, annotated_hunks, cv_ui_opts,
@@ -460,7 +476,30 @@ Side by side options:
             puts(line.c_str());
         }
     } else if (opts.unified) {
-        auto unified_lines = diffy::unified_diff_render(diff_input, hunks);
+        // git-style hunk context for the "@@ ... @@" headers.
+        std::vector<std::string> hunk_contexts;
+        if (opts.syntax_highlight) {
+            std::string a_text, b_text;
+            for (const auto& l : left_line_data) a_text += l.line;
+            for (const auto& l : right_line_data) b_text += l.line;
+            const auto a_outline =
+                diffy::scope_outline(a_text, diffy::language_for_path(opts.left_file_name));
+            const auto b_outline =
+                diffy::scope_outline(b_text, diffy::language_for_path(opts.right_file_name));
+            hunk_contexts.reserve(hunks.size());
+            for (const auto& h : hunks) {
+                int64_t a_change = -1, b_change = -1;
+                for (const auto& e : h.edit_units) {
+                    if (a_change < 0 && e.type == diffy::EditType::Delete) a_change = e.a_index;
+                    if (b_change < 0 && e.type == diffy::EditType::Insert) b_change = e.b_index;
+                    if (a_change >= 0 && b_change >= 0) break;
+                }
+                hunk_contexts.push_back(diffy::hunk_context(a_outline, b_outline, a_change, b_change,
+                                                            h.from_start, h.to_start));
+            }
+        }
+        auto unified_lines = diffy::unified_diff_render(
+            diff_input, hunks, hunk_contexts.empty() ? nullptr : &hunk_contexts);
         auto num_lines = unified_lines.size();
         for (auto i = 0u; i < num_lines; i++) {
             const auto& line = unified_lines[i];

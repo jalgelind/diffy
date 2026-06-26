@@ -12,6 +12,7 @@ add_library(diffy_core STATIC
   highlight/highlight_palette.cc
   highlight/language.cc
   highlight/syntax_highlighter.cc
+  highlight/scope.cc
   config/config.cc
   config/repos.cc
   config/gui_config.cc

@@ -776,6 +776,12 @@ column_view_render_streaming(const DiffInput<diffy::Line>& diff_input,
     }
 
     for (const auto& hunk : hunks) {
+        // git-style hunk context: the enclosing definition, shown as a header
+        // line above the hunk. Only emitted when a caller filled it in (e.g. the
+        // CLI after tree-sitter scope analysis), so default output is unchanged.
+        if (!hunk.context.empty()) {
+            emit(config.style.frame + "  " + hunk.context + "\033[0m");
+        }
         emit_columns(make_hunk_columns(diff_input, hunk, config, a_highlights, b_highlights), config,
                      emit);
     }

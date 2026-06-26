@@ -4,6 +4,7 @@
 #include "algorithms/myers_linear.hpp"
 #include "algorithms/patience.hpp"
 #include "highlight/language.hpp"
+#include "highlight/scope.hpp"
 #include "highlight/syntax_highlighter.hpp"
 #include "processing/diff_hunk.hpp"
 #include "processing/tokenizer.hpp"
@@ -79,8 +80,26 @@ compute_annotated_diff(const std::string& a_text,
     // Syntax highlighting: parse each full buffer once; the language is inferred
     // from the file name. Returns empty (no-op) for unknown/oversized/binary.
     if (options.syntax_highlight) {
-        c.a_highlights = highlight_source(a_text, language_for_path(a_name));
-        c.b_highlights = highlight_source(b_text, language_for_path(b_name));
+        const Language lang_a = language_for_path(a_name);
+        const Language lang_b = language_for_path(b_name);
+        c.a_highlights = highlight_source(a_text, lang_a);
+        c.b_highlights = highlight_source(b_text, lang_b);
+
+        // Enclosing-definition label per hunk (git-style "@@ ... @@ funcname").
+        // Prefer the new side; fall back to the old side for pure deletions.
+        const auto a_outline = scope_outline(a_text, lang_a);
+        const auto b_outline = scope_outline(b_text, lang_b);
+        for (auto& h : c.hunks) {
+            int64_t a_change = -1, b_change = -1;
+            for (const auto& el : h.a_lines) {
+                if (el.type == EditType::Delete) { a_change = el.line_index; break; }
+            }
+            for (const auto& el : h.b_lines) {
+                if (el.type == EditType::Insert) { b_change = el.line_index; break; }
+            }
+            h.context =
+                hunk_context(a_outline, b_outline, a_change, b_change, h.from_start, h.to_start);
+        }
     }
     return c;
 }

@@ -47,7 +47,9 @@ get_file_timestamp(const std::string& path, char timestamp[256]) {
 }  // namespace
 
 std::vector<std::string>
-diffy::unified_diff_render(const DiffInput<Line>& diff_input, const std::vector<Hunk>& hunks) {
+diffy::unified_diff_render(const DiffInput<Line>& diff_input,
+                           const std::vector<Hunk>& hunks,
+                           const std::vector<std::string>* hunk_contexts) {
     std::vector<std::string> udiff;
 
     char timestamp[2][256];
@@ -70,9 +72,14 @@ diffy::unified_diff_render(const DiffInput<Line>& diff_input, const std::vector<
         return fmt::format("{},{}", start, count);
     };
 
-    for (const auto& hunk : hunks) {
-        udiff.push_back(fmt::format("@@ -{} +{} @@\n", format_change(hunk.from_start, hunk.from_count),
-                                    format_change(hunk.to_start, hunk.to_count)));
+    for (size_t hi = 0; hi < hunks.size(); ++hi) {
+        const auto& hunk = hunks[hi];
+        std::string ctx;
+        if (hunk_contexts && hi < hunk_contexts->size() && !(*hunk_contexts)[hi].empty()) {
+            ctx = " " + (*hunk_contexts)[hi];
+        }
+        udiff.push_back(fmt::format("@@ -{} +{} @@{}\n", format_change(hunk.from_start, hunk.from_count),
+                                    format_change(hunk.to_start, hunk.to_count), ctx));
         for (const auto& e : hunk.edit_units) {
             std::string& text = e.a_index.valid ? diff_input.A[static_cast<long>(e.a_index)].line
                                                 : diff_input.B[static_cast<long>(e.b_index)].line;

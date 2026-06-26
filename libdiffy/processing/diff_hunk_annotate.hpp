@@ -39,6 +39,11 @@ struct AnnotatedHunk {
 
     std::vector<EditLine> a_lines;
     std::vector<EditLine> b_lines;
+
+    // Optional "what this hunk is inside" label (e.g. the enclosing function),
+    // filled by callers that run tree-sitter scope analysis. Empty by default,
+    // so renderers that show it stay byte-identical when it isn't computed.
+    std::string context;
 };
 
 enum class EditGranularity {
