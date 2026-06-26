@@ -42,8 +42,23 @@ language_for_path(std::string_view path) {
         {".tsx", Language::Tsx},
         {".html", Language::Html}, {".htm", Language::Html},
         {".css", Language::Css},
+        {".lua", Language::Lua},
+        {".toml", Language::Toml},
+        {".cmake", Language::Cmake},
+        {".md", Language::Markdown}, {".markdown", Language::Markdown},
         {".json", Language::Json},
     };
+    // Languages identified by filename rather than extension.
+    static const std::unordered_map<std::string, Language> by_name = {
+        {"cmakelists.txt", Language::Cmake},
+    };
+    namespace fs = std::filesystem;
+    std::string fname = fs::path(std::string(path)).filename().string();
+    std::transform(fname.begin(), fname.end(), fname.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (auto it = by_name.find(fname); it != by_name.end()) {
+        return it->second;
+    }
     auto it = by_ext.find(lower_ext(path));
     return it == by_ext.end() ? Language::None : it->second;
 }
@@ -69,6 +84,10 @@ const TSLanguage* tree_sitter_typescript(void);
 const TSLanguage* tree_sitter_tsx(void);
 const TSLanguage* tree_sitter_html(void);
 const TSLanguage* tree_sitter_css(void);
+const TSLanguage* tree_sitter_lua(void);
+const TSLanguage* tree_sitter_toml(void);
+const TSLanguage* tree_sitter_cmake(void);
+const TSLanguage* tree_sitter_markdown(void);
 const TSLanguage* tree_sitter_json(void);
 }
 
@@ -100,6 +119,10 @@ ts_language_for(Language lang) {
         case Language::Tsx:        return tree_sitter_tsx();
         case Language::Html:       return tree_sitter_html();
         case Language::Css:        return tree_sitter_css();
+        case Language::Lua:        return tree_sitter_lua();
+        case Language::Toml:       return tree_sitter_toml();
+        case Language::Cmake:      return tree_sitter_cmake();
+        case Language::Markdown:   return tree_sitter_markdown();
         case Language::Json:       return tree_sitter_json();
         default:                   return nullptr;
     }
@@ -125,6 +148,10 @@ query_chain(Language lang) {
         case Language::Tsx:        return {"javascript", "tsx"};         // TSX inherits JS
         case Language::Html:       return {"html"};
         case Language::Css:        return {"css"};
+        case Language::Lua:        return {"lua"};
+        case Language::Toml:       return {"toml"};
+        case Language::Cmake:      return {"cmake"};
+        case Language::Markdown:   return {"markdown"};
         case Language::Json:       return {"json"};
         default:                   return {};
     }

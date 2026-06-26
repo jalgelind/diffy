@@ -20,7 +20,7 @@ enable_language(C)
 # skips the repo's own CMakeLists); we compile the amalgamation ourselves.
 FetchContent_Declare(treesitter
   GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter.git
-  GIT_TAG v0.22.6
+  GIT_TAG v0.25.0
   GIT_SHALLOW TRUE
   SOURCE_SUBDIR __diffy_skip__)
 FetchContent_MakeAvailable(treesitter)
@@ -45,7 +45,9 @@ target_link_libraries(diffy_ts_grammars INTERFACE tree-sitter)
 set_property(GLOBAL PROPERTY DIFFY_TS_QUERIES "")
 
 function(add_ts_grammar lang repo tag)
-  cmake_parse_arguments(G "" "SUBDIR;QUERY" "" ${ARGN})
+  # LOCAL_QUERY: use a highlights query we ship (for grammars that bundle none),
+  # given as an absolute path. QUERY: a path relative to the grammar repo.
+  cmake_parse_arguments(G "" "SUBDIR;QUERY;LOCAL_QUERY" "" ${ARGN})
 
   FetchContent_Declare(ts_${lang}
     GIT_REPOSITORY ${repo}
@@ -79,7 +81,9 @@ function(add_ts_grammar lang repo tag)
   endif()
   target_link_libraries(diffy_ts_grammars INTERFACE ts_${lang})
 
-  if(G_QUERY)
+  if(G_LOCAL_QUERY)
+    set(qpath ${G_LOCAL_QUERY})
+  elseif(G_QUERY)
     set(qpath ${root}/${G_QUERY})
   else()
     set(qpath ${root}/queries/highlights.scm)
@@ -121,11 +125,15 @@ add_ts_grammar(bash       https://github.com/tree-sitter/tree-sitter-bash.git   
 add_ts_grammar(c_sharp    https://github.com/tree-sitter/tree-sitter-c-sharp.git    v0.21.3)
 add_ts_grammar(html       https://github.com/tree-sitter/tree-sitter-html.git       v0.20.3)
 add_ts_grammar(css        https://github.com/tree-sitter/tree-sitter-css.git        v0.21.0)
+add_ts_grammar(lua        https://github.com/tree-sitter-grammars/tree-sitter-lua.git v0.2.0)
+add_ts_grammar(toml       https://github.com/ikatyang/tree-sitter-toml.git          v0.5.1)
+add_ts_grammar(cmake      https://github.com/uyha/tree-sitter-cmake.git             v0.5.0
+               LOCAL_QUERY ${CMAKE_CURRENT_SOURCE_DIR}/highlight/queries/cmake.scm)
+add_ts_grammar(markdown   https://github.com/tree-sitter-grammars/tree-sitter-markdown.git v0.1.7
+               SUBDIR tree-sitter-markdown QUERY tree-sitter-markdown/queries/highlights.scm)
 add_ts_grammar(json       https://github.com/tree-sitter/tree-sitter-json.git       v0.21.0)
 
-# Deferred (tasks #31/#32): PHP, Lua, Kotlin, Swift, YAML, TOML, Markdown, SQL,
-# CMake, Dockerfile. These live in third-party orgs whose tags/ABIs need
-# verifying against the bundled runtime before pinning — add_ts_grammar lines
-# go here, plus matching registry entries in language.cc.
+# Deferred: PHP, Kotlin, Swift, YAML, SQL, Dockerfile — add_ts_grammar lines go
+# here plus matching registry entries in language.cc, once tags are verified.
 
 finalize_ts_queries(${CMAKE_CURRENT_BINARY_DIR}/ts_queries_generated.cc)

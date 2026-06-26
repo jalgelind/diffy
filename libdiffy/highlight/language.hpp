@@ -30,6 +30,10 @@ enum class Language {
     Tsx,
     Html,
     Css,
+    Lua,
+    Toml,
+    Cmake,
+    Markdown,
     Json,
     // (expanded in the grammar tasks — see treesitter.cmake "Deferred")
 };

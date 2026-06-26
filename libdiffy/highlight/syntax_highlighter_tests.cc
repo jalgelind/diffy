@@ -87,6 +87,9 @@ TEST_CASE("each bundled grammar parses and highlights") {
         {"c_sharp", Language::CSharp, "// hi\nclass A { int X = 1; }\n"},
         {"html", Language::Html, "<!-- hi -->\n<div class=\"x\">y</div>\n"},
         {"css", Language::Css, "/* hi */\na { color: red; }\n"},
+        {"lua", Language::Lua, "-- hi\nlocal x = 1\n"},
+        {"toml", Language::Toml, "# hi\nkey = 1\n"},
+        {"cmake", Language::Cmake, "# hi\nset(MY_VAR 1)\n"},
     };
     for (const auto& s : samples) {
         CAPTURE(s.name);
@@ -105,6 +108,18 @@ TEST_CASE("each bundled grammar parses and highlights") {
         CHECK(total_runs > 0);
         CHECK(comment);
     }
+}
+
+TEST_CASE("markdown highlights (no line-comment syntax)") {
+    if (!highlighting_available()) {
+        return;
+    }
+    auto lines = highlight_source("# Heading\n\nsome **bold** text\n", Language::Markdown);
+    int total = 0;
+    for (const auto& line : lines) {
+        total += static_cast<int>(line.size());
+    }
+    CHECK(total > 0);  // grammar loaded and the query matched something
 }
 
 TEST_CASE("unknown language yields no highlights") {
