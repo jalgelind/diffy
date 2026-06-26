@@ -255,7 +255,9 @@ main(int argc, char** argv) {
     // layout-only refresh: reuse the cached annotated hunks
     auto relayout = [&]() {
         auto input = state.computation.input();
-        auto vm = build_diff_view(input, state.computation.hunks, layout_opts());
+        auto vm = build_diff_view(input, state.computation.hunks, layout_opts(),
+                                  &state.computation.a_highlights,
+                                  &state.computation.b_highlights);
 
         // build_row_model expands tabs and reports the widest line (in display
         // columns), which drives the horizontal scroll extent.

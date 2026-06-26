@@ -8,6 +8,10 @@ add_library(diffy_core STATIC
   output/column_view.cc
   render/diff_view_model.cc
   render/diff_pipeline.cc
+  highlight/highlight_group.cc
+  highlight/highlight_palette.cc
+  highlight/language.cc
+  highlight/syntax_highlighter.cc
   config/config.cc
   config/repos.cc
   config/gui_config.cc
@@ -30,3 +34,13 @@ target_link_libraries(diffy_core
     crc32c
     config_parser
     platform_folders)
+
+# Syntax highlighting via tree-sitter (fetched + built from source). Optional so
+# the core can build without a network / for minimal builds.
+option(DIFFY_ENABLE_HIGHLIGHT "Build syntax highlighting (tree-sitter)" ON)
+if(DIFFY_ENABLE_HIGHLIGHT)
+  include(${CMAKE_CURRENT_SOURCE_DIR}/highlight/treesitter.cmake)
+  target_sources(diffy_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/ts_queries_generated.cc)
+  target_link_libraries(diffy_core PUBLIC diffy_ts_grammars)
+  target_compile_definitions(diffy_core PUBLIC DIFFY_ENABLE_HIGHLIGHT=1)
+endif()

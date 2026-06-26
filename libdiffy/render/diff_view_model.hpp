@@ -14,6 +14,8 @@
 */
 
 #include "algorithms/algorithm.hpp"
+#include "highlight/highlight_group.hpp"
+#include "highlight/syntax_highlighter.hpp"
 #include "processing/diff_hunk_annotate.hpp"
 #include "util/readlines.hpp"
 
@@ -42,6 +44,7 @@ enum class SpanStyle {
 struct StyledSpan {
     std::string text;
     SpanStyle style = SpanStyle::Common;
+    HighlightGroup syntax = HighlightGroup::None;  // tree-sitter highlight, if any
 };
 
 struct DiffCell {
@@ -71,6 +74,7 @@ struct DiffPipelineOptions {
     EditGranularity granularity = EditGranularity::Token;
     bool ignore_whitespace = false;
     bool ignore_line_endings = false;
+    bool syntax_highlight = true;  // run tree-sitter highlighting when available
 };
 
 // Options that only change presentation: flipping one only re-runs build_diff_view.
@@ -84,9 +88,14 @@ struct DiffViewModel {
 };
 
 // Pure: lays out already-annotated hunks into the chosen view. No I/O.
+// When per-line syntax highlights are supplied (a_highlights for the A/old
+// side, b_highlights for the B/new side), spans are additionally split at
+// syntax boundaries and tagged with their HighlightGroup.
 DiffViewModel
 build_diff_view(const DiffInput<Line>& input,
                 const std::vector<AnnotatedHunk>& hunks,
-                const DiffLayoutOptions& options);
+                const DiffLayoutOptions& options,
+                const LineHighlights* a_highlights = nullptr,
+                const LineHighlights* b_highlights = nullptr);
 
 }  // namespace diffy

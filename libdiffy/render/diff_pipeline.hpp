@@ -25,6 +25,8 @@ struct DiffComputation {
     std::string b_name;
     std::vector<AnnotatedHunk> hunks;
     DiffResultStatus status = DiffResultStatus::Failed;
+    LineHighlights a_highlights;  // per-line syntax runs for the old side (may be empty)
+    LineHighlights b_highlights;  // per-line syntax runs for the new side (may be empty)
 
     DiffInput<Line>
     input() {

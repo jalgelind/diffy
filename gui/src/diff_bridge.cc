@@ -1,5 +1,7 @@
 #include "diff_bridge.hpp"
 
+#include "highlight/highlight_palette.hpp"
+
 #include <algorithm>
 #include <string>
 
@@ -128,15 +130,28 @@ sanitize(const std::string& in, int tab_width, int& col) {
     return out;
 }
 
+// Foreground colour for a span: the tree-sitter syntax colour when the span is
+// highlighted, otherwise the diff-semantic colour. The diff background tint and
+// the bold emphasis on changed tokens are applied separately, so highlighted
+// text still reads as added/removed.
+slint::Color
+span_fg(const Palette& p, const diffy::StyledSpan& s, bool light) {
+    if (s.syntax != diffy::HighlightGroup::None) {
+        const diffy::HlRgb c = diffy::syntax_color(s.syntax, light);
+        return slint::Color::from_argb_uint8(255, c.r, c.g, c.b);
+    }
+    return span_color(p, s.style);
+}
+
 // Build the Slint span list for a cell and report its display width (columns).
 std::shared_ptr<slint::VectorModel<DiffSpan>>
-make_spans(const Palette& p, const diffy::DiffCell& cell, int tab_width, int& out_width) {
+make_spans(const Palette& p, const diffy::DiffCell& cell, int tab_width, bool light, int& out_width) {
     auto spans = std::make_shared<slint::VectorModel<DiffSpan>>();
     int col = 0;
     for (const auto& s : cell.spans) {
         DiffSpan d;
         d.text = shared(sanitize(s.text, tab_width, col));
-        d.color = span_color(p, s.style);
+        d.color = span_fg(p, s, light);
         d.bold = is_bold(s.style);
         spans->push_back(d);
     }
@@ -149,6 +164,7 @@ make_spans(const Palette& p, const diffy::DiffCell& cell, int tab_width, int& ou
 RowModel
 build_row_model(const diffy::DiffViewModel& model, const diffy::GuiSettings& settings) {
     const Palette p = palette_for(settings);
+    const bool light = settings.theme_variant == "light";
     const int tab_width = static_cast<int>(settings.tab_width);
     RowModel result;
     result.rows = std::make_shared<slint::VectorModel<DiffRowData>>();
@@ -174,8 +190,8 @@ build_row_model(const diffy::DiffViewModel& model, const diffy::GuiSettings& set
         d.left_bg = cell_bg(p, r.left);
         d.right_bg = cell_bg(p, r.right);
         int lw = 0, rw = 0;
-        d.left_spans = make_spans(p, r.left, tab_width, lw);
-        d.right_spans = make_spans(p, r.right, tab_width, rw);
+        d.left_spans = make_spans(p, r.left, tab_width, light, lw);
+        d.right_spans = make_spans(p, r.right, tab_width, light, rw);
         result.max_cols = std::max(result.max_cols, std::max(lw, rw));
         result.rows->push_back(d);
     }

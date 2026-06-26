@@ -3,6 +3,8 @@
 #include "algorithms/myers_greedy.hpp"
 #include "algorithms/myers_linear.hpp"
 #include "algorithms/patience.hpp"
+#include "highlight/language.hpp"
+#include "highlight/syntax_highlighter.hpp"
 #include "processing/diff_hunk.hpp"
 #include "processing/tokenizer.hpp"
 
@@ -73,6 +75,13 @@ compute_annotated_diff(const std::string& a_text,
 
     auto hunks = compose_hunks(result.edit_sequence, options.context_lines);
     c.hunks = annotate_hunks(input, hunks, options.granularity, options.ignore_whitespace);
+
+    // Syntax highlighting: parse each full buffer once; the language is inferred
+    // from the file name. Returns empty (no-op) for unknown/oversized/binary.
+    if (options.syntax_highlight) {
+        c.a_highlights = highlight_source(a_text, language_for_path(a_name));
+        c.b_highlights = highlight_source(b_text, language_for_path(b_name));
+    }
     return c;
 }
 
@@ -87,7 +96,8 @@ build_diff_view_from_text(const std::string& a_text,
     DiffComputation c =
         compute_annotated_diff(a_text, b_text, a_name, b_name, pipeline_options);
     auto input = c.input();
-    DiffViewModel model = build_diff_view(input, c.hunks, layout_options);
+    DiffViewModel model =
+        build_diff_view(input, c.hunks, layout_options, &c.a_highlights, &c.b_highlights);
     if (out_computation) {
         *out_computation = std::move(c);
     }
