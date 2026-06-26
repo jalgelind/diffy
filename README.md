@@ -67,8 +67,9 @@ The GUI colours the span foreground while keeping the add/remove backgrounds; th
 CLI emits truecolor foreground escapes (which carry no display width, so column
 alignment is unaffected).
 
-The language is detected from the file's extension. Supported today: C, C++, Go,
-Rust, Java, C#, Python, Ruby, Bash, JavaScript, TypeScript, TSX, HTML, CSS, JSON.
+The language is detected from the file's extension (and a few filenames like
+`CMakeLists.txt`). Supported today: C, C++, Go, Rust, Java, C#, Python, Ruby,
+Bash, JavaScript, TypeScript, TSX, HTML, CSS, Lua, TOML, CMake, Markdown, JSON.
 
 - **Toggle:** GUI — the "Syntax" checkbox in the option bar (persisted in
   `[gui] syntax_highlight`); CLI — `--no-highlight`.
@@ -76,8 +77,9 @@ Rust, Java, C#, Python, Ruby, Bash, JavaScript, TypeScript, TSX, HTML, CSS, JSON
   line in `libdiffy/highlight/treesitter.cmake` and a registry entry
   (`language.cc`: extension, `tree_sitter_<lang>` binding, query chain). Grammars
   are fetched with `FetchContent` (pinned) and their `highlights.scm` is baked
-  into the binary; pin tags from the tree-sitter 0.21/0.22 era for language-ABI
-  compatibility with the bundled runtime.
+  into the binary. The bundled tree-sitter runtime is 0.25 (language ABI 13–15),
+  so most current grammar releases work. For a grammar that ships no query, pass
+  `LOCAL_QUERY <path>` to point at one shipped under `highlight/queries/`.
 - Disable the whole feature (and the grammar fetches) with
   `-DDIFFY_ENABLE_HIGHLIGHT=OFF`. Buffers above a size cap, binary content, and
   unknown languages render unhighlighted.
@@ -102,15 +104,19 @@ easiest via vcpkg (`vcpkg install libgit2 pkgconf`, then set `VCPKG_ROOT`).
 Run `build-windows.cmd help` for all options.
 
 
-Build (Meson — CLI only)
-------------------------
+Build (Make — Unix/WSL convenience)
+-----------------------------------
 
-The Meson build is kept for the terminal tool so `make` keeps working; it does
-not build the GUI.
+A thin `Makefile` wraps the CMake build above so a plain `make` works in a
+POSIX shell. It builds the CLI (`diffy`) and tests into `build-linux/`, separate
+from the Windows/MSVC tree in `out/`. The GUI is gated behind `gui*` targets
+(it also needs cargo + libgit2).
 
-    $ make debug      # -> out/debug/diffy
-    $ make release
-    $ make test
+    $ make            # debug CLI + tests  -> build-linux/debug/cli/diffy
+    $ make release    # release            -> build-linux/release/cli/diffy
+    $ make test       # build + ctest
+    $ make gui        # build diffy-gui (needs cargo + libgit2)
+    $ make clean
 
 
 Configuration

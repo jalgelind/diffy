@@ -1,6 +1,7 @@
 .vscode
 out/
 build/
+build-linux/
 build-gui*/
 tests/_test_runner
 .ccls-cache/
