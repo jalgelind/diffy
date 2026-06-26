@@ -136,6 +136,12 @@ sanitize(const std::string& in, int tab_width, int& col) {
 // text still reads as added/removed.
 slint::Color
 span_fg(const Palette& p, const diffy::StyledSpan& s, bool light) {
+    // Changed tokens keep their bright add/remove colour (and bold) so the
+    // word-level diff stays obvious; only the carried-along text on a changed
+    // line is syntax-coloured.
+    if (s.style == diffy::SpanStyle::DeleteToken || s.style == diffy::SpanStyle::InsertToken) {
+        return span_color(p, s.style);
+    }
     if (s.syntax != diffy::HighlightGroup::None) {
         const diffy::HlRgb c = diffy::syntax_color(s.syntax, light);
         return slint::Color::from_argb_uint8(255, c.r, c.g, c.b);
