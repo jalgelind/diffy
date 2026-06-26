@@ -22,19 +22,25 @@ if(NOT Slint_FOUND)
   FetchContent_MakeAvailable(Slint)
 endif()
 
-# libgit2: prefer its CMake package config (this is what vcpkg ships, and it
-# avoids needing pkg-config on Windows). Fall back to pkg-config for distro /
-# Homebrew installs that only provide a .pc file.
-find_package(libgit2 CONFIG QUIET)
-if(libgit2_FOUND)
-  # The exported target name has varied across versions (vcpkg ships
-  # libgit2::libgit2package); pick whichever this install provides.
-  foreach(_cand libgit2::libgit2package libgit2::libgit2 libgit2)
-    if(TARGET ${_cand})
-      set(DIFFY_LIBGIT2_TARGET ${_cand})
-      break()
-    endif()
-  endforeach()
+# libgit2: on Windows prefer its CMake package config (what vcpkg ships, and it
+# avoids needing pkg-config there). On Unix/macOS prefer pkg-config — Homebrew's
+# libgit2 CMake config bakes absolute SDK paths recorded on the brew build host
+# (e.g. .../CommandLineTools/SDKs/MacOSX26.sdk/usr/lib/libz.tbd) that don't exist
+# when the active toolchain is Xcode, breaking the link. pkg-config yields a
+# clean `-lgit2` instead.
+set(DIFFY_LIBGIT2_TARGET "")
+if(WIN32)
+  find_package(libgit2 CONFIG QUIET)
+  if(libgit2_FOUND)
+    # The exported target name has varied across versions (vcpkg ships
+    # libgit2::libgit2package); pick whichever this install provides.
+    foreach(_cand libgit2::libgit2package libgit2::libgit2 libgit2)
+      if(TARGET ${_cand})
+        set(DIFFY_LIBGIT2_TARGET ${_cand})
+        break()
+      endif()
+    endforeach()
+  endif()
 endif()
 if(NOT DIFFY_LIBGIT2_TARGET)
   find_package(PkgConfig REQUIRED)
