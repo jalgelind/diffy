@@ -133,7 +133,8 @@ add_ts_grammar(markdown   https://github.com/tree-sitter-grammars/tree-sitter-ma
                SUBDIR tree-sitter-markdown QUERY tree-sitter-markdown/queries/highlights.scm)
 add_ts_grammar(json       https://github.com/tree-sitter/tree-sitter-json.git       v0.21.0)
 
-# Deferred: PHP, Kotlin, Swift, YAML, SQL, Dockerfile — add_ts_grammar lines go
-# here plus matching registry entries in language.cc, once tags are verified.
+# More languages can be added with an add_ts_grammar line here plus a matching
+# registry entry in language.cc (extension, tree_sitter_<lang> binding, query
+# chain). Use LOCAL_QUERY for grammars that ship no highlights.scm.
 
 finalize_ts_queries(${CMAKE_CURRENT_BINARY_DIR}/ts_queries_generated.cc)
