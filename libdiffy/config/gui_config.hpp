@@ -22,6 +22,7 @@ struct GuiSettings {
     int64_t font_size = 13;
     bool word_wrap = true;
     bool show_line_numbers = true;
+    bool syntax_highlight = true;  // tree-sitter syntax highlighting in the diff
     int64_t tab_width = 4;
     int64_t window_width = 1280;
     int64_t window_height = 800;

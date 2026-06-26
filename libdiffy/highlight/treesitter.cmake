@@ -119,6 +119,8 @@ add_ts_grammar(tsx        https://github.com/tree-sitter/tree-sitter-typescript.
 add_ts_grammar(ruby       https://github.com/tree-sitter/tree-sitter-ruby.git       v0.21.0)
 add_ts_grammar(bash       https://github.com/tree-sitter/tree-sitter-bash.git       v0.21.0)
 add_ts_grammar(c_sharp    https://github.com/tree-sitter/tree-sitter-c-sharp.git    v0.21.3)
+add_ts_grammar(html       https://github.com/tree-sitter/tree-sitter-html.git       v0.20.3)
+add_ts_grammar(css        https://github.com/tree-sitter/tree-sitter-css.git        v0.21.0)
 add_ts_grammar(json       https://github.com/tree-sitter/tree-sitter-json.git       v0.21.0)
 
 finalize_ts_queries(${CMAKE_CURRENT_BINARY_DIR}/ts_queries_generated.cc)

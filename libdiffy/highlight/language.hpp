@@ -28,6 +28,8 @@ enum class Language {
     JavaScript,
     TypeScript,
     Tsx,
+    Html,
+    Css,
     Json,
     // (expanded in the grammar tasks)
 };

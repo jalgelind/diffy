@@ -20,6 +20,7 @@ libdiffy/        backend-agnostic diff engine (no terminal, no GUI, no git)
   processing/      tokenizer, hunk composition + annotation
   render/          DiffViewModel + build_diff_view (styled spans, both layouts)
                    diff_pipeline (text in -> annotated hunks / view model out)
+  highlight/       tree-sitter syntax highlighting (groups, palette, grammars)
   config/          diffy.conf parsing, themes, [gui] settings, repos.conf
   util/            readlines, utf8, hashing, colour values
 cli/             the `diffy` terminal app (getopt, tty, ANSI output)
@@ -51,7 +52,38 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDIFFY_BUILD_GUI=ON
 ninja -C build diffy-gui
 ```
 
-Options: `DIFFY_BUILD_CLI` (ON), `DIFFY_BUILD_GUI` (OFF), `DIFFY_BUILD_TESTS` (ON).
+Options: `DIFFY_BUILD_CLI` (ON), `DIFFY_BUILD_GUI` (OFF), `DIFFY_BUILD_TESTS` (ON),
+`DIFFY_ENABLE_HIGHLIGHT` (ON).
+
+
+Syntax highlighting
+-------------------
+
+Diffs are syntax-highlighted with [tree-sitter](https://tree-sitter.github.io/).
+Highlighting is a second dimension layered on top of the diff: the engine parses
+each whole buffer once (in `libdiffy/highlight/`), maps tree-sitter captures to a
+small set of `HighlightGroup`s, and splits the diff spans at syntax boundaries.
+The GUI colours the span foreground while keeping the add/remove backgrounds; the
+CLI emits truecolor foreground escapes (which carry no display width, so column
+alignment is unaffected).
+
+The language is detected from the file's extension. Supported today: C, C++, Go,
+Rust, Java, C#, Python, Ruby, Bash, JavaScript, TypeScript, TSX, HTML, CSS, JSON.
+
+- **Toggle:** GUI — the "Syntax" checkbox in the option bar (persisted in
+  `[gui] syntax_highlight`); CLI — `--no-highlight`.
+- **Add a language:** add one `add_ts_grammar(<lang> <repo> <tag> [SUBDIR ..])`
+  line in `libdiffy/highlight/treesitter.cmake` and a registry entry
+  (`language.cc`: extension, `tree_sitter_<lang>` binding, query chain). Grammars
+  are fetched with `FetchContent` (pinned) and their `highlights.scm` is baked
+  into the binary; pin tags from the tree-sitter 0.21/0.22 era for language-ABI
+  compatibility with the bundled runtime.
+- Disable the whole feature (and the grammar fetches) with
+  `-DDIFFY_ENABLE_HIGHLIGHT=OFF`. Buffers above a size cap, binary content, and
+  unknown languages render unhighlighted.
+
+Note: with `build-windows.cmd`, adding grammars needs an explicit `reconfigure`
+(the incremental build doesn't re-run CMake on a `treesitter.cmake` edit).
 
 
 Build (Windows)

@@ -2,6 +2,7 @@
 
 #include "algorithms/algorithm.hpp"
 #include "config/config.hpp"
+#include "highlight/syntax_highlighter.hpp"
 #include "processing/diff_hunk.hpp"
 #include "processing/diff_hunk_annotate.hpp"
 #include "util/readlines.hpp"
@@ -32,6 +33,8 @@ column_view_render_lines(const DiffInput<diffy::Line>& diff_input,
                          const std::vector<AnnotatedHunk>& hunks,
                          ColumnViewState& config,
                          const diffy::ProgramOptions& options,
-                         int64_t width);
+                         int64_t width,
+                         const LineHighlights* a_highlights = nullptr,
+                         const LineHighlights* b_highlights = nullptr);
 
 }  // namespace diffy

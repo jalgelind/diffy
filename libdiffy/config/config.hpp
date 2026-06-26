@@ -26,6 +26,7 @@ struct ProgramOptions {
 
     bool ignore_line_endings = false;
     bool ignore_whitespace = false;
+    bool syntax_highlight = true;  // tree-sitter syntax highlighting (--no-highlight)
 
     std::string left_file;
     std::string right_file;

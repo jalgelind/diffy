@@ -1,5 +1,6 @@
 #include "column_view.hpp"
 
+#include "highlight/highlight_palette.hpp"
 #include "processing/diff_hunk.hpp"
 #include "processing/diff_hunk_annotate.hpp"
 #include "util/utf8decode.hpp"
@@ -48,7 +49,63 @@ struct DisplayLineSegment {
     int64_t text_len;
     TokenFlag flags;
     EditType type;
+    HighlightGroup syntax = HighlightGroup::None;
 };
+
+// Truecolor SGR foreground for a syntax group (dark palette). Empty for None.
+// Escapes carry no display width, so adding them never disturbs alignment.
+std::string
+syntax_fg(HighlightGroup group) {
+    if (group == HighlightGroup::None) {
+        return "";
+    }
+    const HlRgb c = syntax_color(group, /*light=*/false);
+    return fmt::format("\033[38;2;{};{};{}m", c.r, c.g, c.b);
+}
+
+// Append `text` (whose first byte sits at line column `base_col`) to `out`,
+// split at the boundaries of the line's syntax-highlight runs so each piece
+// carries one HighlightGroup. With no runs it appends a single None segment.
+void
+push_text_segments(std::vector<DisplayLineSegment>& out,
+                   const std::string& text,
+                   uint32_t base_col,
+                   TokenFlag flags,
+                   EditType type,
+                   const std::vector<HighlightRun>* runs) {
+    auto emit = [&](uint32_t a, uint32_t b, HighlightGroup g) {
+        if (b <= a) {
+            return;
+        }
+        std::string piece = text.substr(a - base_col, b - a);
+        out.push_back({piece, utf8_len(piece), flags, type, g});
+    };
+    if (!runs) {
+        emit(base_col, base_col + static_cast<uint32_t>(text.size()), HighlightGroup::None);
+        return;
+    }
+    const uint32_t seg_start = base_col;
+    const uint32_t seg_end = base_col + static_cast<uint32_t>(text.size());
+    uint32_t pos = seg_start;
+    for (const auto& r : *runs) {
+        if (r.end <= seg_start) {
+            continue;
+        }
+        if (r.start >= seg_end) {
+            break;
+        }
+        const uint32_t rs = r.start > seg_start ? r.start : seg_start;
+        const uint32_t re = r.end < seg_end ? r.end : seg_end;
+        if (rs > pos) {
+            emit(pos, rs, HighlightGroup::None);
+        }
+        emit(rs, re, r.group);
+        pos = re;
+    }
+    if (pos < seg_end) {
+        emit(pos, seg_end, HighlightGroup::None);
+    }
+}
 
 struct DisplayLine {
     std::vector<DisplayLineSegment> segments;
@@ -146,13 +203,15 @@ make_display_line_wrapped(const DisplayLine& input_line, int64_t limit) {
 DisplayLine
 transform_edit_line(const gsl::span<diffy::Line>& content_strings,
                     const EditLine& edit_line,
-                    const ColumnViewState& config) {
+                    const ColumnViewState& config,
+                    const std::vector<HighlightRun>* runs) {
     DisplayLine display_line;
     display_line.line_number = static_cast<int>(edit_line.line_index + 1);
     display_line.type = edit_line.type;
 
     for (const auto& segment : edit_line.segments) {
         std::string text;
+        bool plain = false;  // verbatim source text (eligible for syntax splitting)
         if (segment.type != EditType::Common) {
             if (segment.flags & TokenFlagTab) {
                 for (size_t i = 0; i < segment.length; i++)
@@ -172,6 +231,7 @@ transform_edit_line(const gsl::span<diffy::Line>& content_strings,
             } else {
                 auto idx = static_cast<long>(edit_line.line_index);
                 text = content_strings[idx].line.substr(segment.start, segment.length);
+                plain = true;
             }
         } else {
             if (segment.flags & TokenFlagTab) {
@@ -189,15 +249,24 @@ transform_edit_line(const gsl::span<diffy::Line>& content_strings,
             } else {
                 auto idx = static_cast<long>(edit_line.line_index);
                 text = content_strings[idx].line.substr(segment.start, segment.length);
+                plain = true;
             }
         }
 
-        display_line.segments.push_back({
-            text,
-            utf8_len(text),
-            segment.flags,
-            segment.type,
-        });
+        // Only unchanged (Common) verbatim text gets syntax colours; changed
+        // tokens keep their add/remove emphasis. Whitespace markers stay plain.
+        if (plain && runs && segment.type == EditType::Common) {
+            push_text_segments(display_line.segments, text, segment.start, segment.flags, segment.type,
+                               runs);
+        } else {
+            display_line.segments.push_back({
+                text,
+                utf8_len(text),
+                segment.flags,
+                segment.type,
+                HighlightGroup::None,
+            });
+        }
     }
 
     display_line.line_length = std::accumulate(
@@ -210,10 +279,11 @@ transform_edit_line(const gsl::span<diffy::Line>& content_strings,
 std::vector<DisplayLine>
 make_display_lines(const gsl::span<diffy::Line>& content_strings,
                    const EditLine& line,
-                   const ColumnViewState& config) {
+                   const ColumnViewState& config,
+                   const std::vector<HighlightRun>* runs) {
 
     // TODO: So... this is the one that works on line level...
-    DisplayLine display_line = transform_edit_line(content_strings, line, config);
+    DisplayLine display_line = transform_edit_line(content_strings, line, config, runs);
 
     if (!config.settings.word_wrap) {
         return make_display_line_chopped(display_line, config.max_row_length);
@@ -420,11 +490,18 @@ make_header_columns(const std::string& left_name,
 DisplayColumns
 make_hunk_columns(const DiffInput<diffy::Line>& diff_input,
                   const AnnotatedHunk& hunk,
-                  const ColumnViewState& config) {
-    auto make_rows = [&config](const auto& content_strings, const auto& lines) {
+                  const ColumnViewState& config,
+                  const LineHighlights* a_highlights,
+                  const LineHighlights* b_highlights) {
+    auto make_rows = [&config](const auto& content_strings, const auto& lines,
+                               const LineHighlights* hl) {
         std::vector<DisplayLine> rows;
         for (const auto& line : lines) {
-            const auto& display_lines = make_display_lines(content_strings, line, config);
+            const std::vector<HighlightRun>* runs = nullptr;
+            if (hl && line.line_index < hl->size() && !(*hl)[line.line_index].empty()) {
+                runs = &(*hl)[line.line_index];
+            }
+            const auto& display_lines = make_display_lines(content_strings, line, config, runs);
             for (const auto& display_line : display_lines) {
                 rows.push_back(display_line);
             }
@@ -440,8 +517,8 @@ make_hunk_columns(const DiffInput<diffy::Line>& diff_input,
     };
 
     DisplayColumns columns{
-        make_rows(diff_input.A, hunk.a_lines),
-        make_rows(diff_input.B, hunk.b_lines),
+        make_rows(diff_input.A, hunk.a_lines, a_highlights),
+        make_rows(diff_input.B, hunk.b_lines, b_highlights),
     };
 
     insert_alignment_rows(columns);
@@ -506,10 +583,10 @@ render_display_line(const ColumnViewState& config,
                 output->push_back(DisplayCommand::with_style(delete_style, segment.text));
                 break;
             // Common (unchanged) and Meta segments keep the line's own background,
-            // so the tint of a delete/insert line covers its context too.
+            // with the syntax-highlight foreground layered on top when present.
             // TODO: "Meta" is a hack that doesn't scale; it needs its own DisplayType.
             default:
-                output->push_back(DisplayCommand::with_style(base, segment.text));
+                output->push_back(DisplayCommand::with_style(base + syntax_fg(segment.syntax), segment.text));
                 break;
         }
     }
@@ -658,6 +735,8 @@ column_view_render_streaming(const DiffInput<diffy::Line>& diff_input,
                              ColumnViewState& config,
                              const ProgramOptions& options,
                              int64_t width,
+                             const LineHighlights* a_highlights,
+                             const LineHighlights* b_highlights,
                              Emit emit) {
     int64_t frame_characters = 0;
     if (!config.chars.column_separator.empty()) {
@@ -697,7 +776,8 @@ column_view_render_streaming(const DiffInput<diffy::Line>& diff_input,
     }
 
     for (const auto& hunk : hunks) {
-        emit_columns(make_hunk_columns(diff_input, hunk, config), config, emit);
+        emit_columns(make_hunk_columns(diff_input, hunk, config, a_highlights, b_highlights), config,
+                     emit);
     }
 }
 }  // namespace
@@ -707,9 +787,11 @@ diffy::column_view_render_lines(const DiffInput<diffy::Line>& diff_input,
                                 const std::vector<AnnotatedHunk>& hunks,
                                 ColumnViewState& config,
                                 const diffy::ProgramOptions& options,
-                                int64_t width) {
+                                int64_t width,
+                                const LineHighlights* a_highlights,
+                                const LineHighlights* b_highlights) {
     std::vector<std::string> out;
-    column_view_render_streaming(diff_input, hunks, config, options, width,
+    column_view_render_streaming(diff_input, hunks, config, options, width, a_highlights, b_highlights,
                                  [&out](std::string line) { out.push_back(std::move(line)); });
     return out;
 }

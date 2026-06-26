@@ -40,6 +40,8 @@ language_for_path(std::string_view path) {
         {".ts", Language::TypeScript}, {".mts", Language::TypeScript},
         {".cts", Language::TypeScript},
         {".tsx", Language::Tsx},
+        {".html", Language::Html}, {".htm", Language::Html},
+        {".css", Language::Css},
         {".json", Language::Json},
     };
     auto it = by_ext.find(lower_ext(path));
@@ -65,6 +67,8 @@ const TSLanguage* tree_sitter_bash(void);
 const TSLanguage* tree_sitter_javascript(void);
 const TSLanguage* tree_sitter_typescript(void);
 const TSLanguage* tree_sitter_tsx(void);
+const TSLanguage* tree_sitter_html(void);
+const TSLanguage* tree_sitter_css(void);
 const TSLanguage* tree_sitter_json(void);
 }
 
@@ -94,6 +98,8 @@ ts_language_for(Language lang) {
         case Language::JavaScript: return tree_sitter_javascript();
         case Language::TypeScript: return tree_sitter_typescript();
         case Language::Tsx:        return tree_sitter_tsx();
+        case Language::Html:       return tree_sitter_html();
+        case Language::Css:        return tree_sitter_css();
         case Language::Json:       return tree_sitter_json();
         default:                   return nullptr;
     }
@@ -117,6 +123,8 @@ query_chain(Language lang) {
         case Language::JavaScript: return {"javascript"};
         case Language::TypeScript: return {"javascript", "typescript"};  // TS inherits JS
         case Language::Tsx:        return {"javascript", "tsx"};         // TSX inherits JS
+        case Language::Html:       return {"html"};
+        case Language::Css:        return {"css"};
         case Language::Json:       return {"json"};
         default:                   return {};
     }

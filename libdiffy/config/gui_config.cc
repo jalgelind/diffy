@@ -74,6 +74,7 @@ diffy::gui_settings_load(GuiSettings& settings) {
     sync_int("gui.font_size", settings.font_size);
     sync_bool("gui.word_wrap", settings.word_wrap);
     sync_bool("gui.show_line_numbers", settings.show_line_numbers);
+    sync_bool("gui.syntax_highlight", settings.syntax_highlight);
     sync_int("gui.tab_width", settings.tab_width);
     sync_int("gui.window_width", settings.window_width);
     sync_int("gui.window_height", settings.window_height);
@@ -100,6 +101,7 @@ diffy::gui_settings_save(const GuiSettings& settings) {
     table.set_value_at("gui.font_size", Value{static_cast<int>(settings.font_size)});
     table.set_value_at("gui.word_wrap", Value{settings.word_wrap});
     table.set_value_at("gui.show_line_numbers", Value{settings.show_line_numbers});
+    table.set_value_at("gui.syntax_highlight", Value{settings.syntax_highlight});
     table.set_value_at("gui.tab_width", Value{static_cast<int>(settings.tab_width)});
     table.set_value_at("gui.window_width", Value{static_cast<int>(settings.window_width)});
     table.set_value_at("gui.window_height", Value{static_cast<int>(settings.window_height)});

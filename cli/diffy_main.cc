@@ -2,6 +2,8 @@
 #include "algorithms/myers_linear.hpp"
 #include "algorithms/patience.hpp"
 #include "config/config.hpp"
+#include "highlight/language.hpp"
+#include "highlight/syntax_highlighter.hpp"
 #include "output/column_view.hpp"
 #include "output/unified.hpp"
 #include "processing/diff_hunk.hpp"
@@ -184,6 +186,7 @@ Side by side options:
 
     // Above the ASCII range so it doesn't collide with the short options.
     constexpr int kOptNoIgnoreWhitespace = 256;
+    constexpr int kOptNoHighlight = 257;
 
     auto parse_args = [&](int in_argc, char* in_argv[]) {
         static struct option long_options[] = {
@@ -200,6 +203,7 @@ Side by side options:
             {"no-ignore-line-endings", no_argument, 0, 'I'},
             {"ignore-whitespace", no_argument, 0, 'w'},
             {"no-ignore-whitespace", no_argument, 0, kOptNoIgnoreWhitespace},
+            {"no-highlight", no_argument, 0, kOptNoHighlight},
             {"list-colors", no_argument, 0, '1'},
             {0, 0, 0, 0}};
         int c = 0, option_index = 0;
@@ -264,6 +268,9 @@ Side by side options:
                 }
                 case kOptNoIgnoreWhitespace:
                     opts.ignore_whitespace = false;
+                    break;
+                case kOptNoHighlight:
+                    opts.syntax_highlight = false;
                     break;
                 case 'u':
                 case 's':
@@ -435,8 +442,21 @@ Side by side options:
             width = 80;
         }
 
-        for (const auto& line :
-             diffy::column_view_render_lines(diff_input, annotated_hunks, cv_ui_opts, opts, width)) {
+        // Syntax highlighting: parse each whole buffer once. The buffer is the
+        // concatenation of its lines (readlines keeps the newlines), and the
+        // language is inferred from the display name. No-op when disabled /
+        // unknown language / oversized.
+        diffy::LineHighlights a_hl, b_hl;
+        if (opts.syntax_highlight) {
+            std::string a_text, b_text;
+            for (const auto& l : left_line_data) a_text += l.line;
+            for (const auto& l : right_line_data) b_text += l.line;
+            a_hl = diffy::highlight_source(a_text, diffy::language_for_path(opts.left_file_name));
+            b_hl = diffy::highlight_source(b_text, diffy::language_for_path(opts.right_file_name));
+        }
+
+        for (const auto& line : diffy::column_view_render_lines(diff_input, annotated_hunks, cv_ui_opts,
+                                                                opts, width, &a_hl, &b_hl)) {
             puts(line.c_str());
         }
     } else if (opts.unified) {

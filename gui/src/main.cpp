@@ -223,6 +223,7 @@ main(int argc, char** argv) {
     options.set_show_line_numbers(settings.show_line_numbers);
     options.set_word_wrap(settings.word_wrap);
     options.set_token_granularity(true);
+    options.set_syntax_highlight(settings.syntax_highlight);
     options.set_context_lines(3);
     options.set_algorithm(0);
 
@@ -243,6 +244,8 @@ main(int argc, char** argv) {
         p.granularity =
             options.get_token_granularity() ? EditGranularity::Token : EditGranularity::Line;
         p.ignore_whitespace = options.get_ignore_whitespace();
+        p.syntax_highlight = options.get_syntax_highlight();
+        state.settings.syntax_highlight = p.syntax_highlight;  // persisted on exit
         return p;
     };
 

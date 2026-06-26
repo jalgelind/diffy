@@ -43,6 +43,7 @@ export global DiffOptions {
     in-out property <bool> show-line-numbers: true;
     in-out property <bool> ignore-whitespace: false;
     in-out property <bool> token-granularity: true;
+    in-out property <bool> syntax-highlight: true;
     in-out property <int> context-lines: 3;
     in-out property <int> algorithm: 0;  // 0 patience, 1 myers-greedy, 2 myers-linear
 
@@ -281,6 +282,11 @@ component OptionBar inherits Rectangle {
             text: "Tokens";
             checked: DiffOptions.token-granularity;
             toggled => { DiffOptions.token-granularity = self.checked; DiffOptions.rediff(); }
+        }
+        CheckBox {
+            text: "Syntax";
+            checked: DiffOptions.syntax-highlight;
+            toggled => { DiffOptions.syntax-highlight = self.checked; DiffOptions.rediff(); }
         }
 
         Divider {}
