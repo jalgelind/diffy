@@ -132,15 +132,20 @@ component DiffCellView inherits Rectangle {
     in property <color> bg;
     in property <bool> wrap;
     in property <length> avail-width;  // the cell's own width (set by the row)
+    // The wrapped text's actual height at the cell width (0 when not wrapping or
+    // the cell is collapsed). The row reads this to size itself — layout
+    // preferred-height can't do height-for-width, but a Text given an explicit
+    // width reports its real wrapped height.
+    out property <length> wrapped-height: (root.wrap && root.avail-width > 12px) ? wt.height : 0px;
     background: bg;
     clip: !root.wrap;  // wrapped cells grow vertically; unwrapped clip at the edge
 
-    // Wrapped: one flowing Text with an explicit width so its wrapped height is
-    // computable (height-for-width). Per-token syntax colour is traded for
-    // wrapping, but the diff add/remove background still shows.
-    if root.wrap : Text {
+    // Wrapped: one flowing Text with an explicit width. Per-token syntax colour
+    // is traded for wrapping, but the diff add/remove background still shows.
+    wt := Text {
+        visible: root.wrap && root.avail-width > 12px;
         x: 6px;
-        width: max(0px, root.avail-width - 10px);
+        width: max(1px, root.avail-width - 10px);
         text: root.full-text;
         color: Backend.fg;
         font-family: Backend.mono-font;
@@ -182,16 +187,16 @@ component DiffRow inherits Rectangle {
     // 1px divider in side-by-side). Giving cells a definite width is what lets
     // the wrapped Text report a real height-for-width.
     property <length> gut: DiffOptions.show-line-numbers ? 48px : 0px;
-    property <length> cellw: max(10px, DiffOptions.side-by-side
+    property <bool> sxs: DiffOptions.side-by-side;
+    property <length> cellw: max(10px, sxs
         ? (root.width - 2 * gut - 1px) / 2
         : (root.width - 2 * gut));
     // ListView delegates need a concrete height. Fixed line height normally;
-    // when word-wrap is on, grow to the body layout's preferred height (which
-    // accounts for the wrapped Text's height at the cell width).
+    // when word-wrap is on, grow to the tallest cell's actual wrapped height.
     height: rowdata.is-header
         ? Backend.font-size * 1.6px
         : (DiffOptions.word-wrap
-            ? max(Backend.font-size * 1.6px, body.preferred-height)
+            ? max(Backend.font-size * 1.6px, leftcell.wrapped-height, rightcell.wrapped-height)
             : Backend.font-size * 1.6px);
 
     if rowdata.is-header : Rectangle {
@@ -208,16 +213,19 @@ component DiffRow inherits Rectangle {
         }
     }
 
+    // All cells/gutters are always present (widths collapse to 0 when unused) so
+    // their heights stay referenceable from the row height binding above.
     body := HorizontalLayout {
         visible: !rowdata.is-header;
         spacing: 0px;
         LineNo { text: rowdata.old-no; visible: DiffOptions.show-line-numbers; }
         // unified shows both line numbers in the left gutter
-        if !DiffOptions.side-by-side : LineNo {
+        LineNo {
             text: rowdata.new-no;
-            visible: DiffOptions.show-line-numbers;
+            width: (!sxs && DiffOptions.show-line-numbers) ? 48px : 0px;
+            visible: !sxs && DiffOptions.show-line-numbers;
         }
-        DiffCellView {
+        leftcell := DiffCellView {
             width: cellw;
             avail-width: cellw;
             spans: rowdata.left-spans;
@@ -225,14 +233,15 @@ component DiffRow inherits Rectangle {
             bg: rowdata.left-bg;
             wrap: DiffOptions.word-wrap;
         }
-        if DiffOptions.side-by-side : Rectangle { width: 1px; background: #3c3c3c; }
-        if DiffOptions.side-by-side : LineNo {
+        Rectangle { width: sxs ? 1px : 0px; background: #3c3c3c; }
+        LineNo {
             text: rowdata.new-no;
-            visible: DiffOptions.show-line-numbers;
+            width: (sxs && DiffOptions.show-line-numbers) ? 48px : 0px;
+            visible: sxs && DiffOptions.show-line-numbers;
         }
-        if DiffOptions.side-by-side : DiffCellView {
-            width: cellw;
-            avail-width: cellw;
+        rightcell := DiffCellView {
+            width: sxs ? cellw : 0px;
+            avail-width: sxs ? cellw : 0px;
             spans: rowdata.right-spans;
             full-text: rowdata.right-text;
             bg: rowdata.right-bg;
