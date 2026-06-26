@@ -131,22 +131,21 @@ component DiffCellView inherits Rectangle {
     in property <string> full-text;
     in property <color> bg;
     in property <bool> wrap;
+    in property <length> avail-width;  // the cell's own width (set by the row)
     background: bg;
     clip: !root.wrap;  // wrapped cells grow vertically; unwrapped clip at the edge
-    horizontal-stretch: 1;
 
-    // Wrapped: one flowing Text. Per-token syntax colour is traded for wrapping,
-    // but the diff add/remove background still shows.
-    if root.wrap : HorizontalLayout {
-        padding-left: 6px;
-        padding-right: 4px;
-        Text {
-            text: root.full-text;
-            color: Backend.fg;
-            font-family: Backend.mono-font;
-            font-size: Backend.font-size * 1px;
-            wrap: word-wrap;
-        }
+    // Wrapped: one flowing Text with an explicit width so its wrapped height is
+    // computable (height-for-width). Per-token syntax colour is traded for
+    // wrapping, but the diff add/remove background still shows.
+    if root.wrap : Text {
+        x: 6px;
+        width: max(0px, root.avail-width - 10px);
+        text: root.full-text;
+        color: Backend.fg;
+        font-family: Backend.mono-font;
+        font-size: Backend.font-size * 1px;
+        wrap: word-wrap;
     }
 
     // Not wrapped: highlighted spans on a single line, clipped at the cell edge.
@@ -179,6 +178,13 @@ component LineNo inherits Text {
 // share a height automatically — wrapped lines stay aligned across the divider.
 component DiffRow inherits Rectangle {
     in property <DiffRowData> rowdata;
+    // Explicit per-cell width (one gutter per shown line-number column, minus the
+    // 1px divider in side-by-side). Giving cells a definite width is what lets
+    // the wrapped Text report a real height-for-width.
+    property <length> gut: DiffOptions.show-line-numbers ? 48px : 0px;
+    property <length> cellw: max(10px, DiffOptions.side-by-side
+        ? (root.width - 2 * gut - 1px) / 2
+        : (root.width - 2 * gut));
     // ListView delegates need a concrete height. Fixed line height normally;
     // when word-wrap is on, grow to the body layout's preferred height (which
     // accounts for the wrapped Text's height at the cell width).
@@ -212,6 +218,8 @@ component DiffRow inherits Rectangle {
             visible: DiffOptions.show-line-numbers;
         }
         DiffCellView {
+            width: cellw;
+            avail-width: cellw;
             spans: rowdata.left-spans;
             full-text: rowdata.left-text;
             bg: rowdata.left-bg;
@@ -223,6 +231,8 @@ component DiffRow inherits Rectangle {
             visible: DiffOptions.show-line-numbers;
         }
         if DiffOptions.side-by-side : DiffCellView {
+            width: cellw;
+            avail-width: cellw;
             spans: rowdata.right-spans;
             full-text: rowdata.right-text;
             bg: rowdata.right-bg;
