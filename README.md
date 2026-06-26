@@ -54,6 +54,22 @@ ninja -C build diffy-gui
 Options: `DIFFY_BUILD_CLI` (ON), `DIFFY_BUILD_GUI` (OFF), `DIFFY_BUILD_TESTS` (ON).
 
 
+Build (Windows)
+---------------
+
+`build-windows.cmd` wraps the CMake build with MSVC (Visual Studio 2022) or
+MinGW (MSYS2 UCRT64), initializing submodules automatically.
+
+    > build-windows.cmd release            REM CLI (Release)
+    > build-windows.cmd release gui run     REM build + run the GUI
+    > build-windows.cmd release all         REM CLI + GUI + tests
+    > build-windows.cmd test                REM Debug build + ctest
+
+The GUI additionally needs a Rust toolchain (cargo, for Slint) and libgit2 —
+easiest via vcpkg (`vcpkg install libgit2 pkgconf`, then set `VCPKG_ROOT`).
+Run `build-windows.cmd help` for all options.
+
+
 Build (Meson — CLI only)
 ------------------------
 
