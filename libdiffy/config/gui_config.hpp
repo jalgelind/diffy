@@ -25,9 +25,16 @@ struct GuiSettings {
     bool word_wrap = false;  // off by default so syntax/token colours always show
     bool show_line_numbers = true;
     bool syntax_highlight = true;  // tree-sitter syntax highlighting in the diff
+    bool ignore_whitespace = false;
+    bool token_granularity = true;  // token- vs line-level intra-change highlighting
+    int64_t context_lines = 3;
+    int64_t algorithm = 0;  // 0 patience, 1 myers-greedy, 2 myers-linear
     int64_t tab_width = 4;
     int64_t window_width = 1280;
     int64_t window_height = 800;
+    // Persisted layout: sidebar width and the height of its RECENT COMMITS pane.
+    int64_t sidebar_width = 300;
+    int64_t commits_panel_height = 150;
     bool restore_last_repo = true;
 
     // Optional per-group syntax colour overrides from the [gui.syntax] table,

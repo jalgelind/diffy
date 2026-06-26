@@ -65,6 +65,14 @@ export global Backend {
     in property <bool> loading-commits: false;  // a load-more is in flight
     in property <[DiffRowData]> rows;
 
+    // Persisted layout, two-way: dragged in the UI, read back on exit to save.
+    in-out property <length> sidebar-width: 300px;
+    in-out property <length> commits-panel-height: 150px;
+    // Keyboard-navigation selection (row index in each list, -1 = none). Driven by
+    // C++ for key nav and by clicks; the lists scroll the row into view on change.
+    in-out property <int> file-sel-index: -1;
+    in-out property <int> commit-sel-index: -1;
+
     in property <string> current-file: "";
     in property <string> branch: "";
     in property <string> status-text: "Open a repository to begin.";
@@ -92,6 +100,8 @@ export global Backend {
     callback load-more-commits();
     callback load-all-commits();
     callback filter-files(string);  // substring filter for the changes list
+    callback navigate(string);      // keyboard nav: "up"|"down"|"tab"|"activate"
+    callback refresh();             // re-scan status + reload commits
 }
 
 // ---- icons -----------------------------------------------------------------
@@ -407,10 +417,11 @@ component SectionLabel inherits Text {
 }
 
 component RepoBrowser inherits Rectangle {
-    width: 300px;
+    width: Backend.sidebar-width;
     background: Backend.panel-bg;
-    // Height of the RECENT COMMITS panel; adjustable via the drag handle below.
-    property <length> commits-height: 150px;
+    // Height of the RECENT COMMITS panel; persisted via Backend.commits-panel-height
+    // and adjusted by the drag handle below.
+    property <length> commits-height <=> Backend.commits-panel-height;
     Rectangle { x: parent.width - 1px; width: 1px; background: Backend.divider; }
 
     VerticalLayout {
@@ -462,6 +473,19 @@ component RepoBrowser inherits Rectangle {
                 vertical-alignment: center;
             }
             Rectangle { horizontal-stretch: 1; }
+            // Re-scan the working tree without reopening the repo (also Cmd/Ctrl-R).
+            refresh-btn := Rectangle {
+                width: 16px;
+                height: 16px;
+                refresh-ta := TouchArea { clicked => { Backend.refresh(); } }
+                Image {
+                    width: 13px;
+                    height: 13px;
+                    image-fit: contain;
+                    source: @image-url("icons/refresh-cw.svg");
+                    colorize: refresh-ta.has-hover ? Backend.accent : Backend.gutter-fg;
+                }
+            }
             if Backend.loading : Rectangle {
                 width: 13px;
                 property <angle> ang: 0deg;
@@ -538,11 +562,27 @@ component RepoBrowser inherits Rectangle {
                 y: 0;
                 height: lists-area.files-h;
                 width: 100%;
-                for f in Backend.files : Rectangle {
+                // Scroll the keyboard-selected row into view when it changes.
+                property <int> sel: Backend.file-sel-index;
+                changed sel => {
+                    if (self.sel >= 0) {
+                        if (self.sel * 24px < -self.viewport-y) {
+                            self.viewport-y = -self.sel * 24px;
+                        } else if ((self.sel + 1) * 24px > -self.viewport-y + self.height) {
+                            self.viewport-y = -((self.sel + 1) * 24px - self.height);
+                        }
+                    }
+                }
+                for f[fidx] in Backend.files : Rectangle {
                     height: 24px;
                     property <bool> selected: f.path == Backend.current-file;
                     background: selected ? Backend.selection : (touch.has-hover ? Backend.hover : transparent);
-                    touch := TouchArea { clicked => { Backend.select-file(f.path); } }
+                    touch := TouchArea {
+                        clicked => {
+                            Backend.file-sel-index = fidx;
+                            Backend.select-file(f.path);
+                        }
+                    }
                     HorizontalLayout {
                         padding-left: 6px;
                         padding-right: 6px;
@@ -598,10 +638,28 @@ component RepoBrowser inherits Rectangle {
                 SectionLabel { text: "RECENT COMMITS"; }
                 commits-list := ListView {
                     vertical-stretch: 1;
-                    for c in Backend.commits : Rectangle {
+                    // Scroll the keyboard-selected commit into view when it changes.
+                    property <int> sel: Backend.commit-sel-index;
+                    changed sel => {
+                        if (self.sel >= 0) {
+                            if (self.sel * 38px < -self.viewport-y) {
+                                self.viewport-y = -self.sel * 38px;
+                            } else if ((self.sel + 1) * 38px > -self.viewport-y + self.height) {
+                                self.viewport-y = -((self.sel + 1) * 38px - self.height);
+                            }
+                        }
+                    }
+                    for c[cidx] in Backend.commits : Rectangle {
                         height: 38px;
-                        background: ctouch.has-hover ? Backend.hover : transparent;
-                        ctouch := TouchArea { clicked => { Backend.select-commit(c.oid); } }
+                        background: cidx == Backend.commit-sel-index
+                                    ? Backend.selection
+                                    : (ctouch.has-hover ? Backend.hover : transparent);
+                        ctouch := TouchArea {
+                            clicked => {
+                                Backend.commit-sel-index = cidx;
+                                Backend.select-commit(c.oid);
+                            }
+                        }
                         HorizontalLayout {
                             padding-left: 6px;
                             padding-right: 6px;
@@ -660,9 +718,64 @@ export component AppWindow inherits Window {
     min-height: 480px;
     background: Backend.bg;
 
-    HorizontalLayout {
+    forward-focus: key-scope;
+    key-scope := FocusScope {
+        // Global keyboard navigation. LineEdits grab focus and consume their own
+        // keys, so these only fire when no text field is focused.
+        key-pressed(event) => {
+            if (event.text == Key.UpArrow || event.text == "k") {
+                Backend.navigate("up");
+                return accept;
+            }
+            if (event.text == Key.DownArrow || event.text == "j") {
+                Backend.navigate("down");
+                return accept;
+            }
+            if (event.text == Key.Tab) {
+                Backend.navigate("tab");
+                return accept;
+            }
+            if (event.text == Key.Return) {
+                Backend.navigate("activate");
+                return accept;
+            }
+            if ((event.modifiers.control || event.modifiers.meta) && event.text == "r") {
+                Backend.refresh();
+                return accept;
+            }
+            return reject;
+        }
+
+      content := Rectangle {
+        HorizontalLayout {
         spacing: 0px;
         RepoBrowser {}
+
+        // Draggable resize gutter between the sidebar and the diff. The handle's
+        // TouchArea is local (so the cursor/hover highlight are correct), but it
+        // derives the new width from the pointer's absolute position, so it can't
+        // drift or feed back on itself as the layout reflows.
+        Rectangle {
+            width: 6px;
+            background: Backend.panel-bg;
+            sidebar-handle := TouchArea {
+                mouse-cursor: col-resize;
+                moved => {
+                    if (self.pressed) {
+                        Backend.sidebar-width = clamp(
+                            self.absolute-position.x - content.absolute-position.x
+                                + self.mouse-x - 3px,
+                            180px, content.width - 360px);
+                    }
+                }
+            }
+            Rectangle {
+                x: 2px;
+                width: 2px;
+                background: sidebar-handle.pressed || sidebar-handle.has-hover
+                            ? Backend.gutter-fg : transparent;
+            }
+        }
 
         VerticalLayout {
             spacing: 0px;
@@ -746,5 +859,7 @@ export component AppWindow inherits Window {
                 }
             }
         }
+        }
+      }
     }
 }

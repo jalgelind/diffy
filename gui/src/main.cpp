@@ -257,6 +257,12 @@ main(int argc, char** argv) {
         bool commits_more = false;     // history may have more than is loaded
         bool loading_commits = false;  // a load-more is in flight
         std::shared_ptr<slint::VectorModel<CommitEntry>> commits_model;
+        // Keyboard navigation: ordered ids of what's currently shown, plus the
+        // active pane (0 = changes list, 1 = commits list).
+        std::vector<std::string> shown_files;
+        std::vector<std::string> shown_commits;
+        int nav_pane = 0;
+        std::string refresh_select;  // file to re-open after a refresh, if present
     } state;
     constexpr int kCommitPage = 50;  // commits per lazy page
     state.settings = settings;
@@ -307,10 +313,17 @@ main(int argc, char** argv) {
     options.set_side_by_side(settings.view_mode() == ViewMode::SideBySide);
     options.set_show_line_numbers(settings.show_line_numbers);
     options.set_word_wrap(settings.word_wrap);
-    options.set_token_granularity(true);
+    options.set_token_granularity(settings.token_granularity);
     options.set_syntax_highlight(settings.syntax_highlight);
-    options.set_context_lines(3);
-    options.set_algorithm(0);
+    options.set_ignore_whitespace(settings.ignore_whitespace);
+    options.set_context_lines(static_cast<int>(settings.context_lines));
+    options.set_algorithm(static_cast<int>(settings.algorithm));
+
+    // Restore persisted layout (sidebar width + commits-pane height + window size).
+    backend.set_sidebar_width(static_cast<float>(settings.sidebar_width));
+    backend.set_commits_panel_height(static_cast<float>(settings.commits_panel_height));
+    ui->window().set_size(slint::LogicalSize({static_cast<float>(settings.window_width),
+                                              static_cast<float>(settings.window_height)}));
 
     // --- helpers ------------------------------------------------------------
     auto set_repo_names = [&]() {
@@ -375,6 +388,7 @@ main(int argc, char** argv) {
         };
         const std::string& needle = state.file_filter;
         auto files = std::make_shared<slint::VectorModel<FileEntry>>();
+        state.shown_files.clear();
         for (const auto& f : state.all_files) {
             if (!needle.empty() && lower(f.path).find(needle) == std::string::npos) {
                 continue;
@@ -392,8 +406,18 @@ main(int argc, char** argv) {
                 fe.dir = ss(f.path.substr(0, slash + 1));
             }
             files->push_back(fe);
+            state.shown_files.push_back(f.path);
         }
         backend.set_files(files);
+        // Keep the keyboard selection pointed at the open file (or clear it).
+        int idx = -1;
+        for (size_t i = 0; i < state.shown_files.size(); ++i) {
+            if (state.shown_files[i] == state.current_file) {
+                idx = static_cast<int>(i);
+                break;
+            }
+        }
+        backend.set_file_sel_index(idx);
     };
 
     auto set_files = [&](const std::vector<diffy::gui::FileChange>& changes) {
@@ -413,8 +437,10 @@ main(int argc, char** argv) {
     // history likely has commits beyond this page (i.e. a full page came back).
     auto set_commits = [&](const std::vector<diffy::gui::CommitInfo>& commits, bool more) {
         auto model = std::make_shared<slint::VectorModel<CommitEntry>>();
+        state.shown_commits.clear();
         for (auto& c : commits) {
             model->push_back(commit_entry(c));
+            state.shown_commits.push_back(c.oid);
         }
         state.commits_model = model;
         state.commits_shown = static_cast<int>(commits.size());
@@ -422,6 +448,7 @@ main(int argc, char** argv) {
         backend.set_commits(model);
         backend.set_more_commits(more);
         backend.set_loading_commits(false);
+        backend.set_commit_sel_index(-1);
     };
 
     // Append a fetched page to the existing model (runs on the UI thread).
@@ -434,6 +461,7 @@ main(int argc, char** argv) {
             }
             for (const auto& c : *batch) {
                 state.commits_model->push_back(commit_entry(c));
+                state.shown_commits.push_back(c.oid);
             }
             state.commits_shown += static_cast<int>(batch->size());
             // A bounded page that came back short means we reached the root.
@@ -529,10 +557,25 @@ main(int argc, char** argv) {
         state.repo = std::move(f->repo);
         state.current_commit.clear();  // opening a repo starts in working-tree mode
         backend.set_loading(false);
+        // After a refresh, try to re-open the file the user was viewing.
+        std::string want = std::move(state.refresh_select);
+        state.refresh_select.clear();
         set_files(f->files);
         backend.set_status_text(
             ss(std::to_string(f->files.size()) + " changed file(s)"));
-        if (!f->first_file.empty()) {
+        bool reopened = false;
+        if (!want.empty()) {
+            for (const auto& fc : f->files) {
+                if (fc.path == want) {
+                    open_file(want);
+                    reopened = true;
+                    break;
+                }
+            }
+        }
+        if (reopened) {
+            // nothing else to do
+        } else if (!f->first_file.empty()) {
             open_file(f->first_file);  // cheap: one blob + one file read
         } else {
             backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
@@ -587,6 +630,90 @@ main(int argc, char** argv) {
         });
     };
 
+    // Browse a commit: list its files and diff the first. Shared by the click
+    // handler and keyboard activation. Leaves the keyboard focus on the file
+    // list so the arrows then browse the commit's files.
+    auto select_commit = [&](const std::string& oid) {
+        if (!state.repo) {
+            return;
+        }
+        state.current_commit = oid;
+        int idx = -1;
+        for (size_t i = 0; i < state.shown_commits.size(); ++i) {
+            if (state.shown_commits[i] == oid) {
+                idx = static_cast<int>(i);
+                break;
+            }
+        }
+        backend.set_commit_sel_index(idx);
+        auto changes = state.repo->commit_files(oid);
+        set_files(changes);
+        backend.set_status_text(ss("Commit " + oid.substr(0, 8) + " — " +
+                                   std::to_string(changes.size()) + " file(s) — pick the repo to return"));
+        if (!changes.empty()) {
+            open_file(changes.front().path);
+        } else {
+            backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
+            backend.set_current_file(ss(""));
+        }
+        state.nav_pane = 0;
+    };
+
+    // Keyboard navigation across the two list panes. Files preview on move
+    // (cheap); commits only highlight on move and load on Enter (a commit diff
+    // is heavier). Tab switches panes.
+    auto navigate = [&](const std::string& dir) {
+        auto step = [](int idx, int n, const std::string& d) {
+            if (d == "down") {
+                return idx < 0 ? 0 : (idx + 1) % n;
+            }
+            return idx <= 0 ? n - 1 : idx - 1;  // "up", with wrap
+        };
+        if (dir == "tab") {
+            state.nav_pane = state.nav_pane == 0 ? 1 : 0;
+            return;
+        }
+        if (state.nav_pane == 0) {
+            const auto& list = state.shown_files;
+            if (list.empty()) {
+                return;
+            }
+            int idx = backend.get_file_sel_index();
+            if (dir == "activate") {
+                if (idx >= 0 && idx < static_cast<int>(list.size())) {
+                    open_file(list[idx]);
+                }
+                return;
+            }
+            idx = step(idx, static_cast<int>(list.size()), dir);
+            backend.set_file_sel_index(idx);
+            open_file(list[idx]);  // selection opens the diff (mirrors a click)
+        } else {
+            const auto& list = state.shown_commits;
+            if (list.empty()) {
+                return;
+            }
+            int idx = backend.get_commit_sel_index();
+            if (dir == "activate") {
+                if (idx >= 0 && idx < static_cast<int>(list.size())) {
+                    select_commit(list[idx]);
+                }
+                return;
+            }
+            idx = step(idx, static_cast<int>(list.size()), dir);
+            backend.set_commit_sel_index(idx);  // highlight only; Enter loads it
+        }
+    };
+
+    // Re-scan the working tree without reopening the repo, keeping the open file.
+    auto refresh = [&]() {
+        if (state.repo_path.empty()) {
+            return;
+        }
+        state.refresh_select = state.current_file;
+        load_repo(state.repo_path);
+    };
+
     // --- callbacks ----------------------------------------------------------
     backend.on_open_repo([&](slint::SharedString p) { load_repo(str(p)); });
     backend.on_browse_repo([&]() {
@@ -607,23 +734,9 @@ main(int argc, char** argv) {
         state.file_filter = f;
         render_files();
     });
-    backend.on_select_commit([&](slint::SharedString oid) {
-        if (!state.repo) {
-            return;
-        }
-        // Switch into "browse this commit" mode: list its files and diff the first.
-        state.current_commit = str(oid);
-        auto changes = state.repo->commit_files(state.current_commit);
-        set_files(changes);
-        backend.set_status_text(ss("Commit " + state.current_commit.substr(0, 8) + " — " +
-                                   std::to_string(changes.size()) + " file(s) — pick the repo to return"));
-        if (!changes.empty()) {
-            open_file(changes.front().path);
-        } else {
-            backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
-            backend.set_current_file(ss(""));
-        }
-    });
+    backend.on_select_commit([&](slint::SharedString oid) { select_commit(str(oid)); });
+    backend.on_navigate([&](slint::SharedString d) { navigate(str(d)); });
+    backend.on_refresh([&]() { refresh(); });
     backend.on_load_more_commits([&]() { fetch_more_commits(kCommitPage); });
     backend.on_load_all_commits([&]() { fetch_more_commits(0); });
     options.on_relayout([&]() {
@@ -648,6 +761,24 @@ main(int argc, char** argv) {
     }
 
     // --- persist on exit ----------------------------------------------------
+    // Capture the live option-bar state and window layout so they survive restart.
+    state.settings.default_view = options.get_side_by_side() ? "side-by-side" : "unified";
+    state.settings.word_wrap = options.get_word_wrap();
+    state.settings.show_line_numbers = options.get_show_line_numbers();
+    state.settings.syntax_highlight = options.get_syntax_highlight();
+    state.settings.ignore_whitespace = options.get_ignore_whitespace();
+    state.settings.token_granularity = options.get_token_granularity();
+    state.settings.context_lines = options.get_context_lines();
+    state.settings.algorithm = options.get_algorithm();
+    state.settings.sidebar_width = static_cast<int64_t>(backend.get_sidebar_width());
+    state.settings.commits_panel_height =
+        static_cast<int64_t>(backend.get_commits_panel_height());
+    const auto win_size = ui->window().size();
+    const float scale = ui->window().scale_factor();
+    if (scale > 0.0f) {
+        state.settings.window_width = static_cast<int64_t>(win_size.width / scale);
+        state.settings.window_height = static_cast<int64_t>(win_size.height / scale);
+    }
     gui_settings_save(state.settings);
     repos_save(state.repos);
     diffy::gui::git_runtime_shutdown();

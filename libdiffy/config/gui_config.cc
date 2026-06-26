@@ -75,9 +75,15 @@ diffy::gui_settings_load(GuiSettings& settings) {
     sync_bool("gui.word_wrap", settings.word_wrap);
     sync_bool("gui.show_line_numbers", settings.show_line_numbers);
     sync_bool("gui.syntax_highlight", settings.syntax_highlight);
+    sync_bool("gui.ignore_whitespace", settings.ignore_whitespace);
+    sync_bool("gui.token_granularity", settings.token_granularity);
+    sync_int("gui.context_lines", settings.context_lines);
+    sync_int("gui.algorithm", settings.algorithm);
     sync_int("gui.tab_width", settings.tab_width);
     sync_int("gui.window_width", settings.window_width);
     sync_int("gui.window_height", settings.window_height);
+    sync_int("gui.sidebar_width", settings.sidebar_width);
+    sync_int("gui.commits_panel_height", settings.commits_panel_height);
     sync_bool("gui.restore_last_repo", settings.restore_last_repo);
 
     // Optional [gui.syntax] table: group-name -> "#rrggbb". Read-only (we don't
@@ -112,9 +118,16 @@ diffy::gui_settings_save(const GuiSettings& settings) {
     table.set_value_at("gui.word_wrap", Value{settings.word_wrap});
     table.set_value_at("gui.show_line_numbers", Value{settings.show_line_numbers});
     table.set_value_at("gui.syntax_highlight", Value{settings.syntax_highlight});
+    table.set_value_at("gui.ignore_whitespace", Value{settings.ignore_whitespace});
+    table.set_value_at("gui.token_granularity", Value{settings.token_granularity});
+    table.set_value_at("gui.context_lines", Value{static_cast<int>(settings.context_lines)});
+    table.set_value_at("gui.algorithm", Value{static_cast<int>(settings.algorithm)});
     table.set_value_at("gui.tab_width", Value{static_cast<int>(settings.tab_width)});
     table.set_value_at("gui.window_width", Value{static_cast<int>(settings.window_width)});
     table.set_value_at("gui.window_height", Value{static_cast<int>(settings.window_height)});
+    table.set_value_at("gui.sidebar_width", Value{static_cast<int>(settings.sidebar_width)});
+    table.set_value_at("gui.commits_panel_height",
+                       Value{static_cast<int>(settings.commits_panel_height)});
     table.set_value_at("gui.restore_last_repo", Value{settings.restore_last_repo});
 
     write_table(table);
