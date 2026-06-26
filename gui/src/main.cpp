@@ -292,6 +292,11 @@ main(int argc, char** argv) {
     backend.set_accent(gui_theme.accent);
     backend.set_header_bg(gui_theme.header_bg);
     backend.set_header_fg(gui_theme.header_fg);
+    backend.set_divider(gui_theme.divider);
+    // Selection/hover are accent/fg tints so they read correctly on either a
+    // light or dark theme background.
+    backend.set_selection(gui_theme.accent.with_alpha(0.30f));
+    backend.set_hover(gui_theme.fg.with_alpha(0.08f));
     options.set_side_by_side(settings.view_mode() == ViewMode::SideBySide);
     options.set_show_line_numbers(settings.show_line_numbers);
     options.set_word_wrap(settings.word_wrap);

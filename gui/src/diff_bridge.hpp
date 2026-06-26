@@ -24,6 +24,7 @@ struct GuiTheme {
     slint::Color accent;       // ui accent (from the header colour)
     slint::Color header_bg;    // hunk-header background
     slint::Color header_fg;    // hunk-header text
+    slint::Color divider;      // separators / borders / chrome lines
     slint::Color delete_bg;    // deleted-line cell tint
     slint::Color insert_bg;    // inserted-line cell tint
     slint::Color delete_token; // changed-token foreground (removed)

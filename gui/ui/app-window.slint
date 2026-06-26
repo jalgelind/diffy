@@ -76,6 +76,9 @@ export global Backend {
     in property <color> accent: #0e639c;
     in property <color> header-bg: #2d2d30;
     in property <color> header-fg: #9cdcfe;
+    in property <color> divider: #3c3c3c;     // separators / borders
+    in property <color> selection: #094771;   // selected list row
+    in property <color> hover: #2a2d2e;        // hovered list row
 
     callback open-repo(string);
     callback browse-repo();
@@ -235,7 +238,7 @@ component DiffRow inherits Rectangle {
             bg: rowdata.left-bg;
             wrap: DiffOptions.word-wrap;
         }
-        Rectangle { width: sxs ? 1px : 0px; background: #3c3c3c; }
+        Rectangle { width: sxs ? 1px : 0px; background: Backend.divider; }
         LineNo {
             text: rowdata.new-no;
             width: (sxs && DiffOptions.show-line-numbers) ? 48px : 0px;
@@ -281,7 +284,7 @@ component SegToggle inherits Rectangle {
 
 component Divider inherits Rectangle {
     width: 1px;
-    background: #3c3c3c;
+    background: Backend.divider;
 }
 
 // ---- the option bar --------------------------------------------------------
@@ -289,7 +292,7 @@ component Divider inherits Rectangle {
 component OptionBar inherits Rectangle {
     height: 42px;
     background: Backend.panel-bg;
-    Rectangle { y: parent.height - 1px; height: 1px; background: #1b1b1c; }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Backend.divider; }
 
     HorizontalLayout {
         padding: 6px;
@@ -299,7 +302,7 @@ component OptionBar inherits Rectangle {
         Rectangle {
             border-radius: 5px;
             border-width: 1px;
-            border-color: #3c3c3c;
+            border-color: Backend.divider;
             clip: true;
             HorizontalLayout {
                 spacing: 0px;
@@ -393,7 +396,7 @@ component RepoBrowser inherits Rectangle {
     background: Backend.panel-bg;
     // Height of the RECENT COMMITS panel; adjustable via the drag handle below.
     property <length> commits-height: 150px;
-    Rectangle { x: parent.width - 1px; width: 1px; background: #1b1b1c; }
+    Rectangle { x: parent.width - 1px; width: 1px; background: Backend.divider; }
 
     VerticalLayout {
         padding: 10px;
@@ -424,11 +427,11 @@ component RepoBrowser inherits Rectangle {
             Icon {
                 size: 14px;
                 source: @image-url("icons/git-branch.svg");
-                colorize: #9cdcfe;
+                colorize: Backend.accent;
             }
             Text {
                 text: Backend.branch;
-                color: #9cdcfe;
+                color: Backend.accent;
                 font-size: 12px;
                 vertical-alignment: center;
                 overflow: elide;
@@ -523,7 +526,7 @@ component RepoBrowser inherits Rectangle {
                 for f in Backend.files : Rectangle {
                     height: 24px;
                     property <bool> selected: f.path == Backend.current-file;
-                    background: selected ? #094771 : (touch.has-hover ? #2a2d2e : transparent);
+                    background: selected ? Backend.selection : (touch.has-hover ? Backend.hover : transparent);
                     touch := TouchArea { clicked => { Backend.select-file(f.path); } }
                     HorizontalLayout {
                         padding-left: 6px;
@@ -569,7 +572,7 @@ component RepoBrowser inherits Rectangle {
                     width: 28px;
                     height: 2px;
                     border-radius: 1px;
-                    background: resize-ta.dragging || resize-ta.has-hover ? #6e7681 : #3c3c3c;
+                    background: resize-ta.dragging || resize-ta.has-hover ? Backend.gutter-fg : Backend.divider;
                 }
             }
 
@@ -582,7 +585,7 @@ component RepoBrowser inherits Rectangle {
                     vertical-stretch: 1;
                     for c in Backend.commits : Rectangle {
                         height: 38px;
-                        background: ctouch.has-hover ? #2a2d2e : transparent;
+                        background: ctouch.has-hover ? Backend.hover : transparent;
                         ctouch := TouchArea { clicked => { Backend.select-commit(c.oid); } }
                         HorizontalLayout {
                             padding-left: 6px;
@@ -639,7 +642,7 @@ export component AppWindow inherits Window {
             Rectangle {
                 height: 30px;
                 background: Backend.bg;
-                Rectangle { y: parent.height - 1px; height: 1px; background: #1b1b1c; }
+                Rectangle { y: parent.height - 1px; height: 1px; background: Backend.divider; }
                 HorizontalLayout {
                     padding-left: 12px;
                     spacing: 8px;
