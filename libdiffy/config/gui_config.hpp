@@ -18,7 +18,7 @@ struct GuiSettings {
     std::string default_view = "side-by-side";  // "side-by-side" | "unified"
     std::string theme = "theme_default";        // theme file to load (shared with CLI)
     std::string theme_variant = "dark";         // "dark" | "light" | "system"
-    std::string font_family = "Menlo";  // a real monospace family (mapped if generic)
+    std::string font_family = "monospace";  // generic; the GUI maps it to a real per-OS family
     int64_t font_size = 13;
     bool word_wrap = true;
     bool show_line_numbers = true;

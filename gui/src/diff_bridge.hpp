@@ -14,8 +14,17 @@
 
 namespace diffy::gui {
 
-// Convert a laid-out diff model into a Slint VectorModel of rows.
-std::shared_ptr<slint::VectorModel<DiffRowData>>
+// The Slint row list plus the widest line (in display columns) it contains,
+// which the UI uses to size the horizontal scroll extent.
+struct RowModel {
+    std::shared_ptr<slint::VectorModel<DiffRowData>> rows;
+    int max_cols = 0;
+};
+
+// Convert a laid-out diff model into a Slint VectorModel of rows. Tabs and
+// control characters in the source are expanded/sanitized here so the text
+// renders without missing-glyph boxes.
+RowModel
 build_row_model(const diffy::DiffViewModel& model, const diffy::GuiSettings& settings);
 
 }  // namespace diffy::gui

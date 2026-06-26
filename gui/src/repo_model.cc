@@ -170,8 +170,12 @@ Repo::status() const {
 
     git_status_options opts = GIT_STATUS_OPTIONS_INIT;
     opts.show = GIT_STATUS_SHOW_INDEX_AND_WORKDIR;
+    // EXCLUDE_SUBMODULES stops status from recursing into every submodule, and
+    // not setting RECURSE_UNTRACKED_DIRS keeps untracked directories collapsed.
+    // Together these keep `status` fast on large trees (e.g. an ESP-IDF project
+    // with many components/submodules and a big untracked build/ directory).
     opts.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED | GIT_STATUS_OPT_RENAMES_HEAD_TO_INDEX |
-                 GIT_STATUS_OPT_SORT_CASE_SENSITIVELY;
+                 GIT_STATUS_OPT_SORT_CASE_SENSITIVELY | GIT_STATUS_OPT_EXCLUDE_SUBMODULES;
 
     git_status_list* list = nullptr;
     if (git_status_list_new(&list, repo_, &opts) != 0) {

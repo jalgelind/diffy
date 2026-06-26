@@ -24,6 +24,9 @@ export struct DiffRowData {
 export struct FileEntry {
     path: string,
     status: string,
+    name: string,   // basename, kept visible when the row is too narrow
+    dir: string,    // leading directory (elided first)
+    staged: bool,
 }
 
 export struct CommitEntry {
@@ -58,6 +61,7 @@ export global Backend {
     in property <string> current-file: "";
     in property <string> branch: "";
     in property <string> status-text: "Open a repository to begin.";
+    in property <bool> loading: false;  // a repo open is in progress
     in property <int> max-cols: 0;  // longest line in chars, for horizontal scroll
 
     in property <string> mono-font: "Menlo";
@@ -69,9 +73,52 @@ export global Backend {
     in property <color> accent: #0e639c;
 
     callback open-repo(string);
+    callback browse-repo();
     callback select-repo-index(int);
     callback select-file(string);
     callback select-commit(string);
+    callback filter-files(string);  // substring filter for the changes list
+}
+
+// ---- icons -----------------------------------------------------------------
+
+// A monochrome (Lucide) icon, tinted to the theme. Override `colorize`/`size`
+// at the call site; set `source` with @image-url("icons/<name>.svg").
+// The icon is a fixed-width wrapper that stretches to its layout cell's height
+// and centers the glyph inside it, so it sits vertically centered next to text.
+component Icon inherits Rectangle {
+    in property <length> size: 16px;
+    in property <image> source;
+    in property <color> colorize: Backend.fg;
+    width: size;
+    Image {
+        width: root.size;
+        height: root.size;
+        image-fit: contain;
+        source: root.source;
+        colorize: root.colorize;
+    }
+}
+
+// File-status badge: picks a Lucide circle glyph + colour from the status code.
+component StatusIcon inherits Rectangle {
+    in property <string> status;
+    width: 15px;
+    Image {
+        width: 15px;
+        height: 15px;
+        image-fit: contain;
+        source: status == "D" ? @image-url("icons/circle-minus.svg")
+              : status == "M" ? @image-url("icons/circle-dot.svg")
+              : status == "?" ? @image-url("icons/circle-help.svg")
+              : (status == "A" || status == "R" || status == "C") ? @image-url("icons/circle-plus.svg")
+              : @image-url("icons/circle-dot.svg");
+        colorize: status == "D" ? #f48771
+                : status == "M" ? #e2c08d
+                : status == "?" ? #73c991
+                : status == "A" ? #73c991
+                : Backend.accent;
+    }
 }
 
 // ---- one diff line ---------------------------------------------------------
@@ -105,14 +152,20 @@ component LineNo inherits Text {
     vertical-alignment: center;
 }
 
-component DiffLine inherits Rectangle {
+// One diff row, rendering a single side. Side-by-side stacks two of these in
+// separate scroll panes; unified uses one with both line-number gutters. Both
+// sides share the same row height so the two panes stay vertically aligned.
+component SideRow inherits Rectangle {
     in property <DiffRowData> rowdata;
+    in property <bool> right-side;  // false = left/primary pane, true = right pane
+    in property <bool> unified;     // primary pane in unified mode shows both gutters
     height: Backend.font-size * 1.6px;
 
     if rowdata.is-header : Rectangle {
         background: #2d2d30;
         Rectangle { x: 0; width: 3px; background: Backend.accent; }
-        Text {
+        // The hunk header text only needs to appear once, in the primary pane.
+        if !root.right-side : Text {
             x: 12px;
             text: rowdata.header;
             color: #9cdcfe;
@@ -124,24 +177,17 @@ component DiffLine inherits Rectangle {
 
     if !rowdata.is-header : HorizontalLayout {
         spacing: 0px;
-
-        LineNo { text: rowdata.old-no; visible: DiffOptions.show-line-numbers; }
-        // unified shows both numbers in the left gutter
         LineNo {
-            text: rowdata.new-no;
-            visible: DiffOptions.show-line-numbers && !DiffOptions.side-by-side;
+            text: root.right-side ? rowdata.new-no : rowdata.old-no;
+            visible: DiffOptions.show-line-numbers;
         }
-
-        DiffCellView { spans: rowdata.left-spans; bg: rowdata.left-bg; }
-
-        if DiffOptions.side-by-side : Rectangle { width: 1px; background: #3c3c3c; }
-        if DiffOptions.side-by-side : LineNo {
+        if root.unified : LineNo {
             text: rowdata.new-no;
             visible: DiffOptions.show-line-numbers;
         }
-        if DiffOptions.side-by-side : DiffCellView {
-            spans: rowdata.right-spans;
-            bg: rowdata.right-bg;
+        DiffCellView {
+            spans: root.right-side ? rowdata.right-spans : rowdata.left-spans;
+            bg: root.right-side ? rowdata.right-bg : rowdata.left-bg;
         }
     }
 }
@@ -150,16 +196,25 @@ component DiffLine inherits Rectangle {
 
 component SegToggle inherits Rectangle {
     in property <string> label;
+    in property <image> icon;
     in property <bool> active;
     callback clicked();
-    width: 96px;
+    width: 116px;
     background: active ? Backend.accent : transparent;
-    Text {
-        text: label;
-        color: active ? white : Backend.fg;
-        font-size: 12px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    HorizontalLayout {
+        alignment: center;
+        spacing: 6px;
+        Icon {
+            size: 14px;
+            source: root.icon;
+            colorize: active ? white : Backend.fg;
+        }
+        Text {
+            text: label;
+            color: active ? white : Backend.fg;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
     }
     TouchArea { clicked => { root.clicked(); } }
 }
@@ -190,12 +245,14 @@ component OptionBar inherits Rectangle {
                 spacing: 0px;
                 SegToggle {
                     label: "Side by side";
+                    icon: @image-url("icons/columns-2.svg");
                     active: DiffOptions.side-by-side;
                     clicked => { DiffOptions.side-by-side = true; DiffOptions.relayout(); }
                 }
                 Divider {}
                 SegToggle {
                     label: "Unified";
+                    icon: @image-url("icons/rows-2.svg");
                     active: !DiffOptions.side-by-side;
                     clicked => { DiffOptions.side-by-side = false; DiffOptions.relayout(); }
                 }
@@ -230,7 +287,7 @@ component OptionBar inherits Rectangle {
 
         Text { text: "Context"; color: Backend.fg; vertical-alignment: center; }
         Button {
-            text: "−";
+            text: "-";
             clicked => {
                 if (DiffOptions.context-lines > 0) {
                     DiffOptions.context-lines -= 1;
@@ -269,6 +326,8 @@ component SectionLabel inherits Text {
 component RepoBrowser inherits Rectangle {
     width: 300px;
     background: Backend.panel-bg;
+    // Height of the RECENT COMMITS panel; adjustable via the drag handle below.
+    property <length> commits-height: 150px;
     Rectangle { x: parent.width - 1px; width: 1px; background: #1b1b1c; }
 
     VerticalLayout {
@@ -285,70 +344,207 @@ component RepoBrowser inherits Rectangle {
             path-input := LineEdit {
                 placeholder-text: "/path/to/repo";
                 horizontal-stretch: 1;
+                accepted => { Backend.open-repo(self.text); }
             }
             Button { text: "Open"; clicked => { Backend.open-repo(path-input.text); } }
         }
-        if Backend.branch != "" : Text {
-            text: "⎇ " + Backend.branch;
-            color: #9cdcfe;
-            font-size: 12px;
+        Button {
+            text: "Browse…";
+            icon: @image-url("icons/folder-open.svg");
+            colorize-icon: true;
+            clicked => { Backend.browse-repo(); }
+        }
+        if Backend.branch != "" : HorizontalLayout {
+            spacing: 6px;
+            Icon {
+                size: 14px;
+                source: @image-url("icons/git-branch.svg");
+                colorize: #9cdcfe;
+            }
+            Text {
+                text: Backend.branch;
+                color: #9cdcfe;
+                font-size: 12px;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
         }
 
-        SectionLabel { text: "CHANGES"; }
-        files-list := ListView {
-            vertical-stretch: 1;
-            for f in Backend.files : Rectangle {
-                height: 24px;
-                property <bool> selected: f.path == Backend.current-file;
-                background: selected ? #094771 : (touch.has-hover ? #2a2d2e : transparent);
-                touch := TouchArea { clicked => { Backend.select-file(f.path); } }
-                HorizontalLayout {
-                    padding-left: 6px;
-                    spacing: 8px;
-                    Text {
-                        text: f.status;
-                        width: 16px;
-                        color: f.status == "M" ? #e2c08d
-                             : f.status == "?" ? #73c991
-                             : f.status == "A" ? #73c991
-                             : f.status == "D" ? #f48771
-                             : Backend.accent;
-                        font-family: Backend.mono-font;
-                        font-weight: 700;
-                        vertical-alignment: center;
-                    }
-                    Text {
-                        text: f.path;
-                        color: selected ? white : Backend.fg;
-                        overflow: elide;
-                        font-size: 12px;
-                        vertical-alignment: center;
-                    }
+        // CHANGES header with a live count and a loading spinner.
+        HorizontalLayout {
+            spacing: 6px;
+            SectionLabel {
+                text: "CHANGES (\{Backend.files.length})";
+                vertical-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            if Backend.loading : Rectangle {
+                width: 13px;
+                property <angle> ang: 0deg;
+                Timer {
+                    interval: 16ms;
+                    running: true;
+                    triggered => { parent.ang = parent.ang + 9deg; }
+                }
+                Image {
+                    width: 13px;
+                    height: 13px;
+                    image-fit: contain;
+                    source: @image-url("icons/loader-circle.svg");
+                    colorize: Backend.gutter-fg;
+                    rotation-angle: parent.ang;
+                    rotation-origin-x: 6.5px;
+                    rotation-origin-y: 6.5px;
                 }
             }
         }
 
-        SectionLabel { text: "RECENT COMMITS"; }
-        commits-list := ListView {
-            height: 150px;
-            for c in Backend.commits : Rectangle {
-                height: 38px;
-                background: ctouch.has-hover ? #2a2d2e : transparent;
-                ctouch := TouchArea { clicked => { Backend.select-commit(c.oid); } }
-                VerticalLayout {
-                    padding-left: 6px;
-                    padding-top: 3px;
-                    Text {
-                        text: c.summary;
-                        color: Backend.fg;
-                        overflow: elide;
-                        font-size: 12px;
+        // Filter the changes list by substring.
+        HorizontalLayout {
+            spacing: 4px;
+            Icon {
+                size: 13px;
+                source: @image-url("icons/search.svg");
+                colorize: Backend.gutter-fg;
+            }
+            filter-input := LineEdit {
+                placeholder-text: "Filter files";
+                horizontal-stretch: 1;
+                edited => { Backend.filter-files(self.text); }
+            }
+        }
+
+        // Files and commits share the remaining space, split by a draggable
+        // divider. The drag is captured by a TouchArea that FILLS this (fixed)
+        // area, so the pointer is always measured against a stable origin.
+        // Dragging the handle directly would jitter, because the handle moves
+        // with the layout and its position lags the pointer by a frame.
+        lists-area := Rectangle {
+            vertical-stretch: 1;
+            property <length> handle-h: 10px;
+            // Files pane height; the commits pane takes the rest (>= 80px each).
+            property <length> files-h: clamp(self.height - root.commits-height - self.handle-h,
+                                             80px, self.height - 80px);
+
+            // Lowest z, fills the area. Only presses that fall through the
+            // divider gap reach it (the lists above consume their own), and
+            // mouse-y here is relative to this non-moving rectangle.
+            resize-ta := TouchArea {
+                mouse-cursor: row-resize;
+                property <bool> dragging;
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down) {
+                        self.dragging = self.mouse-y >= lists-area.files-h - 6px
+                                     && self.mouse-y <= lists-area.files-h + lists-area.handle-h + 6px;
                     }
-                    Text {
-                        text: c.short-oid;
-                        color: Backend.gutter-fg;
-                        font-family: Backend.mono-font;
-                        font-size: 10px;
+                    if (e.kind == PointerEventKind.up) {
+                        self.dragging = false;
+                    }
+                }
+                moved => {
+                    if (self.dragging) {
+                        root.commits-height = clamp(
+                            lists-area.height - self.mouse-y - lists-area.handle-h / 2,
+                            80px, lists-area.height - 80px);
+                    }
+                }
+            }
+
+            files-list := ListView {
+                y: 0;
+                height: lists-area.files-h;
+                width: 100%;
+                for f in Backend.files : Rectangle {
+                    height: 24px;
+                    property <bool> selected: f.path == Backend.current-file;
+                    background: selected ? #094771 : (touch.has-hover ? #2a2d2e : transparent);
+                    touch := TouchArea { clicked => { Backend.select-file(f.path); } }
+                    HorizontalLayout {
+                        padding-left: 6px;
+                        padding-right: 6px;
+                        spacing: 6px;
+                        StatusIcon { status: f.status; }
+                        // Filename first so it stays visible; the directory is
+                        // dimmed and elides as the row narrows.
+                        Text {
+                            text: f.name;
+                            color: selected ? white : Backend.fg;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: f.dir;
+                            color: Backend.gutter-fg;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                        if f.staged : Rectangle {
+                            width: 8px;
+                            Rectangle {
+                                width: 6px;
+                                height: 6px;
+                                border-radius: 3px;
+                                background: #73c991;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // The divider itself is visual only (no TouchArea) so presses land
+            // on resize-ta beneath it.
+            Rectangle {
+                y: lists-area.files-h;
+                width: 100%;
+                height: lists-area.handle-h;
+                Rectangle {
+                    width: 28px;
+                    height: 2px;
+                    border-radius: 1px;
+                    background: resize-ta.dragging || resize-ta.has-hover ? #6e7681 : #3c3c3c;
+                }
+            }
+
+            VerticalLayout {
+                y: lists-area.files-h + lists-area.handle-h;
+                width: 100%;
+                height: lists-area.height - lists-area.files-h - lists-area.handle-h;
+                SectionLabel { text: "RECENT COMMITS"; }
+                commits-list := ListView {
+                    vertical-stretch: 1;
+                    for c in Backend.commits : Rectangle {
+                        height: 38px;
+                        background: ctouch.has-hover ? #2a2d2e : transparent;
+                        ctouch := TouchArea { clicked => { Backend.select-commit(c.oid); } }
+                        HorizontalLayout {
+                            padding-left: 6px;
+                            padding-right: 6px;
+                            spacing: 6px;
+                            Icon {
+                                size: 14px;
+                                source: @image-url("icons/git-commit.svg");
+                                colorize: Backend.gutter-fg;
+                            }
+                            VerticalLayout {
+                                padding-top: 4px;
+                                padding-bottom: 4px;
+                                Text {
+                                    text: c.summary;
+                                    color: Backend.fg;
+                                    overflow: elide;
+                                    font-size: 12px;
+                                }
+                                Text {
+                                    text: c.short-oid;
+                                    color: Backend.gutter-fg;
+                                    font-family: Backend.mono-font;
+                                    font-size: 10px;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -394,36 +590,90 @@ export component AppWindow inherits Window {
 
             OptionBar {}
 
-            // the diff itself — scrolls both ways; long lines no longer clip
+            // The diff itself. Side-by-side is two equal panes around a centered
+            // 1px divider, each scrolling horizontally on its own but sharing one
+            // vertical scroll position so the rows stay aligned. Unified is a
+            // single full-width pane.
             diff-area := Rectangle {
                 background: Backend.bg;
                 vertical-stretch: 1;
                 clip: true;
                 property <length> char-w: Backend.font-size * 0.62px;
-                property <length> content-w: DiffOptions.side-by-side
-                    ? max(self.width, Backend.max-cols * char-w * 2 + 160px)
-                    : max(self.width, Backend.max-cols * char-w + 90px);
+                // Each pane occupies half the area (minus the 1px divider).
+                property <length> pane-w: (self.width - 1px) / 2;
+                // How wide one side's scroll content needs to be for its longest
+                // line; never narrower than the visible pane so the divider stays
+                // centered when content fits.
+                property <length> side-content-w: max(pane-w, Backend.max-cols * char-w + 80px);
+                property <length> uni-content-w: max(self.width, Backend.max-cols * char-w + 120px);
 
-                ScrollView {
-                    viewport-width: diff-area.content-w;
+                if DiffOptions.side-by-side && Backend.rows.length > 0 : HorizontalLayout {
+                    spacing: 0px;
+                    left-sv := ScrollView {
+                        horizontal-stretch: 1;
+                        // The right pane's scrollbar drives both panes' vertical scroll.
+                        vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+                        viewport-width: diff-area.side-content-w;
+                        VerticalLayout {
+                            width: diff-area.side-content-w;
+                            for data in Backend.rows : SideRow {
+                                rowdata: data;
+                                right-side: false;
+                                width: diff-area.side-content-w;
+                            }
+                        }
+                    }
+                    Rectangle { width: 1px; background: #3c3c3c; }
+                    right-sv := ScrollView {
+                        horizontal-stretch: 1;
+                        viewport-y <=> left-sv.viewport-y;
+                        viewport-width: diff-area.side-content-w;
+                        VerticalLayout {
+                            width: diff-area.side-content-w;
+                            for data in Backend.rows : SideRow {
+                                rowdata: data;
+                                right-side: true;
+                                width: diff-area.side-content-w;
+                            }
+                        }
+                    }
+                }
+
+                if !DiffOptions.side-by-side && Backend.rows.length > 0 : ScrollView {
+                    viewport-width: diff-area.uni-content-w;
                     VerticalLayout {
-                        width: diff-area.content-w;
-                        for data in Backend.rows : DiffLine {
+                        width: diff-area.uni-content-w;
+                        for data in Backend.rows : SideRow {
                             rowdata: data;
-                            width: diff-area.content-w;
+                            right-side: false;
+                            unified: true;
+                            width: diff-area.uni-content-w;
                         }
                     }
                 }
 
                 // empty state
-                if Backend.rows.length == 0 : Text {
-                    text: Backend.current-file == ""
-                        ? "Select a changed file on the left to view its diff"
-                        : "No textual changes to display";
-                    color: Backend.gutter-fg;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                    font-size: 13px;
+                if Backend.rows.length == 0 : VerticalLayout {
+                    alignment: center;
+                    spacing: 12px;
+                    Rectangle {
+                        height: 44px;
+                        Image {
+                            width: 44px;
+                            height: 44px;
+                            image-fit: contain;
+                            source: @image-url("icons/git-compare.svg");
+                            colorize: Backend.gutter-fg;
+                        }
+                    }
+                    Text {
+                        text: Backend.current-file == ""
+                            ? "Select a changed file on the left to view its diff"
+                            : "No textual changes to display";
+                        color: Backend.gutter-fg;
+                        horizontal-alignment: center;
+                        font-size: 13px;
+                    }
                 }
             }
 

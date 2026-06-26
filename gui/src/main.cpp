@@ -9,13 +9,26 @@
 #include <slint.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX  // keep std::min/std::max usable (see relayout())
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <shobjidl.h>
+#endif
 
 using namespace diffy;
 using diffy::gui::Repo;
@@ -30,6 +43,49 @@ ss(const std::string& s) {
 std::string
 str(const slint::SharedString& s) {
     return std::string(s.data());
+}
+
+// Native "choose a folder" dialog. Returns the picked path (UTF-8), or nullopt
+// if the user cancelled or the platform has no picker.
+std::optional<std::string>
+pick_folder() {
+#ifdef _WIN32
+    std::optional<std::string> chosen;
+    const bool com_ok =
+        SUCCEEDED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE));
+    IFileOpenDialog* dialog = nullptr;
+    if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                   IID_PPV_ARGS(&dialog)))) {
+        DWORD opts = 0;
+        dialog->GetOptions(&opts);
+        dialog->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
+        dialog->SetTitle(L"Open a git repository");
+        if (SUCCEEDED(dialog->Show(nullptr))) {
+            IShellItem* item = nullptr;
+            if (SUCCEEDED(dialog->GetResult(&item))) {
+                PWSTR wpath = nullptr;
+                if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &wpath))) {
+                    const int n =
+                        WideCharToMultiByte(CP_UTF8, 0, wpath, -1, nullptr, 0, nullptr, nullptr);
+                    if (n > 1) {
+                        std::string s(static_cast<size_t>(n - 1), '\0');
+                        WideCharToMultiByte(CP_UTF8, 0, wpath, -1, s.data(), n, nullptr, nullptr);
+                        chosen = std::move(s);
+                    }
+                    CoTaskMemFree(wpath);
+                }
+                item->Release();
+            }
+        }
+        dialog->Release();
+    }
+    if (com_ok) {
+        CoUninitialize();
+    }
+    return chosen;
+#else
+    return std::nullopt;
+#endif
 }
 
 }  // namespace
@@ -89,7 +145,7 @@ run_selftest(const std::string& repo_path, const GuiSettings& settings) {
             std::fprintf(stderr, "selftest: '%s' (%s) [%s] -> %zu view rows, %d slint rows\n",
                          f.path.c_str(), f.status.c_str(),
                          mode == ViewMode::SideBySide ? "side-by-side" : "unified", vm.rows.size(),
-                         static_cast<int>(model->row_count()));
+                         static_cast<int>(model.rows->row_count()));
         }
         return 0;
     }
@@ -124,17 +180,37 @@ main(int argc, char** argv) {
         diffy::gui::BlobPair pair;
         DiffComputation computation;
         GuiSettings settings;
+        uint64_t load_generation = 0;  // bumped per open; old async loads are dropped
+        std::vector<diffy::gui::FileChange> all_files;  // unfiltered changes list
+        std::string file_filter;                        // substring filter (lowercased)
     } state;
     state.settings = settings;
     state.repos = repos_load();
 
+    // Outstanding background repo-load threads, joined before libgit2 shuts down.
+    std::vector<std::thread> load_threads;
+
     // --- typography + initial option-bar state from [gui] -------------------
-    // "monospace" is not a real macOS family; map the generic/empty value to a
-    // concrete monospace font so the diff text actually aligns crisply.
+    // Map a generic/empty (or legacy macOS-only "Menlo") family to a concrete
+    // monospace font that actually exists on this OS, so the diff text aligns
+    // crisply instead of falling back to a font that lacks the glyphs.
+    const std::string default_mono =
+#if defined(_WIN32)
+        "Consolas";  // shipped with Windows since Vista
+#elif defined(__APPLE__)
+        "Menlo";
+#else
+        "DejaVu Sans Mono";
+#endif
     std::string mono = settings.font_family;
     if (mono.empty() || mono == "monospace") {
-        mono = "Menlo";
+        mono = default_mono;
     }
+#if !defined(__APPLE__)
+    if (mono == "Menlo") {  // the old default; Menlo only exists on macOS
+        mono = default_mono;
+    }
+#endif
     backend.set_mono_font(ss(mono));
     backend.set_font_size(static_cast<int>(settings.font_size));
     if (settings.theme_variant == "light") {
@@ -181,20 +257,11 @@ main(int argc, char** argv) {
         auto input = state.computation.input();
         auto vm = build_diff_view(input, state.computation.hunks, layout_opts());
 
-        // Longest line (in characters) drives the horizontal scroll extent.
-        int max_cols = 0;
-        for (const auto& row : vm.rows) {
-            int left = 0, right = 0;
-            for (const auto& s : row.left.spans) {
-                left += static_cast<int>(s.text.size());
-            }
-            for (const auto& s : row.right.spans) {
-                right += static_cast<int>(s.text.size());
-            }
-            max_cols = std::max(max_cols, std::max(left, right));
-        }
-        backend.set_max_cols(max_cols);
-        backend.set_rows(diffy::gui::build_row_model(vm, state.settings));
+        // build_row_model expands tabs and reports the widest line (in display
+        // columns), which drives the horizontal scroll extent.
+        auto model = diffy::gui::build_row_model(vm, state.settings);
+        backend.set_max_cols(model.max_cols);
+        backend.set_rows(model.rows);
     };
 
     // full refresh: re-run the diff for the current blob pair, then lay out
@@ -208,53 +275,51 @@ main(int argc, char** argv) {
         relayout();
     };
 
-    auto populate_repo = [&]() {
-        if (!state.repo) {
-            return;
-        }
-        backend.set_branch(ss(state.repo->head_branch()));
-
+    // Rebuild the Slint file model from state.all_files, honouring the filter.
+    auto render_files = [&]() {
+        auto lower = [](std::string s) {
+            std::transform(s.begin(), s.end(), s.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return s;
+        };
+        const std::string& needle = state.file_filter;
         auto files = std::make_shared<slint::VectorModel<FileEntry>>();
-        for (auto& f : state.repo->status()) {
+        for (const auto& f : state.all_files) {
+            if (!needle.empty() && lower(f.path).find(needle) == std::string::npos) {
+                continue;
+            }
             FileEntry fe;
             fe.path = ss(f.path);
             fe.status = ss(f.status);
+            fe.staged = f.staged;
+            const auto slash = f.path.find_last_of('/');
+            if (slash == std::string::npos) {
+                fe.name = ss(f.path);
+                fe.dir = ss("");
+            } else {
+                fe.name = ss(f.path.substr(slash + 1));
+                fe.dir = ss(f.path.substr(0, slash + 1));
+            }
             files->push_back(fe);
         }
         backend.set_files(files);
+    };
 
-        auto commits = std::make_shared<slint::VectorModel<CommitEntry>>();
-        for (auto& c : state.repo->recent_commits(50)) {
+    auto set_files = [&](const std::vector<diffy::gui::FileChange>& changes) {
+        state.all_files = changes;
+        render_files();
+    };
+
+    auto set_commits = [&](const std::vector<diffy::gui::CommitInfo>& commits) {
+        auto model = std::make_shared<slint::VectorModel<CommitEntry>>();
+        for (auto& c : commits) {
             CommitEntry ce;
             ce.oid = ss(c.oid);
             ce.short_oid = ss(c.short_oid);
             ce.summary = ss(c.summary);
-            commits->push_back(ce);
+            model->push_back(ce);
         }
-        backend.set_commits(commits);
-    };
-
-    // Assigned once open_file_workdir exists; auto-opens the first changed file
-    // that has real content so the diff view isn't empty after opening a repo.
-    std::function<void()> auto_select_first;
-
-    auto load_repo = [&](const std::string& path) {
-        auto r = Repo::open(path);
-        if (!r) {
-            backend.set_status_text(ss("Not a git repository: " + path));
-            return;
-        }
-        state.repo = std::move(r);
-        state.current_commit.clear();  // opening a repo starts in working-tree mode
-        const std::string wd = state.repo->workdir().empty() ? path : state.repo->workdir();
-        repos_add(state.repos, wd);
-        repos_save(state.repos);
-        set_repo_names();
-        populate_repo();
-        backend.set_status_text(ss("Opened " + wd));
-        if (auto_select_first) {
-            auto_select_first();
-        }
+        backend.set_commits(model);
     };
 
     // Open a file's diff. Honours the current mode: working-tree (HEAD vs disk)
@@ -276,38 +341,130 @@ main(int argc, char** argv) {
         recompute();
     };
 
-    auto set_files = [&](const std::vector<diffy::gui::FileChange>& changes) {
-        auto files = std::make_shared<slint::VectorModel<FileEntry>>();
-        for (auto& f : changes) {
-            FileEntry fe;
-            fe.path = ss(f.path);
-            fe.status = ss(f.status);
-            files->push_back(fe);
-        }
-        backend.set_files(files);
+    // A repository opens in two stages so a large repo (lots of submodules /
+    // untracked files) shows something useful immediately: the cheap branch +
+    // recent-commit info lands first, then the working-tree status (the slow
+    // part) and the first diff arrive when ready. Each stage is gen-checked so a
+    // newer open started meanwhile discards stale results.
+
+    // Stage 1 payload — fast.
+    struct LoadMeta {
+        std::string workdir;
+        std::string branch;
+        std::vector<diffy::gui::CommitInfo> commits;
+    };
+    // Stage 2 payload — after status().
+    struct LoadFiles {
+        std::vector<diffy::gui::FileChange> files;
+        std::string first_file;  // first changed file with real content ("" if none)
+        std::optional<Repo> repo;
     };
 
-    auto_select_first = [&]() {
-        if (!state.repo) {
+    auto apply_meta = [&](std::shared_ptr<LoadMeta> m, uint64_t gen) {
+        if (gen != state.load_generation) {
             return;
         }
-        for (auto& f : state.repo->status()) {
-            auto pair = state.repo->diff_workdir_file(f.path);
-            if (!(pair.old_text.empty() && pair.new_text.empty())) {
-                open_file(f.path);
+        repos_add(state.repos, m->workdir);
+        repos_save(state.repos);
+        set_repo_names();
+        backend.set_branch(ss(m->branch));
+        set_commits(m->commits);
+        backend.set_status_text(ss("Reading changes in " + m->workdir + " …"));
+    };
+
+    auto apply_fail = [&](std::string path, uint64_t gen) {
+        if (gen != state.load_generation) {
+            return;
+        }
+        backend.set_loading(false);
+        backend.set_status_text(ss("Not a git repository: " + path));
+    };
+
+    auto apply_files = [&](std::shared_ptr<LoadFiles> f, uint64_t gen) {
+        if (gen != state.load_generation) {
+            return;
+        }
+        state.repo = std::move(f->repo);
+        state.current_commit.clear();  // opening a repo starts in working-tree mode
+        backend.set_loading(false);
+        set_files(f->files);
+        backend.set_status_text(
+            ss(std::to_string(f->files.size()) + " changed file(s)"));
+        if (!f->first_file.empty()) {
+            open_file(f->first_file);  // cheap: one blob + one file read
+        } else {
+            backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
+            backend.set_current_file(ss(""));
+        }
+    };
+
+    auto load_repo = [&](const std::string& path) {
+        const uint64_t gen = ++state.load_generation;
+        backend.set_loading(true);
+        backend.set_status_text(ss("Opening " + path + " …"));
+        // Clear the current view so switching repos feels immediate.
+        set_files({});
+        set_commits({});
+        backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
+        backend.set_branch(ss(""));
+        backend.set_current_file(ss(""));
+
+        load_threads.emplace_back([path, gen, &apply_meta, &apply_files, &apply_fail]() {
+            auto r = Repo::open(path);
+            if (!r) {
+                slint::invoke_from_event_loop(
+                    [path, gen, &apply_fail]() { apply_fail(path, gen); });
                 return;
             }
-        }
+
+            // Stage 1: branch + recent commits (fast) — show the repo at once.
+            auto meta = std::make_shared<LoadMeta>();
+            meta->workdir = r->workdir().empty() ? path : r->workdir();
+            meta->branch = r->head_branch();
+            meta->commits = r->recent_commits(50);
+            slint::invoke_from_event_loop(
+                [meta, gen, &apply_meta]() { apply_meta(meta, gen); });
+
+            // Stage 2: working-tree status (slow) + first diffable file.
+            auto fl = std::make_shared<LoadFiles>();
+            fl->files = r->status();
+            int budget = 64;  // bound the per-file scan so a huge change set can't stall
+            for (const auto& f : fl->files) {
+                if (budget-- <= 0) {
+                    break;
+                }
+                auto pair = r->diff_workdir_file(f.path);
+                if (!(pair.old_text.empty() && pair.new_text.empty())) {
+                    fl->first_file = f.path;
+                    break;
+                }
+            }
+            fl->repo = std::move(*r);
+            slint::invoke_from_event_loop(
+                [fl, gen, &apply_files]() { apply_files(fl, gen); });
+        });
     };
 
     // --- callbacks ----------------------------------------------------------
     backend.on_open_repo([&](slint::SharedString p) { load_repo(str(p)); });
+    backend.on_browse_repo([&]() {
+        if (auto path = pick_folder(); path && !path->empty()) {
+            load_repo(*path);
+        }
+    });
     backend.on_select_repo_index([&](int i) {
         if (i >= 0 && i < static_cast<int>(state.repos.size())) {
             load_repo(state.repos[i].path);
         }
     });
     backend.on_select_file([&](slint::SharedString p) { open_file(str(p)); });
+    backend.on_filter_files([&](slint::SharedString p) {
+        std::string f = str(p);
+        std::transform(f.begin(), f.end(), f.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        state.file_filter = f;
+        render_files();
+    });
     backend.on_select_commit([&](slint::SharedString oid) {
         if (!state.repo) {
             return;
@@ -338,6 +495,13 @@ main(int argc, char** argv) {
     }
 
     ui->run();
+
+    // Let any in-flight background loads finish before libgit2 is torn down.
+    for (auto& t : load_threads) {
+        if (t.joinable()) {
+            t.join();
+        }
+    }
 
     // --- persist on exit ----------------------------------------------------
     gui_settings_save(state.settings);

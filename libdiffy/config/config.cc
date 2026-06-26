@@ -263,7 +263,7 @@ config_save(const std::string& config_root, const std::string& config_name, diff
     while (current.has_root_directory() && !std::filesystem::exists(current)) {
         if (current == std::filesystem::current_path().root_path())
             break;
-        required_dirs.push_back(current);
+        required_dirs.push_back(current.string());
         current = current.parent_path();
     }
 

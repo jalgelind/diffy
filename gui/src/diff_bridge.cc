@@ -1,5 +1,6 @@
 #include "diff_bridge.hpp"
 
+#include <algorithm>
 #include <string>
 
 namespace diffy::gui {
@@ -90,25 +91,67 @@ cell_bg(const Palette& p, const diffy::DiffCell& cell) {
     }
 }
 
+// Slint's Text has no glyph for a literal tab or other control characters, so
+// they render as "tofu" boxes. Expand tabs to the next tab stop and turn any
+// remaining control characters into a space. `col` tracks the running display
+// column across the spans of a line so tab stops line up. UTF-8 continuation
+// bytes (0x80-0xBF) are copied without advancing the column, so a multi-byte
+// codepoint counts as one column.
+std::string
+sanitize(const std::string& in, int tab_width, int& col) {
+    std::string out;
+    out.reserve(in.size());
+    if (tab_width < 1) {
+        tab_width = 1;
+    }
+    for (size_t i = 0; i < in.size();) {
+        const unsigned char c = static_cast<unsigned char>(in[i]);
+        if (c == '\t') {
+            int n = tab_width - (col % tab_width);
+            out.append(static_cast<size_t>(n), ' ');
+            col += n;
+            ++i;
+        } else if (c < 0x20 || c == 0x7f) {
+            out.push_back(' ');
+            ++col;
+            ++i;
+        } else {
+            out.push_back(static_cast<char>(c));
+            ++col;  // count the leading byte of the codepoint
+            ++i;
+            while (i < in.size() && (static_cast<unsigned char>(in[i]) & 0xc0) == 0x80) {
+                out.push_back(in[i]);
+                ++i;
+            }
+        }
+    }
+    return out;
+}
+
+// Build the Slint span list for a cell and report its display width (columns).
 std::shared_ptr<slint::VectorModel<DiffSpan>>
-make_spans(const Palette& p, const diffy::DiffCell& cell) {
+make_spans(const Palette& p, const diffy::DiffCell& cell, int tab_width, int& out_width) {
     auto spans = std::make_shared<slint::VectorModel<DiffSpan>>();
+    int col = 0;
     for (const auto& s : cell.spans) {
         DiffSpan d;
-        d.text = shared(s.text);
+        d.text = shared(sanitize(s.text, tab_width, col));
         d.color = span_color(p, s.style);
         d.bold = is_bold(s.style);
         spans->push_back(d);
     }
+    out_width = col;
     return spans;
 }
 
 }  // namespace
 
-std::shared_ptr<slint::VectorModel<DiffRowData>>
+RowModel
 build_row_model(const diffy::DiffViewModel& model, const diffy::GuiSettings& settings) {
     const Palette p = palette_for(settings);
-    auto rows = std::make_shared<slint::VectorModel<DiffRowData>>();
+    const int tab_width = static_cast<int>(settings.tab_width);
+    RowModel result;
+    result.rows = std::make_shared<slint::VectorModel<DiffRowData>>();
 
     for (const auto& r : model.rows) {
         DiffRowData d;
@@ -119,7 +162,7 @@ build_row_model(const diffy::DiffViewModel& model, const diffy::GuiSettings& set
             d.right_present = false;
             d.left_spans = std::make_shared<slint::VectorModel<DiffSpan>>();
             d.right_spans = std::make_shared<slint::VectorModel<DiffSpan>>();
-            rows->push_back(d);
+            result.rows->push_back(d);
             continue;
         }
 
@@ -130,12 +173,14 @@ build_row_model(const diffy::DiffViewModel& model, const diffy::GuiSettings& set
         d.right_present = r.right.present;
         d.left_bg = cell_bg(p, r.left);
         d.right_bg = cell_bg(p, r.right);
-        d.left_spans = make_spans(p, r.left);
-        d.right_spans = make_spans(p, r.right);
-        rows->push_back(d);
+        int lw = 0, rw = 0;
+        d.left_spans = make_spans(p, r.left, tab_width, lw);
+        d.right_spans = make_spans(p, r.right, tab_width, rw);
+        result.max_cols = std::max(result.max_cols, std::max(lw, rw));
+        result.rows->push_back(d);
     }
 
-    return rows;
+    return result;
 }
 
 }  // namespace diffy::gui
