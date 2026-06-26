@@ -113,15 +113,18 @@ Build (Make — Unix/WSL convenience)
 -----------------------------------
 
 A thin `Makefile` wraps the CMake build above so a plain `make` works in a
-POSIX shell. It builds the CLI (`diffy`) and tests into `build-linux/`, separate
-from the Windows/MSVC tree in `out/`. The GUI is gated behind `gui*` targets
-(it also needs cargo + libgit2).
+POSIX shell. Build trees go under `$(OUT)/<platform>-<config>` (platform from
+`uname`; `OUT` defaults to `out/`), so they never clash with the Windows/MSVC
+tree or each other. The GUI is gated behind `gui*` targets (it also needs cargo
++ libgit2).
 
-    $ make            # debug CLI + tests  -> build-linux/debug/cli/diffy
-    $ make release    # release            -> build-linux/release/cli/diffy
+    $ make            # debug CLI + tests  -> out/linux-debug/cli/diffy
+    $ make release    # release            -> out/linux-release/cli/diffy
     $ make test       # build + ctest
     $ make gui        # build diffy-gui (needs cargo + libgit2)
-    $ make clean
+    $ make clean      # remove the make build trees (leaves out/release/build-msvc)
+
+(On macOS the prefix is `macos-` instead of `linux-`.)
 
 
 Configuration
