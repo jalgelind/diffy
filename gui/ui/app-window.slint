@@ -636,6 +636,10 @@ export component AppWindow inherits Window {
                 clip: true;
 
                 if Backend.rows.length > 0 : ListView {
+                    // A ListView is a widget, not a layout, so it must be told
+                    // to fill the (plain Rectangle) diff area explicitly.
+                    width: 100%;
+                    height: 100%;
                     for data in Backend.rows : DiffRow {
                         width: parent.width;
                         rowdata: data;

@@ -20,21 +20,23 @@ cli_cmake = $(CMAKE) -S . -B $(1) -G $(GEN) -DCMAKE_BUILD_TYPE=$(2) \
 
 all: debug
 
+# Each target reconfigures before building. CMake is idempotent and cheap when
+# nothing changed, but this is what makes the build pick up edits to
+# CMakeLists/treesitter.cmake (e.g. added grammars) rather than silently
+# building against a stale configuration.
+
 # --- CLI (diffy) -----------------------------------------------------------
-debug: | $(BUILD)/debug/build.ninja
+debug:
+	@$(call cli_cmake,$(BUILD)/debug,Debug)
 	@$(CMAKE) --build $(BUILD)/debug
 
-$(BUILD)/debug/build.ninja:
-	@$(call cli_cmake,$(BUILD)/debug,Debug)
-
-release: | $(BUILD)/release/build.ninja
+release:
+	@$(call cli_cmake,$(BUILD)/release,Release)
 	@$(CMAKE) --build $(BUILD)/release
 
-$(BUILD)/release/build.ninja:
-	@$(call cli_cmake,$(BUILD)/release,Release)
-
 # --- Tests -----------------------------------------------------------------
-test: | $(BUILD)/debug/build.ninja
+test:
+	@$(call cli_cmake,$(BUILD)/debug,Debug)
 	@$(CMAKE) --build $(BUILD)/debug --target diffy-test
 	@ctest --test-dir $(BUILD)/debug --output-on-failure
 
@@ -50,17 +52,13 @@ integration-test: release
 gui_cmake = $(CMAKE) -S . -B $(1) -G $(GEN) -DCMAKE_BUILD_TYPE=$(2) \
 	-DDIFFY_BUILD_GUI=ON -DDIFFY_BUILD_CLI=OFF -DDIFFY_BUILD_TESTS=OFF
 
-gui: | $(BUILD)/gui-debug/build.ninja
+gui:
+	@$(call gui_cmake,$(BUILD)/gui-debug,Debug)
 	@$(CMAKE) --build $(BUILD)/gui-debug --target diffy-gui
 
-$(BUILD)/gui-debug/build.ninja:
-	@$(call gui_cmake,$(BUILD)/gui-debug,Debug)
-
-gui-release: | $(BUILD)/gui-release/build.ninja
-	@$(CMAKE) --build $(BUILD)/gui-release --target diffy-gui
-
-$(BUILD)/gui-release/build.ninja:
+gui-release:
 	@$(call gui_cmake,$(BUILD)/gui-release,Release)
+	@$(CMAKE) --build $(BUILD)/gui-release --target diffy-gui
 
 # Build (release) and launch the GUI.
 gui-run: gui-release
