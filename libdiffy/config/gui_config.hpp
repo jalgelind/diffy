@@ -22,7 +22,7 @@ struct GuiSettings {
     std::string theme_variant = "dark";         // "dark" | "light" | "system"
     std::string font_family = "monospace";  // generic; the GUI maps it to a real per-OS family
     int64_t font_size = 13;
-    bool word_wrap = true;
+    bool word_wrap = false;  // off by default so syntax/token colours always show
     bool show_line_numbers = true;
     bool syntax_highlight = true;  // tree-sitter syntax highlighting in the diff
     int64_t tab_width = 4;

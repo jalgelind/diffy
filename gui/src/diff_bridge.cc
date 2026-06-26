@@ -234,6 +234,8 @@ build_row_model(const diffy::DiffViewModel& model, const GuiTheme& theme, int ta
         d.right_spans = make_spans(theme, r.right, tab_width, rw, rt);
         d.left_text = shared(lt);
         d.right_text = shared(rt);
+        d.left_cols = lw;
+        d.right_cols = rw;
         result.max_cols = std::max(result.max_cols, std::max(lw, rw));
         result.rows->push_back(d);
     }

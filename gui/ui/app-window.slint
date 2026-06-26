@@ -15,10 +15,12 @@ export struct DiffRowData {
     new-no: string,
     left-spans: [DiffSpan],
     left-text: string,   // full line text, for word-wrap rendering
+    left-cols: int,      // display width in columns (to decide if it fits unwrapped)
     left-bg: color,
     left-present: bool,
     right-spans: [DiffSpan],
     right-text: string,
+    right-cols: int,
     right-bg: color,
     right-present: bool,
 }
@@ -134,21 +136,28 @@ component StatusIcon inherits Rectangle {
 component DiffCellView inherits Rectangle {
     in property <[DiffSpan]> spans;
     in property <string> full-text;
+    in property <int> cols;            // line width in display columns
     in property <color> bg;
     in property <bool> wrap;
     in property <length> avail-width;  // the cell's own width (set by the row)
-    // The wrapped text's actual height at the cell width (0 when not wrapping or
-    // the cell is collapsed). The row reads this to size itself — layout
-    // preferred-height can't do height-for-width, but a Text given an explicit
-    // width reports its real wrapped height.
-    out property <length> wrapped-height: (root.wrap && root.avail-width > 12px) ? wt.height : 0px;
-    background: bg;
-    clip: !root.wrap;  // wrapped cells grow vertically; unwrapped clip at the edge
 
-    // Wrapped: one flowing Text with an explicit width. Per-token syntax colour
-    // is traded for wrapping, but the diff add/remove background still shows.
+    // Approximate monospace advance, used to decide whether a line fits on one
+    // line. Only lines that genuinely overflow fall back to the (single-colour)
+    // wrapped Text; everything else keeps its per-token syntax/diff colours.
+    property <length> char-w: Backend.font-size * 0.62px;
+    property <bool> overflow: (root.cols * char-w) > (root.avail-width - 8px);
+    property <bool> wrapping: root.wrap && overflow && root.avail-width > 12px;
+
+    // The wrapped text's actual height (0 unless this cell is actually wrapping),
+    // so the row only grows for genuinely-wrapped lines.
+    out property <length> wrapped-height: wrapping ? wt.height : 0px;
+    background: bg;
+    clip: !wrapping;  // wrapped cells grow vertically; single lines clip at the edge
+
+    // Overflowing + wrap on: one flowing Text with an explicit width. Per-token
+    // colour is traded for wrapping; the add/remove background still shows.
     wt := Text {
-        visible: root.wrap && root.avail-width > 12px;
+        visible: wrapping;
         x: 6px;
         width: max(1px, root.avail-width - 10px);
         text: root.full-text;
@@ -158,8 +167,8 @@ component DiffCellView inherits Rectangle {
         wrap: word-wrap;
     }
 
-    // Not wrapped: highlighted spans on a single line, clipped at the cell edge.
-    if !root.wrap : HorizontalLayout {
+    // Otherwise: highlighted spans on a single line (clipped at the cell edge).
+    if !wrapping : HorizontalLayout {
         alignment: start;
         padding-left: 6px;
         for span in spans : Text {
@@ -235,6 +244,7 @@ component DiffRow inherits Rectangle {
             avail-width: cellw;
             spans: rowdata.left-spans;
             full-text: rowdata.left-text;
+            cols: rowdata.left-cols;
             bg: rowdata.left-bg;
             wrap: DiffOptions.word-wrap;
         }
@@ -249,6 +259,7 @@ component DiffRow inherits Rectangle {
             avail-width: sxs ? cellw : 0px;
             spans: rowdata.right-spans;
             full-text: rowdata.right-text;
+            cols: rowdata.right-cols;
             bg: rowdata.right-bg;
             wrap: DiffOptions.word-wrap;
         }
