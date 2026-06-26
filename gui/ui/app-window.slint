@@ -14,9 +14,11 @@ export struct DiffRowData {
     old-no: string,
     new-no: string,
     left-spans: [DiffSpan],
+    left-text: string,   // full line text, for word-wrap rendering
     left-bg: color,
     left-present: bool,
     right-spans: [DiffSpan],
+    right-text: string,
     right-bg: color,
     right-present: bool,
 }
@@ -126,11 +128,29 @@ component StatusIcon inherits Rectangle {
 
 component DiffCellView inherits Rectangle {
     in property <[DiffSpan]> spans;
+    in property <string> full-text;
     in property <color> bg;
+    in property <bool> wrap;
     background: bg;
-    clip: true;
+    clip: !root.wrap;  // wrapped cells grow vertically; unwrapped clip at the edge
     horizontal-stretch: 1;
-    HorizontalLayout {
+
+    // Wrapped: one flowing Text. Per-token syntax colour is traded for wrapping,
+    // but the diff add/remove background still shows.
+    if root.wrap : HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 4px;
+        Text {
+            text: root.full-text;
+            color: Backend.fg;
+            font-family: Backend.mono-font;
+            font-size: Backend.font-size * 1px;
+            wrap: word-wrap;
+        }
+    }
+
+    // Not wrapped: highlighted spans on a single line, clipped at the cell edge.
+    if !root.wrap : HorizontalLayout {
         alignment: start;
         padding-left: 6px;
         for span in spans : Text {
@@ -153,20 +173,19 @@ component LineNo inherits Text {
     vertical-alignment: center;
 }
 
-// One diff row, rendering a single side. Side-by-side stacks two of these in
-// separate scroll panes; unified uses one with both line-number gutters. Both
-// sides share the same row height so the two panes stay vertically aligned.
-component SideRow inherits Rectangle {
+// One full diff row used as a (virtualized) ListView delegate. Side-by-side
+// shows both cells with a centred 1px divider; unified shows one cell with both
+// line-number gutters. Both cells live in the same HorizontalLayout, so they
+// share a height automatically — wrapped lines stay aligned across the divider.
+component DiffRow inherits Rectangle {
     in property <DiffRowData> rowdata;
-    in property <bool> right-side;  // false = left/primary pane, true = right pane
-    in property <bool> unified;     // primary pane in unified mode shows both gutters
-    height: Backend.font-size * 1.6px;
+    min-height: Backend.font-size * 1.6px;  // grows when word-wrap is on
 
     if rowdata.is-header : Rectangle {
+        height: Backend.font-size * 1.6px;
         background: #2d2d30;
         Rectangle { x: 0; width: 3px; background: Backend.accent; }
-        // The hunk header text only needs to appear once, in the primary pane.
-        if !root.right-side : Text {
+        Text {
             x: 12px;
             text: rowdata.header;
             color: #9cdcfe;
@@ -178,17 +197,28 @@ component SideRow inherits Rectangle {
 
     if !rowdata.is-header : HorizontalLayout {
         spacing: 0px;
-        LineNo {
-            text: root.right-side ? rowdata.new-no : rowdata.old-no;
-            visible: DiffOptions.show-line-numbers;
-        }
-        if root.unified : LineNo {
+        LineNo { text: rowdata.old-no; visible: DiffOptions.show-line-numbers; }
+        // unified shows both line numbers in the left gutter
+        if !DiffOptions.side-by-side : LineNo {
             text: rowdata.new-no;
             visible: DiffOptions.show-line-numbers;
         }
         DiffCellView {
-            spans: root.right-side ? rowdata.right-spans : rowdata.left-spans;
-            bg: root.right-side ? rowdata.right-bg : rowdata.left-bg;
+            spans: rowdata.left-spans;
+            full-text: rowdata.left-text;
+            bg: rowdata.left-bg;
+            wrap: DiffOptions.word-wrap;
+        }
+        if DiffOptions.side-by-side : Rectangle { width: 1px; background: #3c3c3c; }
+        if DiffOptions.side-by-side : LineNo {
+            text: rowdata.new-no;
+            visible: DiffOptions.show-line-numbers;
+        }
+        if DiffOptions.side-by-side : DiffCellView {
+            spans: rowdata.right-spans;
+            full-text: rowdata.right-text;
+            bg: rowdata.right-bg;
+            wrap: DiffOptions.word-wrap;
         }
     }
 }
@@ -596,65 +626,19 @@ export component AppWindow inherits Window {
 
             OptionBar {}
 
-            // The diff itself. Side-by-side is two equal panes around a centered
-            // 1px divider, each scrolling horizontally on its own but sharing one
-            // vertical scroll position so the rows stay aligned. Unified is a
-            // single full-width pane.
+            // The diff itself: a single virtualized ListView of full rows, so
+            // only the visible rows are instantiated (large diffs stay fast).
+            // Each row draws both sides with a centred divider in side-by-side
+            // mode. Long lines clip at the cell edge unless word-wrap is on.
             diff-area := Rectangle {
                 background: Backend.bg;
                 vertical-stretch: 1;
                 clip: true;
-                property <length> char-w: Backend.font-size * 0.62px;
-                // Each pane occupies half the area (minus the 1px divider).
-                property <length> pane-w: (self.width - 1px) / 2;
-                // How wide one side's scroll content needs to be for its longest
-                // line; never narrower than the visible pane so the divider stays
-                // centered when content fits.
-                property <length> side-content-w: max(pane-w, Backend.max-cols * char-w + 80px);
-                property <length> uni-content-w: max(self.width, Backend.max-cols * char-w + 120px);
 
-                if DiffOptions.side-by-side && Backend.rows.length > 0 : HorizontalLayout {
-                    spacing: 0px;
-                    left-sv := ScrollView {
-                        horizontal-stretch: 1;
-                        // The right pane's scrollbar drives both panes' vertical scroll.
-                        vertical-scrollbar-policy: ScrollBarPolicy.always-off;
-                        viewport-width: diff-area.side-content-w;
-                        VerticalLayout {
-                            width: diff-area.side-content-w;
-                            for data in Backend.rows : SideRow {
-                                rowdata: data;
-                                right-side: false;
-                                width: diff-area.side-content-w;
-                            }
-                        }
-                    }
-                    Rectangle { width: 1px; background: #3c3c3c; }
-                    right-sv := ScrollView {
-                        horizontal-stretch: 1;
-                        viewport-y <=> left-sv.viewport-y;
-                        viewport-width: diff-area.side-content-w;
-                        VerticalLayout {
-                            width: diff-area.side-content-w;
-                            for data in Backend.rows : SideRow {
-                                rowdata: data;
-                                right-side: true;
-                                width: diff-area.side-content-w;
-                            }
-                        }
-                    }
-                }
-
-                if !DiffOptions.side-by-side && Backend.rows.length > 0 : ScrollView {
-                    viewport-width: diff-area.uni-content-w;
-                    VerticalLayout {
-                        width: diff-area.uni-content-w;
-                        for data in Backend.rows : SideRow {
-                            rowdata: data;
-                            right-side: false;
-                            unified: true;
-                            width: diff-area.uni-content-w;
-                        }
+                if Backend.rows.length > 0 : ListView {
+                    for data in Backend.rows : DiffRow {
+                        width: parent.width;
+                        rowdata: data;
                     }
                 }
 

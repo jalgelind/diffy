@@ -149,14 +149,18 @@ span_fg(const Palette& p, const diffy::StyledSpan& s, bool light) {
     return span_color(p, s.style);
 }
 
-// Build the Slint span list for a cell and report its display width (columns).
+// Build the Slint span list for a cell, report its display width (columns), and
+// accumulate the full line text (used for word-wrap rendering).
 std::shared_ptr<slint::VectorModel<DiffSpan>>
-make_spans(const Palette& p, const diffy::DiffCell& cell, int tab_width, bool light, int& out_width) {
+make_spans(const Palette& p, const diffy::DiffCell& cell, int tab_width, bool light, int& out_width,
+           std::string& out_text) {
     auto spans = std::make_shared<slint::VectorModel<DiffSpan>>();
     int col = 0;
     for (const auto& s : cell.spans) {
         DiffSpan d;
-        d.text = shared(sanitize(s.text, tab_width, col));
+        std::string piece = sanitize(s.text, tab_width, col);
+        out_text += piece;
+        d.text = shared(piece);
         d.color = span_fg(p, s, light);
         d.bold = is_bold(s.style);
         spans->push_back(d);
@@ -196,8 +200,11 @@ build_row_model(const diffy::DiffViewModel& model, const diffy::GuiSettings& set
         d.left_bg = cell_bg(p, r.left);
         d.right_bg = cell_bg(p, r.right);
         int lw = 0, rw = 0;
-        d.left_spans = make_spans(p, r.left, tab_width, light, lw);
-        d.right_spans = make_spans(p, r.right, tab_width, light, rw);
+        std::string lt, rt;
+        d.left_spans = make_spans(p, r.left, tab_width, light, lw, lt);
+        d.right_spans = make_spans(p, r.right, tab_width, light, rw, rt);
+        d.left_text = shared(lt);
+        d.right_text = shared(rt);
         result.max_cols = std::max(result.max_cols, std::max(lw, rw));
         result.rows->push_back(d);
     }
