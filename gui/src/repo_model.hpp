@@ -66,6 +66,11 @@ class Repo {
     std::vector<FileChange>
     status() const;
 
+    // Commits reachable from HEAD (newest first), skipping the first `skip` and
+    // returning up to `max_count` (or all of the rest when max_count <= 0).
+    std::vector<CommitInfo>
+    commits(int skip, int max_count) const;
+
     // Most recent commits reachable from HEAD (newest first).
     std::vector<CommitInfo>
     recent_commits(int max_count) const;

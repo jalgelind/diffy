@@ -251,7 +251,14 @@ main(int argc, char** argv) {
         uint64_t load_generation = 0;  // bumped per open; old async loads are dropped
         std::vector<diffy::gui::FileChange> all_files;  // unfiltered changes list
         std::string file_filter;                        // substring filter (lowercased)
+        // Lazy commit-list paging.
+        std::string repo_path;  // workdir of the open repo (for background re-walks)
+        int commits_shown = 0;  // commits currently in the model
+        bool commits_more = false;     // history may have more than is loaded
+        bool loading_commits = false;  // a load-more is in flight
+        std::shared_ptr<slint::VectorModel<CommitEntry>> commits_model;
     } state;
+    constexpr int kCommitPage = 50;  // commits per lazy page
     state.settings = settings;
     state.repos = repos_load();
 
@@ -394,16 +401,66 @@ main(int argc, char** argv) {
         render_files();
     };
 
-    auto set_commits = [&](const std::vector<diffy::gui::CommitInfo>& commits) {
+    auto commit_entry = [&](const diffy::gui::CommitInfo& c) {
+        CommitEntry ce;
+        ce.oid = ss(c.oid);
+        ce.short_oid = ss(c.short_oid);
+        ce.summary = ss(c.summary);
+        return ce;
+    };
+
+    // (Re)seed the commit list with the first page. `more` reflects whether the
+    // history likely has commits beyond this page (i.e. a full page came back).
+    auto set_commits = [&](const std::vector<diffy::gui::CommitInfo>& commits, bool more) {
         auto model = std::make_shared<slint::VectorModel<CommitEntry>>();
         for (auto& c : commits) {
-            CommitEntry ce;
-            ce.oid = ss(c.oid);
-            ce.short_oid = ss(c.short_oid);
-            ce.summary = ss(c.summary);
-            model->push_back(ce);
+            model->push_back(commit_entry(c));
         }
+        state.commits_model = model;
+        state.commits_shown = static_cast<int>(commits.size());
+        state.commits_more = more;
         backend.set_commits(model);
+        backend.set_more_commits(more);
+        backend.set_loading_commits(false);
+    };
+
+    // Append a fetched page to the existing model (runs on the UI thread).
+    auto append_commits =
+        [&](std::shared_ptr<std::vector<diffy::gui::CommitInfo>> batch, int requested, uint64_t gen) {
+            state.loading_commits = false;
+            backend.set_loading_commits(false);
+            if (gen != state.load_generation || !state.commits_model) {
+                return;  // repo switched while loading; drop
+            }
+            for (const auto& c : *batch) {
+                state.commits_model->push_back(commit_entry(c));
+            }
+            state.commits_shown += static_cast<int>(batch->size());
+            // A bounded page that came back short means we reached the root.
+            state.commits_more = requested > 0 && static_cast<int>(batch->size()) == requested;
+            backend.set_more_commits(state.commits_more);
+        };
+
+    // Walk the next page (or all remaining when count <= 0) off the UI thread.
+    auto fetch_more_commits = [&](int count) {
+        if (state.loading_commits || !state.commits_more || !state.commits_model ||
+            state.repo_path.empty()) {
+            return;
+        }
+        state.loading_commits = true;
+        backend.set_loading_commits(true);
+        const uint64_t gen = state.load_generation;
+        const int skip = state.commits_shown;
+        const std::string path = state.repo_path;
+        load_threads.emplace_back([path, skip, count, gen, &append_commits]() {
+            auto r = Repo::open(path);
+            auto batch = std::make_shared<std::vector<diffy::gui::CommitInfo>>();
+            if (r) {
+                *batch = r->commits(skip, count);
+            }
+            slint::invoke_from_event_loop(
+                [batch, count, gen, &append_commits]() { append_commits(batch, count, gen); });
+        });
     };
 
     // Open a file's diff. Honours the current mode: working-tree (HEAD vs disk)
@@ -451,8 +508,9 @@ main(int argc, char** argv) {
         repos_add(state.repos, m->workdir);
         repos_save(state.repos);
         set_repo_names();
+        state.repo_path = m->workdir;  // for background commit paging
         backend.set_branch(ss(m->branch));
-        set_commits(m->commits);
+        set_commits(m->commits, static_cast<int>(m->commits.size()) >= kCommitPage);
         backend.set_status_text(ss("Reading changes in " + m->workdir + " …"));
     };
 
@@ -488,7 +546,7 @@ main(int argc, char** argv) {
         backend.set_status_text(ss("Opening " + path + " …"));
         // Clear the current view so switching repos feels immediate.
         set_files({});
-        set_commits({});
+        set_commits({}, false);
         backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
         backend.set_branch(ss(""));
         backend.set_current_file(ss(""));
@@ -505,7 +563,7 @@ main(int argc, char** argv) {
             auto meta = std::make_shared<LoadMeta>();
             meta->workdir = r->workdir().empty() ? path : r->workdir();
             meta->branch = r->head_branch();
-            meta->commits = r->recent_commits(50);
+            meta->commits = r->recent_commits(kCommitPage);
             slint::invoke_from_event_loop(
                 [meta, gen, &apply_meta]() { apply_meta(meta, gen); });
 
@@ -566,6 +624,8 @@ main(int argc, char** argv) {
             backend.set_current_file(ss(""));
         }
     });
+    backend.on_load_more_commits([&]() { fetch_more_commits(kCommitPage); });
+    backend.on_load_all_commits([&]() { fetch_more_commits(0); });
     options.on_relayout([&]() {
         if (state.pair.ok) {
             relayout();

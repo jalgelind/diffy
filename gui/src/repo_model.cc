@@ -211,7 +211,7 @@ Repo::status() const {
 }
 
 std::vector<CommitInfo>
-Repo::recent_commits(int max_count) const {
+Repo::commits(int skip, int max_count) const {
     std::vector<CommitInfo> out;
 
     git_revwalk* walk = nullptr;
@@ -225,8 +225,12 @@ Repo::recent_commits(int max_count) const {
     }
 
     git_oid oid;
+    for (int skipped = 0; skipped < skip && git_revwalk_next(&oid, walk) == 0; ++skipped) {
+        // discard the first `skip` commits
+    }
+
     int n = 0;
-    while (n < max_count && git_revwalk_next(&oid, walk) == 0) {
+    while ((max_count <= 0 || n < max_count) && git_revwalk_next(&oid, walk) == 0) {
         git_commit* commit = nullptr;
         if (git_commit_lookup(&commit, repo_, &oid) != 0) {
             continue;
@@ -248,6 +252,11 @@ Repo::recent_commits(int max_count) const {
 
     git_revwalk_free(walk);
     return out;
+}
+
+std::vector<CommitInfo>
+Repo::recent_commits(int max_count) const {
+    return commits(0, max_count);
 }
 
 std::vector<FileChange>

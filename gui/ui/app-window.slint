@@ -61,6 +61,8 @@ export global Backend {
     in property <[string]> repo-names;
     in property <[FileEntry]> files;
     in property <[CommitEntry]> commits;
+    in property <bool> more-commits: false;     // history has more than is loaded
+    in property <bool> loading-commits: false;  // a load-more is in flight
     in property <[DiffRowData]> rows;
 
     in property <string> current-file: "";
@@ -87,6 +89,8 @@ export global Backend {
     callback select-repo-index(int);
     callback select-file(string);
     callback select-commit(string);
+    callback load-more-commits();
+    callback load-all-commits();
     callback filter-files(string);  // substring filter for the changes list
 }
 
@@ -624,6 +628,21 @@ component RepoBrowser inherits Rectangle {
                                 }
                             }
                         }
+                    }
+                }
+
+                // Lazy paging footer: load the next page or the whole history.
+                if Backend.more-commits || Backend.loading-commits : HorizontalLayout {
+                    spacing: 6px;
+                    Button {
+                        text: Backend.loading-commits ? "Loading…" : "Load more";
+                        enabled: !Backend.loading-commits;
+                        clicked => { Backend.load-more-commits(); }
+                    }
+                    Button {
+                        text: "Load all";
+                        enabled: !Backend.loading-commits;
+                        clicked => { Backend.load-all-commits(); }
                     }
                 }
             }
