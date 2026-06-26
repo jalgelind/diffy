@@ -179,7 +179,11 @@ component LineNo inherits Text {
 // share a height automatically — wrapped lines stay aligned across the divider.
 component DiffRow inherits Rectangle {
     in property <DiffRowData> rowdata;
-    min-height: Backend.font-size * 1.6px;  // grows when word-wrap is on
+    // ListView delegates need a concrete height. Fixed line height normally;
+    // when word-wrap is on, grow to the content's preferred height.
+    height: DiffOptions.word-wrap
+        ? max(Backend.font-size * 1.6px, self.preferred-height)
+        : Backend.font-size * 1.6px;
 
     if rowdata.is-header : Rectangle {
         height: Backend.font-size * 1.6px;

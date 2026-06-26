@@ -26,13 +26,19 @@ all: debug
 # building against a stale configuration.
 
 # --- CLI (diffy) -----------------------------------------------------------
+# After building, the `diffy` binary is also copied to out/<config>/diffy for a
+# stable, predictable path.
 debug:
 	@$(call cli_cmake,$(BUILD)/debug,Debug)
 	@$(CMAKE) --build $(BUILD)/debug
+	@mkdir -p out/debug && cp -f $(BUILD)/debug/cli/diffy out/debug/diffy
+	@echo "built: out/debug/diffy"
 
 release:
 	@$(call cli_cmake,$(BUILD)/release,Release)
 	@$(CMAKE) --build $(BUILD)/release
+	@mkdir -p out/release && cp -f $(BUILD)/release/cli/diffy out/release/diffy
+	@echo "built: out/release/diffy"
 
 # --- Tests -----------------------------------------------------------------
 test:
