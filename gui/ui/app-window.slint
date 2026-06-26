@@ -180,10 +180,13 @@ component LineNo inherits Text {
 component DiffRow inherits Rectangle {
     in property <DiffRowData> rowdata;
     // ListView delegates need a concrete height. Fixed line height normally;
-    // when word-wrap is on, grow to the content's preferred height.
-    height: DiffOptions.word-wrap
-        ? max(Backend.font-size * 1.6px, self.preferred-height)
-        : Backend.font-size * 1.6px;
+    // when word-wrap is on, grow to the body layout's preferred height (which
+    // accounts for the wrapped Text's height at the cell width).
+    height: rowdata.is-header
+        ? Backend.font-size * 1.6px
+        : (DiffOptions.word-wrap
+            ? max(Backend.font-size * 1.6px, body.preferred-height)
+            : Backend.font-size * 1.6px);
 
     if rowdata.is-header : Rectangle {
         height: Backend.font-size * 1.6px;
@@ -199,7 +202,8 @@ component DiffRow inherits Rectangle {
         }
     }
 
-    if !rowdata.is-header : HorizontalLayout {
+    body := HorizontalLayout {
+        visible: !rowdata.is-header;
         spacing: 0px;
         LineNo { text: rowdata.old-no; visible: DiffOptions.show-line-numbers; }
         // unified shows both line numbers in the left gutter
