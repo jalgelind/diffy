@@ -1,0 +1,444 @@
+import { Button, ComboBox, CheckBox, ListView, ScrollView, LineEdit } from "std-widgets.slint";
+
+// ---- shared data structures (mirrored by generated C++ types) --------------
+
+export struct DiffSpan {
+    text: string,
+    color: color,
+    bold: bool,
+}
+
+export struct DiffRowData {
+    is-header: bool,
+    header: string,
+    old-no: string,
+    new-no: string,
+    left-spans: [DiffSpan],
+    left-bg: color,
+    left-present: bool,
+    right-spans: [DiffSpan],
+    right-bg: color,
+    right-present: bool,
+}
+
+export struct FileEntry {
+    path: string,
+    status: string,
+}
+
+export struct CommitEntry {
+    oid: string,
+    short-oid: string,
+    summary: string,
+}
+
+// ---- option-bar state, shared with C++ -------------------------------------
+
+export global DiffOptions {
+    in-out property <bool> side-by-side: true;
+    in-out property <bool> word-wrap: false;
+    in-out property <bool> show-line-numbers: true;
+    in-out property <bool> ignore-whitespace: false;
+    in-out property <bool> token-granularity: true;
+    in-out property <int> context-lines: 3;
+    in-out property <int> algorithm: 0;  // 0 patience, 1 myers-greedy, 2 myers-linear
+
+    callback relayout();  // layout-only change (cheap)
+    callback rediff();    // needs a re-diff
+}
+
+// ---- everything C++ drives -------------------------------------------------
+
+export global Backend {
+    in property <[string]> repo-names;
+    in property <[FileEntry]> files;
+    in property <[CommitEntry]> commits;
+    in property <[DiffRowData]> rows;
+
+    in property <string> current-file: "";
+    in property <string> branch: "";
+    in property <string> status-text: "Open a repository to begin.";
+    in property <int> max-cols: 0;  // longest line in chars, for horizontal scroll
+
+    in property <string> mono-font: "Menlo";
+    in property <int> font-size: 13;
+    in property <color> bg: #1e1e1e;
+    in property <color> panel-bg: #252526;
+    in property <color> fg: #d4d4d4;
+    in property <color> gutter-fg: #6e7681;
+    in property <color> accent: #0e639c;
+
+    callback open-repo(string);
+    callback select-repo-index(int);
+    callback select-file(string);
+    callback select-commit(string);
+}
+
+// ---- one diff line ---------------------------------------------------------
+
+component DiffCellView inherits Rectangle {
+    in property <[DiffSpan]> spans;
+    in property <color> bg;
+    background: bg;
+    clip: true;
+    horizontal-stretch: 1;
+    HorizontalLayout {
+        alignment: start;
+        padding-left: 6px;
+        for span in spans : Text {
+            text: span.text;
+            color: span.color;
+            font-family: Backend.mono-font;
+            font-size: Backend.font-size * 1px;
+            font-weight: span.bold ? 700 : 400;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component LineNo inherits Text {
+    width: 48px;
+    color: Backend.gutter-fg;
+    font-family: Backend.mono-font;
+    font-size: Backend.font-size * 1px;
+    horizontal-alignment: right;
+    vertical-alignment: center;
+}
+
+component DiffLine inherits Rectangle {
+    in property <DiffRowData> rowdata;
+    height: Backend.font-size * 1.6px;
+
+    if rowdata.is-header : Rectangle {
+        background: #2d2d30;
+        Rectangle { x: 0; width: 3px; background: Backend.accent; }
+        Text {
+            x: 12px;
+            text: rowdata.header;
+            color: #9cdcfe;
+            font-family: Backend.mono-font;
+            font-size: Backend.font-size * 1px;
+            vertical-alignment: center;
+        }
+    }
+
+    if !rowdata.is-header : HorizontalLayout {
+        spacing: 0px;
+
+        LineNo { text: rowdata.old-no; visible: DiffOptions.show-line-numbers; }
+        // unified shows both numbers in the left gutter
+        LineNo {
+            text: rowdata.new-no;
+            visible: DiffOptions.show-line-numbers && !DiffOptions.side-by-side;
+        }
+
+        DiffCellView { spans: rowdata.left-spans; bg: rowdata.left-bg; }
+
+        if DiffOptions.side-by-side : Rectangle { width: 1px; background: #3c3c3c; }
+        if DiffOptions.side-by-side : LineNo {
+            text: rowdata.new-no;
+            visible: DiffOptions.show-line-numbers;
+        }
+        if DiffOptions.side-by-side : DiffCellView {
+            spans: rowdata.right-spans;
+            bg: rowdata.right-bg;
+        }
+    }
+}
+
+// ---- a segmented toggle for the view mode ----------------------------------
+
+component SegToggle inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+    width: 96px;
+    background: active ? Backend.accent : transparent;
+    Text {
+        text: label;
+        color: active ? white : Backend.fg;
+        font-size: 12px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+component Divider inherits Rectangle {
+    width: 1px;
+    background: #3c3c3c;
+}
+
+// ---- the option bar --------------------------------------------------------
+
+component OptionBar inherits Rectangle {
+    height: 42px;
+    background: Backend.panel-bg;
+    Rectangle { y: parent.height - 1px; height: 1px; background: #1b1b1c; }
+
+    HorizontalLayout {
+        padding: 6px;
+        spacing: 10px;
+        alignment: start;
+
+        Rectangle {
+            border-radius: 5px;
+            border-width: 1px;
+            border-color: #3c3c3c;
+            clip: true;
+            HorizontalLayout {
+                spacing: 0px;
+                SegToggle {
+                    label: "Side by side";
+                    active: DiffOptions.side-by-side;
+                    clicked => { DiffOptions.side-by-side = true; DiffOptions.relayout(); }
+                }
+                Divider {}
+                SegToggle {
+                    label: "Unified";
+                    active: !DiffOptions.side-by-side;
+                    clicked => { DiffOptions.side-by-side = false; DiffOptions.relayout(); }
+                }
+            }
+        }
+
+        CheckBox {
+            text: "Wrap";
+            checked: DiffOptions.word-wrap;
+            toggled => { DiffOptions.word-wrap = self.checked; DiffOptions.relayout(); }
+        }
+        CheckBox {
+            text: "Line #";
+            checked: DiffOptions.show-line-numbers;
+            toggled => { DiffOptions.show-line-numbers = self.checked; DiffOptions.relayout(); }
+        }
+
+        Divider {}
+
+        CheckBox {
+            text: "Ignore WS";
+            checked: DiffOptions.ignore-whitespace;
+            toggled => { DiffOptions.ignore-whitespace = self.checked; DiffOptions.rediff(); }
+        }
+        CheckBox {
+            text: "Tokens";
+            checked: DiffOptions.token-granularity;
+            toggled => { DiffOptions.token-granularity = self.checked; DiffOptions.rediff(); }
+        }
+
+        Divider {}
+
+        Text { text: "Context"; color: Backend.fg; vertical-alignment: center; }
+        Button {
+            text: "−";
+            clicked => {
+                if (DiffOptions.context-lines > 0) {
+                    DiffOptions.context-lines -= 1;
+                    DiffOptions.rediff();
+                }
+            }
+        }
+        Text {
+            text: DiffOptions.context-lines;
+            color: Backend.fg;
+            vertical-alignment: center;
+            width: 16px;
+            horizontal-alignment: center;
+        }
+        Button {
+            text: "+";
+            clicked => { DiffOptions.context-lines += 1; DiffOptions.rediff(); }
+        }
+
+        ComboBox {
+            width: 150px;
+            model: ["Patience", "Myers-greedy", "Myers-linear"];
+            current-index: DiffOptions.algorithm;
+            selected(v) => { DiffOptions.algorithm = self.current-index; DiffOptions.rediff(); }
+        }
+    }
+}
+
+// ---- the repository sidebar ------------------------------------------------
+
+component SectionLabel inherits Text {
+    color: Backend.gutter-fg;
+    font-size: 11px;
+}
+
+component RepoBrowser inherits Rectangle {
+    width: 300px;
+    background: Backend.panel-bg;
+    Rectangle { x: parent.width - 1px; width: 1px; background: #1b1b1c; }
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 8px;
+
+        SectionLabel { text: "REPOSITORY"; }
+        ComboBox {
+            model: Backend.repo-names;
+            selected(v) => { Backend.select-repo-index(self.current-index); }
+        }
+        HorizontalLayout {
+            spacing: 4px;
+            path-input := LineEdit {
+                placeholder-text: "/path/to/repo";
+                horizontal-stretch: 1;
+            }
+            Button { text: "Open"; clicked => { Backend.open-repo(path-input.text); } }
+        }
+        if Backend.branch != "" : Text {
+            text: "⎇ " + Backend.branch;
+            color: #9cdcfe;
+            font-size: 12px;
+        }
+
+        SectionLabel { text: "CHANGES"; }
+        files-list := ListView {
+            vertical-stretch: 1;
+            for f in Backend.files : Rectangle {
+                height: 24px;
+                property <bool> selected: f.path == Backend.current-file;
+                background: selected ? #094771 : (touch.has-hover ? #2a2d2e : transparent);
+                touch := TouchArea { clicked => { Backend.select-file(f.path); } }
+                HorizontalLayout {
+                    padding-left: 6px;
+                    spacing: 8px;
+                    Text {
+                        text: f.status;
+                        width: 16px;
+                        color: f.status == "M" ? #e2c08d
+                             : f.status == "?" ? #73c991
+                             : f.status == "A" ? #73c991
+                             : f.status == "D" ? #f48771
+                             : Backend.accent;
+                        font-family: Backend.mono-font;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: f.path;
+                        color: selected ? white : Backend.fg;
+                        overflow: elide;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        SectionLabel { text: "RECENT COMMITS"; }
+        commits-list := ListView {
+            height: 150px;
+            for c in Backend.commits : Rectangle {
+                height: 38px;
+                background: ctouch.has-hover ? #2a2d2e : transparent;
+                ctouch := TouchArea { clicked => { Backend.select-commit(c.oid); } }
+                VerticalLayout {
+                    padding-left: 6px;
+                    padding-top: 3px;
+                    Text {
+                        text: c.summary;
+                        color: Backend.fg;
+                        overflow: elide;
+                        font-size: 12px;
+                    }
+                    Text {
+                        text: c.short-oid;
+                        color: Backend.gutter-fg;
+                        font-family: Backend.mono-font;
+                        font-size: 10px;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---- the window ------------------------------------------------------------
+
+export component AppWindow inherits Window {
+    title: "diffy — git client";
+    preferred-width: 1280px;
+    preferred-height: 800px;
+    min-width: 800px;
+    min-height: 480px;
+    background: Backend.bg;
+
+    HorizontalLayout {
+        spacing: 0px;
+        RepoBrowser {}
+
+        VerticalLayout {
+            spacing: 0px;
+            horizontal-stretch: 1;
+
+            // header strip
+            Rectangle {
+                height: 30px;
+                background: Backend.bg;
+                Rectangle { y: parent.height - 1px; height: 1px; background: #1b1b1c; }
+                HorizontalLayout {
+                    padding-left: 12px;
+                    spacing: 8px;
+                    Text {
+                        text: Backend.current-file == "" ? "No file selected" : Backend.current-file;
+                        color: Backend.current-file == "" ? Backend.gutter-fg : Backend.fg;
+                        vertical-alignment: center;
+                        font-family: Backend.mono-font;
+                        font-size: 12px;
+                    }
+                }
+            }
+
+            OptionBar {}
+
+            // the diff itself — scrolls both ways; long lines no longer clip
+            diff-area := Rectangle {
+                background: Backend.bg;
+                vertical-stretch: 1;
+                clip: true;
+                property <length> char-w: Backend.font-size * 0.62px;
+                property <length> content-w: DiffOptions.side-by-side
+                    ? max(self.width, Backend.max-cols * char-w * 2 + 160px)
+                    : max(self.width, Backend.max-cols * char-w + 90px);
+
+                ScrollView {
+                    viewport-width: diff-area.content-w;
+                    VerticalLayout {
+                        width: diff-area.content-w;
+                        for data in Backend.rows : DiffLine {
+                            rowdata: data;
+                            width: diff-area.content-w;
+                        }
+                    }
+                }
+
+                // empty state
+                if Backend.rows.length == 0 : Text {
+                    text: Backend.current-file == ""
+                        ? "Select a changed file on the left to view its diff"
+                        : "No textual changes to display";
+                    color: Backend.gutter-fg;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    font-size: 13px;
+                }
+            }
+
+            // status bar
+            Rectangle {
+                height: 22px;
+                background: Backend.accent;
+                Text {
+                    x: 8px;
+                    text: Backend.status-text;
+                    color: white;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
