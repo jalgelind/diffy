@@ -462,8 +462,12 @@ make_header_columns(const std::string& left_name,
     auto a = shorten(left_name, left_perm_width + num_extra_perm_chars);
     auto b = shorten(right_name, right_perm_width + num_extra_perm_chars);
 
-    auto alen = utf8_len(a) + left_perm_width + num_extra_perm_chars;
-    auto blen = utf8_len(b) + right_perm_width + num_extra_perm_chars;
+    // Display width of the header cell. Count the permission suffix only when it
+    // is actually appended below. Otherwise an added/deleted file (empty name +
+    // no permissions) over-counts by the reserved perm width, so the cell renders
+    // too short and the column separator shifts left for that header row.
+    auto alen = utf8_len(a);
+    auto blen = utf8_len(b);
 
     const auto &[left_perm_color, right_perm_color] = color_code_file_permissions(
         config.style.delete_token,
@@ -474,10 +478,12 @@ make_header_columns(const std::string& left_name,
 
     if (!left_perm_color.empty()) {
         a += fmt::format(" ({})", left_perm_color);
+        alen += left_perm_width + num_extra_perm_chars;
     }
 
     if (!right_perm_color.empty()) {
         b += fmt::format(" ({})", right_perm_color);
+        blen += right_perm_width + num_extra_perm_chars;
     }
 
     col_left.push_back({DisplayLine{{{config.style.header + a + "\033[0m", alen, 0, EditType::Meta}}, alen}});
