@@ -1,4 +1,5 @@
 #include "highlight/highlight_group.hpp"
+#include "highlight/highlight_palette.hpp"
 #include "highlight/language.hpp"
 #include "highlight/syntax_highlighter.hpp"
 
@@ -120,6 +121,31 @@ TEST_CASE("markdown highlights (no line-comment syntax)") {
         total += static_cast<int>(line.size());
     }
     CHECK(total > 0);  // grammar loaded and the query matched something
+}
+
+TEST_CASE("syntax colour overrides apply, isolate, and clear") {
+    clear_syntax_overrides();
+    const HlRgb base = syntax_color(HighlightGroup::Keyword, /*light=*/false);
+
+    set_syntax_color_override(HighlightGroup::Keyword, HlRgb{1, 2, 3});
+    HlRgb got = syntax_color(HighlightGroup::Keyword, false);
+    CHECK(got.r == 1);
+    CHECK(got.g == 2);
+    CHECK(got.b == 3);
+    // The override also wins for the light variant.
+    CHECK(syntax_color(HighlightGroup::Keyword, true).r == 1);
+    // Other groups are unaffected.
+    HlRgb str = syntax_color(HighlightGroup::String, false);
+    const bool str_overridden = (str.r == 1 && str.g == 2 && str.b == 3);
+    CHECK_FALSE(str_overridden);
+    // None is never overridden.
+    set_syntax_color_override(HighlightGroup::None, HlRgb{9, 9, 9});
+
+    clear_syntax_overrides();
+    HlRgb restored = syntax_color(HighlightGroup::Keyword, false);
+    CHECK(restored.r == base.r);
+    CHECK(restored.g == base.g);
+    CHECK(restored.b == base.b);
 }
 
 TEST_CASE("unknown language yields no highlights") {

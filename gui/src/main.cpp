@@ -3,6 +3,8 @@
 #include "config/gui_config.hpp"
 #include "config/repos.hpp"
 #include "diff_bridge.hpp"
+#include "highlight/highlight_group.hpp"
+#include "highlight/highlight_palette.hpp"
 #include "render/diff_pipeline.hpp"
 #include "repo_model.hpp"
 
@@ -159,6 +161,36 @@ main(int argc, char** argv) {
 
     GuiSettings settings;
     gui_settings_load(settings);
+
+    // Apply any [gui.syntax] colour overrides (group-name -> "#rrggbb").
+    {
+        auto parse_hex = [](const std::string& s) -> std::optional<diffy::HlRgb> {
+            std::string h = (!s.empty() && s[0] == '#') ? s.substr(1) : s;
+            if (h.size() != 6) {
+                return std::nullopt;
+            }
+            auto nyb = [](char c) -> int {
+                if (c >= '0' && c <= '9') return c - '0';
+                c = static_cast<char>(c | 0x20);
+                return (c >= 'a' && c <= 'f') ? c - 'a' + 10 : -1;
+            };
+            int v[6];
+            for (int i = 0; i < 6; ++i) {
+                if ((v[i] = nyb(h[i])) < 0) return std::nullopt;
+            }
+            return diffy::HlRgb{static_cast<uint8_t>(v[0] * 16 + v[1]),
+                                static_cast<uint8_t>(v[2] * 16 + v[3]),
+                                static_cast<uint8_t>(v[4] * 16 + v[5])};
+        };
+        for (const auto& [name, hex] : settings.syntax_overrides) {
+            const diffy::HighlightGroup g = diffy::group_for_capture(name);
+            if (g != diffy::HighlightGroup::None) {
+                if (auto rgb = parse_hex(hex)) {
+                    diffy::set_syntax_color_override(g, *rgb);
+                }
+            }
+        }
+    }
 
     if (argc >= 3 && std::strcmp(argv[1], "--selftest") == 0) {
         int rc = run_selftest(argv[2], settings);

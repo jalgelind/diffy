@@ -1,9 +1,48 @@
 #include "highlight/highlight_palette.hpp"
 
+#include <array>
+
 namespace diffy {
+
+namespace {
+
+constexpr size_t kGroupCount = 32;  // comfortably above the enum's value count
+std::array<bool, kGroupCount> g_has_override{};
+std::array<HlRgb, kGroupCount> g_override{};
+
+HlRgb
+default_syntax_color(HighlightGroup group, bool light);
+
+}  // namespace
+
+void
+set_syntax_color_override(HighlightGroup group, HlRgb rgb) {
+    const auto i = static_cast<size_t>(group);
+    if (group == HighlightGroup::None || i >= kGroupCount) {
+        return;
+    }
+    g_has_override[i] = true;
+    g_override[i] = rgb;
+}
+
+void
+clear_syntax_overrides() {
+    g_has_override.fill(false);
+}
 
 HlRgb
 syntax_color(HighlightGroup group, bool light) {
+    const auto i = static_cast<size_t>(group);
+    if (group != HighlightGroup::None && i < kGroupCount && g_has_override[i]) {
+        return g_override[i];
+    }
+    return default_syntax_color(group, light);
+}
+
+namespace {
+
+HlRgb
+default_syntax_color(HighlightGroup group, bool light) {
     if (light) {
         switch (group) {
             case HighlightGroup::Comment:         return {0x00, 0x80, 0x00};
@@ -59,5 +98,7 @@ syntax_color(HighlightGroup group, bool light) {
         default:                              return {0xd4, 0xd4, 0xd4};
     }
 }
+
+}  // namespace
 
 }  // namespace diffy

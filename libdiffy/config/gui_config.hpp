@@ -11,6 +11,8 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace diffy {
 
@@ -27,6 +29,10 @@ struct GuiSettings {
     int64_t window_width = 1280;
     int64_t window_height = 800;
     bool restore_last_repo = true;
+
+    // Optional per-group syntax colour overrides from the [gui.syntax] table,
+    // as (group-name, "#rrggbb") pairs. The frontend resolves names to groups.
+    std::vector<std::pair<std::string, std::string>> syntax_overrides;
 
     ViewMode
     view_mode() const {

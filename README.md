@@ -73,6 +73,11 @@ Bash, JavaScript, TypeScript, TSX, HTML, CSS, Lua, TOML, CMake, Markdown, JSON.
 
 - **Toggle:** GUI — the "Syntax" checkbox in the option bar (persisted in
   `[gui] syntax_highlight`); CLI — `--no-highlight`.
+- **Theme the colours:** add a `[gui.syntax]` table to `diffy.conf` mapping
+  group names to hex, e.g. `keyword = "#c586c0"`, `string = "#ce9178"`,
+  `comment = "#6a9955"`, `type = "#4ec9b0"`, `function = "#dcdcaa"`,
+  `number = "#b5cea8"`, `variable = "#9cdcfe"`. Unset groups use the built-in
+  default palette.
 - **Add a language:** add one `add_ts_grammar(<lang> <repo> <tag> [SUBDIR ..])`
   line in `libdiffy/highlight/treesitter.cmake` and a registry entry
   (`language.cc`: extension, `tree_sitter_<lang>` binding, query chain). Grammars

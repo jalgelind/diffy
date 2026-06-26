@@ -80,6 +80,16 @@ diffy::gui_settings_load(GuiSettings& settings) {
     sync_int("gui.window_height", settings.window_height);
     sync_bool("gui.restore_last_repo", settings.restore_last_repo);
 
+    // Optional [gui.syntax] table: group-name -> "#rrggbb". Read-only (we don't
+    // write defaults, so the file is only what the user added).
+    if (auto v = table.lookup_value_by_path("gui.syntax"); v && v->get().is_table()) {
+        v->get().as_table().for_each([&](const std::string& key, Value& val) {
+            if (val.is_string()) {
+                settings.syntax_overrides.emplace_back(key, val.as_string());
+            }
+        });
+    }
+
     if (dirty) {
         write_table(table);
     }

@@ -19,8 +19,17 @@ struct HlRgb {
 };
 
 // Foreground colour for `group` in the chosen variant. HighlightGroup::None
-// returns the theme's default foreground.
+// returns the theme's default foreground. Honours any override set below.
 HlRgb
 syntax_color(HighlightGroup group, bool light_theme);
+
+// Override the colour for a group (applies to both variants), e.g. from the
+// user's theme/config. Frontends call this at startup. HighlightGroup::None is
+// ignored. Overrides persist for the process; clear_syntax_overrides() resets.
+void
+set_syntax_color_override(HighlightGroup group, HlRgb rgb);
+
+void
+clear_syntax_overrides();
 
 }  // namespace diffy
