@@ -76,6 +76,11 @@ export global Backend {
     in property <string> current-file: "";
     in property <string> diff-note: "";  // why the file isn't diffed (binary/large)
     in-out property <int> diff-scroll-row: -1;  // jump the diff to this model row
+    // Find-in-diff state.
+    in-out property <bool> show-find: false;
+    in property <int> find-count: 0;          // total matches
+    in property <int> find-current: 0;        // 1-based index of current match
+    in-out property <int> find-current-row: -1;  // model row to highlight
     in property <string> branch: "";
     in property <string> status-text: "Open a repository to begin.";
     in property <bool> loading: false;  // a repo open is in progress
@@ -112,6 +117,10 @@ export global Backend {
     callback refresh();             // re-scan status + reload commits
     callback set-tab-width(int);    // re-render with a new tab stop
     callback set-theme(string);     // load + apply a theme by name, live
+    callback find(string);          // run a find-in-diff query
+    callback find-next();
+    callback find-prev();
+    callback find-close();
 }
 
 // ---- icons -----------------------------------------------------------------
@@ -221,6 +230,7 @@ component LineNo inherits Text {
 // share a height automatically — wrapped lines stay aligned across the divider.
 component DiffRow inherits Rectangle {
     in property <DiffRowData> rowdata;
+    in property <bool> highlight: false;  // current find match
     // Explicit per-cell width (one gutter per shown line-number column, minus the
     // 1px divider in side-by-side). Giving cells a definite width is what lets
     // the wrapped Text report a real height-for-width.
@@ -287,6 +297,13 @@ component DiffRow inherits Rectangle {
             bg: rowdata.right-bg;
             wrap: DiffOptions.word-wrap;
         }
+    }
+
+    // Current find match: an accent outline drawn over the row.
+    if root.highlight : Rectangle {
+        background: transparent;
+        border-width: 2px;
+        border-color: Backend.accent;
     }
 }
 
@@ -872,6 +889,15 @@ export component AppWindow inherits Window {
                 Backend.show-settings = false;
                 return accept;
             }
+            if (event.text == Key.Escape && Backend.show-find) {
+                Backend.show-find = false;
+                Backend.find-close();
+                return accept;
+            }
+            if ((event.modifiers.control || event.modifiers.meta) && event.text == "f") {
+                Backend.show-find = true;
+                return accept;
+            }
             if (event.text == Key.UpArrow || event.text == "k") {
                 Backend.navigate("up");
                 return accept;
@@ -980,9 +1006,10 @@ export component AppWindow inherits Window {
                             self.viewport-y = -self.scroll-to * Backend.font-size * 1.6px;
                         }
                     }
-                    for data in Backend.rows : DiffRow {
+                    for data[idx] in Backend.rows : DiffRow {
                         width: parent.width;
                         rowdata: data;
+                        highlight: idx == Backend.find-current-row;
                     }
                 }
 
@@ -1009,6 +1036,44 @@ export component AppWindow inherits Window {
                         color: Backend.gutter-fg;
                         horizontal-alignment: center;
                         font-size: 13px;
+                    }
+                }
+
+                // Find-in-diff bar (Cmd/Ctrl-F): a top-right overlay on the diff.
+                if Backend.show-find : Rectangle {
+                    y: 8px;
+                    x: parent.width - self.width - 12px;
+                    width: 320px;
+                    height: 38px;
+                    background: Backend.panel-bg;
+                    border-width: 1px;
+                    border-color: Backend.divider;
+                    border-radius: 6px;
+                    HorizontalLayout {
+                        padding: 6px;
+                        spacing: 6px;
+                        find-input := LineEdit {
+                            placeholder-text: "Find in diff";
+                            horizontal-stretch: 1;
+                            init => { self.focus(); }
+                            edited => { Backend.find(self.text); }
+                            accepted => { Backend.find-next(); }
+                        }
+                        Text {
+                            text: "\{Backend.find-current}/\{Backend.find-count}";
+                            color: Backend.gutter-fg;
+                            vertical-alignment: center;
+                            font-size: 11px;
+                        }
+                        Button { text: "<"; clicked => { Backend.find-prev(); } }
+                        Button { text: ">"; clicked => { Backend.find-next(); } }
+                        Button {
+                            text: "x";
+                            clicked => {
+                                Backend.show-find = false;
+                                Backend.find-close();
+                            }
+                        }
                     }
                 }
             }

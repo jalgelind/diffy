@@ -308,6 +308,9 @@ main(int argc, char** argv) {
         std::string refresh_select;  // file to re-open after a refresh, if present
         std::vector<int> hunk_rows;  // model-row index of each hunk header
         int cur_hunk = -1;           // index into hunk_rows for n/p navigation
+        std::vector<std::string> row_texts;  // lowercased searchable text per row
+        std::vector<int> find_rows;          // model rows matching the find query
+        int find_idx = -1;                   // index into find_rows
     } state;
     constexpr int kCommitPage = 50;  // commits per lazy page
     state.settings = settings;
@@ -434,12 +437,27 @@ main(int argc, char** argv) {
 
         // Record hunk-header row positions for n/p jump-to-hunk navigation.
         state.hunk_rows.clear();
+        state.row_texts.clear();
+        state.row_texts.reserve(vm.rows.size());
         for (size_t i = 0; i < vm.rows.size(); ++i) {
-            if (vm.rows[i].kind == diffy::RowKind::HunkHeader) {
+            const auto& r = vm.rows[i];
+            if (r.kind == diffy::RowKind::HunkHeader) {
                 state.hunk_rows.push_back(static_cast<int>(i));
             }
+            std::string t = r.header_text;
+            for (const auto& sp : r.left.spans) {
+                t += sp.text;
+            }
+            for (const auto& sp : r.right.spans) {
+                t += sp.text;
+            }
+            std::transform(t.begin(), t.end(), t.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            state.row_texts.push_back(std::move(t));
         }
         state.cur_hunk = -1;
+        state.find_rows.clear();
+        state.find_idx = -1;
         backend.set_diff_scroll_row(-1);  // reset so the first n/p always re-fires
     };
 
@@ -821,6 +839,51 @@ main(int argc, char** argv) {
         load_repo(state.repo_path);
     };
 
+    // Find-in-diff: scan the (lowercased) per-row text for the query, collect
+    // matching model rows, and scroll/highlight the current one.
+    auto find_show_match = [&]() {
+        if (state.find_idx < 0 || state.find_rows.empty()) {
+            backend.set_find_current(0);
+            backend.set_find_current_row(-1);
+            return;
+        }
+        const int row = state.find_rows[state.find_idx];
+        backend.set_find_current(state.find_idx + 1);
+        backend.set_find_current_row(row);
+        backend.set_diff_scroll_row(row);
+    };
+    auto run_find = [&](const std::string& query) {
+        std::string q = query;
+        std::transform(q.begin(), q.end(), q.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        state.find_rows.clear();
+        if (!q.empty()) {
+            for (size_t i = 0; i < state.row_texts.size(); ++i) {
+                if (state.row_texts[i].find(q) != std::string::npos) {
+                    state.find_rows.push_back(static_cast<int>(i));
+                }
+            }
+        }
+        state.find_idx = state.find_rows.empty() ? -1 : 0;
+        backend.set_find_count(static_cast<int>(state.find_rows.size()));
+        find_show_match();
+    };
+    auto find_step = [&](int dir) {
+        if (state.find_rows.empty()) {
+            return;
+        }
+        const int n = static_cast<int>(state.find_rows.size());
+        state.find_idx = (state.find_idx + dir + n) % n;
+        find_show_match();
+    };
+    auto find_close = [&]() {
+        state.find_rows.clear();
+        state.find_idx = -1;
+        backend.set_find_count(0);
+        backend.set_find_current(0);
+        backend.set_find_current_row(-1);
+    };
+
     // --- callbacks ----------------------------------------------------------
     backend.on_open_repo([&](slint::SharedString p) { load_repo(str(p)); });
     backend.on_browse_repo([&]() {
@@ -844,6 +907,10 @@ main(int argc, char** argv) {
     backend.on_select_commit([&](slint::SharedString oid) { select_commit(str(oid)); });
     backend.on_navigate([&](slint::SharedString d) { navigate(str(d)); });
     backend.on_refresh([&]() { refresh(); });
+    backend.on_find([&](slint::SharedString q) { run_find(str(q)); });
+    backend.on_find_next([&]() { find_step(1); });
+    backend.on_find_prev([&]() { find_step(-1); });
+    backend.on_find_close([&]() { find_close(); });
     backend.on_set_tab_width([&](int w) {
         state.settings.tab_width = w;
         if (state.pair.ok) {

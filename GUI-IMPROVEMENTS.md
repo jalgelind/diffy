@@ -45,7 +45,7 @@ font changes are cheap; theme is currently built once at startup
 
 ## Phase 2 — Diff navigation & usability
 
-- [ ] **2a · Find-in-diff** (M) — Cmd/Ctrl-F opens a search field; highlight
+- [x] **2a · Find-in-diff** (M) — *done.* Cmd/Ctrl-F opens a search field; highlight
   matches in the current diff, Enter / Shift-Enter cycle next/prev and scroll the
   match into view, with an "n of m" count. Esc closes.
 - [x] **2b · Jump-to-hunk** (S) — *done.* `n` / `p` move to the next/previous changed
