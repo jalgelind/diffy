@@ -306,6 +306,8 @@ main(int argc, char** argv) {
         std::vector<std::string> shown_commits;
         int nav_pane = 0;
         std::string refresh_select;  // file to re-open after a refresh, if present
+        std::vector<int> hunk_rows;  // model-row index of each hunk header
+        int cur_hunk = -1;           // index into hunk_rows for n/p navigation
     } state;
     constexpr int kCommitPage = 50;  // commits per lazy page
     state.settings = settings;
@@ -429,6 +431,16 @@ main(int argc, char** argv) {
                                                  static_cast<int>(state.settings.tab_width));
         backend.set_max_cols(model.max_cols);
         backend.set_rows(model.rows);
+
+        // Record hunk-header row positions for n/p jump-to-hunk navigation.
+        state.hunk_rows.clear();
+        for (size_t i = 0; i < vm.rows.size(); ++i) {
+            if (vm.rows[i].kind == diffy::RowKind::HunkHeader) {
+                state.hunk_rows.push_back(static_cast<int>(i));
+            }
+        }
+        state.cur_hunk = -1;
+        backend.set_diff_scroll_row(-1);  // reset so the first n/p always re-fires
     };
 
     // full refresh: re-run the diff for the current blob pair, then lay out
@@ -745,6 +757,22 @@ main(int argc, char** argv) {
         };
         if (dir == "tab") {
             state.nav_pane = state.nav_pane == 0 ? 1 : 0;
+            return;
+        }
+        // Jump-to-hunk (n/p): scroll the diff so the next/previous hunk header
+        // is at the top. Row height isn't perfectly uniform under word-wrap, so
+        // this lands at the hunk rather than pixel-exact.
+        if (dir == "next-hunk" || dir == "prev-hunk") {
+            if (state.hunk_rows.empty()) {
+                return;
+            }
+            const int n = static_cast<int>(state.hunk_rows.size());
+            state.cur_hunk = dir == "next-hunk"
+                                 ? (state.cur_hunk < 0 ? 0 : (state.cur_hunk + 1) % n)
+                                 : (state.cur_hunk <= 0 ? n - 1 : state.cur_hunk - 1);
+            backend.set_diff_scroll_row(state.hunk_rows[state.cur_hunk]);
+            backend.set_status_text(ss("Hunk " + std::to_string(state.cur_hunk + 1) + "/" +
+                                       std::to_string(n) + " — " + state.current_file));
             return;
         }
         if (state.nav_pane == 0) {

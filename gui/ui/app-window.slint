@@ -75,6 +75,7 @@ export global Backend {
 
     in property <string> current-file: "";
     in property <string> diff-note: "";  // why the file isn't diffed (binary/large)
+    in-out property <int> diff-scroll-row: -1;  // jump the diff to this model row
     in property <string> branch: "";
     in property <string> status-text: "Open a repository to begin.";
     in property <bool> loading: false;  // a repo open is in progress
@@ -883,6 +884,14 @@ export component AppWindow inherits Window {
                 Backend.navigate("tab");
                 return accept;
             }
+            if (event.text == "n") {
+                Backend.navigate("next-hunk");
+                return accept;
+            }
+            if (event.text == "p") {
+                Backend.navigate("prev-hunk");
+                return accept;
+            }
             if (event.text == Key.Return) {
                 Backend.navigate("activate");
                 return accept;
@@ -963,6 +972,14 @@ export component AppWindow inherits Window {
                     // to fill the (plain Rectangle) diff area explicitly.
                     width: 100%;
                     height: 100%;
+                    // Jump-to-hunk: scroll so the requested row is near the top.
+                    // Approximate (uniform row height) — exact enough to land.
+                    property <int> scroll-to: Backend.diff-scroll-row;
+                    changed scroll-to => {
+                        if (self.scroll-to >= 0) {
+                            self.viewport-y = -self.scroll-to * Backend.font-size * 1.6px;
+                        }
+                    }
                     for data in Backend.rows : DiffRow {
                         width: parent.width;
                         rowdata: data;
