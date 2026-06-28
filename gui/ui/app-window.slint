@@ -1,4 +1,4 @@
-import { Button, ComboBox, CheckBox, ListView, ScrollView, LineEdit } from "std-widgets.slint";
+import { Button, CheckBox, ListView, ScrollView, LineEdit } from "std-widgets.slint";
 
 // ---- shared data structures (mirrored by generated C++ types) --------------
 
@@ -99,6 +99,7 @@ export global Backend {
     in property <color> fg: #d4d4d4;
     in property <color> gutter-fg: #6e7681;
     in property <color> accent: #0e639c;
+    in property <color> on-accent: white;  // contrasts with accent (set per theme)
     in property <color> header-bg: #2d2d30;
     in property <color> header-fg: #9cdcfe;
     in property <color> divider: #3c3c3c;     // separators / borders
@@ -322,11 +323,11 @@ component SegToggle inherits Rectangle {
         Icon {
             size: 14px;
             source: root.icon;
-            colorize: active ? white : Backend.fg;
+            colorize: active ? Backend.on-accent : Backend.fg;
         }
         Text {
             text: label;
-            color: active ? white : Backend.fg;
+            color: active ? Backend.on-accent : Backend.fg;
             font-size: 12px;
             vertical-alignment: center;
         }
@@ -337,6 +338,71 @@ component SegToggle inherits Rectangle {
 component Divider inherits Rectangle {
     width: 1px;
     background: Backend.divider;
+}
+
+// A fully theme-driven dropdown (the std-widgets ComboBox draws a fixed white
+// border that ignores our palette). Supports both index- and value-bound use.
+component ThemedCombo inherits Rectangle {
+    in property <[string]> model;
+    in-out property <int> current-index: 0;
+    in-out property <string> current-value;
+    callback selected(string);
+    property <string> display: root.current-value != ""
+        ? root.current-value
+        : (root.model.length > 0 ? root.model[root.current-index] : "");
+    height: 28px;
+    border-radius: 5px;
+    border-width: 1px;
+    border-color: Backend.divider;
+    background: Backend.bg;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 6px;
+        Text {
+            text: root.display;
+            color: Backend.fg;
+            font-size: 12px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+        Text { text: "▾"; color: Backend.gutter-fg; vertical-alignment: center; }
+    }
+    TouchArea { clicked => { popup.show(); } }
+    popup := PopupWindow {
+        x: 0;
+        y: root.height + 2px;
+        width: root.width;
+        Rectangle {
+            background: Backend.panel-bg;
+            border-width: 1px;
+            border-color: Backend.divider;
+            border-radius: 5px;
+            VerticalLayout {
+                padding: 2px;
+                for item[i] in root.model : Rectangle {
+                    height: 26px;
+                    background: itouch.has-hover ? Backend.hover : transparent;
+                    border-radius: 3px;
+                    itouch := TouchArea {
+                        clicked => {
+                            root.current-index = i;
+                            root.current-value = item;
+                            root.selected(item);
+                        }
+                    }
+                    Text {
+                        x: 8px;
+                        text: item;
+                        color: Backend.fg;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ---- the option bar --------------------------------------------------------
@@ -427,7 +493,7 @@ component OptionBar inherits Rectangle {
             clicked => { DiffOptions.context-lines += 1; DiffOptions.rediff(); }
         }
 
-        ComboBox {
+        ThemedCombo {
             width: 150px;
             model: ["Patience", "Myers-greedy", "Myers-linear"];
             current-index: DiffOptions.algorithm;
@@ -472,7 +538,7 @@ component RepoBrowser inherits Rectangle {
                 }
             }
         }
-        ComboBox {
+        ThemedCombo {
             model: Backend.repo-names;
             selected(v) => { Backend.select-repo-index(self.current-index); }
         }
@@ -782,7 +848,7 @@ component SettingsPanel inherits Rectangle {
             VerticalLayout {
                 spacing: 6px;
                 Text { text: "DIFF FONT"; color: Backend.gutter-fg; font-size: 11px; }
-                ComboBox {
+                ThemedCombo {
                     model: Backend.font-choices;
                     current-value: Backend.mono-font;
                     selected(v) => { Backend.mono-font = v; }
@@ -841,7 +907,7 @@ component SettingsPanel inherits Rectangle {
             VerticalLayout {
                 spacing: 6px;
                 Text { text: "VIEW"; color: Backend.gutter-fg; font-size: 11px; }
-                ComboBox {
+                ThemedCombo {
                     model: ["side-by-side", "unified"];
                     current-value: DiffOptions.side-by-side ? "side-by-side" : "unified";
                     selected(v) => {
@@ -855,7 +921,7 @@ component SettingsPanel inherits Rectangle {
             VerticalLayout {
                 spacing: 6px;
                 Text { text: "THEME"; color: Backend.gutter-fg; font-size: 11px; }
-                ComboBox {
+                ThemedCombo {
                     model: Backend.theme-names;
                     current-value: Backend.theme-name;
                     selected(v) => { Backend.theme-name = v; Backend.set-theme(v); }

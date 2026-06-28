@@ -353,6 +353,12 @@ main(int argc, char** argv) {
         backend.set_fg(gui_theme.fg);
         backend.set_gutter_fg(gui_theme.gutter_fg);
         backend.set_accent(gui_theme.accent);
+        // A foreground that contrasts with the accent (used on selected toggles),
+        // so the active segment is never white-on-light or dark-on-dark.
+        const auto a = gui_theme.accent;
+        const float lum = (0.299f * a.red() + 0.587f * a.green() + 0.114f * a.blue());
+        backend.set_on_accent(lum > 140.0f ? slint::Color::from_rgb_uint8(0, 0, 0)
+                                           : slint::Color::from_rgb_uint8(255, 255, 255));
         backend.set_header_bg(gui_theme.header_bg);
         backend.set_header_fg(gui_theme.header_fg);
         backend.set_divider(gui_theme.divider);
