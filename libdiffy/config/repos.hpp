@@ -15,6 +15,7 @@ struct RepoEntry {
     std::string path;        // absolute, canonicalised path to the repo working dir
     std::string name;        // display name (basename of path)
     bool pinned = false;
+    std::string last_file;   // last file viewed in this repo (re-opened on return)
 };
 
 // Absolute path to repos.conf.

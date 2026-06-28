@@ -58,6 +58,14 @@ diffy::repos_load() {
         }
     }
 
+    // Last-viewed file per repo, stored parallel to `recent` (same order).
+    std::vector<std::string> last_files;
+    if (auto v = table.lookup_value_by_path("repos.last_files"); v && v->get().is_array()) {
+        for (auto& e : v->get().as_array()) {
+            last_files.push_back(e.is_string() ? e.as_string() : "");
+        }
+    }
+
     if (auto v = table.lookup_value_by_path("repos.recent"); v && v->get().is_array()) {
         for (auto& e : v->get().as_array()) {
             if (!e.is_string()) {
@@ -67,6 +75,9 @@ diffy::repos_load() {
             re.path = e.as_string();
             re.name = basename_of(re.path);
             re.pinned = std::find(pinned.begin(), pinned.end(), re.path) != pinned.end();
+            if (out.size() < last_files.size()) {
+                re.last_file = last_files[out.size()];
+            }
             out.push_back(std::move(re));
         }
     }
@@ -80,9 +91,11 @@ diffy::repos_save(const std::vector<RepoEntry>& repos) {
     // So the repo lists live under a [repos] section.
     Value recent{Value::Array{}};
     Value pinned{Value::Array{}};
+    Value last_files{Value::Array{}};
 
     for (const auto& r : repos) {
         recent.as_array().push_back(Value{r.path});
+        last_files.as_array().push_back(Value{r.last_file});
         if (r.pinned) {
             pinned.as_array().push_back(Value{r.path});
         }
@@ -91,6 +104,7 @@ diffy::repos_save(const std::vector<RepoEntry>& repos) {
     Value section;  // default-constructs to an empty table
     section["recent"] = recent;
     section["pinned"] = pinned;
+    section["last_files"] = last_files;
 
     Value table;  // root table of sections
     table["repos"] = section;
@@ -111,10 +125,14 @@ diffy::repos_add(std::vector<RepoEntry>& repos, const std::string& path) {
     const std::string canonical = canonicalise(path);
 
     bool was_pinned = false;
+    std::string last_file;  // carry the remembered file across the move-to-front
     repos.erase(std::remove_if(repos.begin(), repos.end(),
                                [&](const RepoEntry& r) {
                                    if (r.path == canonical) {
                                        was_pinned = was_pinned || r.pinned;
+                                       if (last_file.empty()) {
+                                           last_file = r.last_file;
+                                       }
                                        return true;
                                    }
                                    return false;
@@ -125,6 +143,7 @@ diffy::repos_add(std::vector<RepoEntry>& repos, const std::string& path) {
     re.path = canonical;
     re.name = basename_of(canonical);
     re.pinned = was_pinned;
+    re.last_file = last_file;
     repos.insert(repos.begin(), std::move(re));
 }
 

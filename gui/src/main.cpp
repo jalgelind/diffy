@@ -642,9 +642,14 @@ main(int argc, char** argv) {
         state.repo = std::move(f->repo);
         state.current_commit.clear();  // opening a repo starts in working-tree mode
         backend.set_loading(false);
-        // After a refresh, try to re-open the file the user was viewing.
+        // Re-open the file the user was viewing: a pending refresh selection
+        // wins; otherwise fall back to this repo's remembered last file (which
+        // repos_add carried to the front entry).
         std::string want = std::move(state.refresh_select);
         state.refresh_select.clear();
+        if (want.empty() && !state.repos.empty()) {
+            want = state.repos.front().last_file;
+        }
         set_files(f->files);
         backend.set_status_text(
             ss(std::to_string(f->files.size()) + " changed file(s)"));
@@ -900,6 +905,10 @@ main(int argc, char** argv) {
         state.settings.window_height = static_cast<int64_t>(win_size.height / scale);
     }
     gui_settings_save(state.settings);
+    // Remember the open working-tree file for the current repo (front entry).
+    if (state.current_commit.empty() && !state.current_file.empty() && !state.repos.empty()) {
+        state.repos.front().last_file = state.current_file;
+    }
     repos_save(state.repos);
     diffy::gui::git_runtime_shutdown();
     return 0;
