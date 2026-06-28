@@ -31,6 +31,8 @@ export struct FileEntry {
     name: string,   // basename, kept visible when the row is too narrow
     dir: string,    // leading directory (elided first)
     staged: bool,
+    is-section: bool,  // a non-selectable section/group header row
+    depth: int,        // indent level (folder grouping)
 }
 
 export struct CommitEntry {
@@ -75,6 +77,7 @@ export global Backend {
 
     in property <[string]> branch-names;   // local branches for the checkout combo
     in property <int> staged-count: 0;     // staged files (enables Commit)
+    in-out property <bool> group-by-folder: false;  // changes-list grouping mode
     in-out property <string> confirm-discard: "";  // path pending a discard confirm
     in property <string> current-file: "";
     in property <string> diff-note: "";  // why the file isn't diffed (binary/large)
@@ -131,6 +134,7 @@ export global Backend {
     callback commit(string, bool);  // message, amend
     callback checkout-branch(string);
     callback auto-refresh();        // periodic background status re-scan
+    callback regroup-files();       // re-render the changes list after a grouping change
 }
 
 // ---- icons -----------------------------------------------------------------
@@ -590,6 +594,26 @@ component RepoBrowser inherits Rectangle {
                 vertical-alignment: center;
             }
             Rectangle { horizontal-stretch: 1; }
+            // Toggle folder grouping vs staged/unstaged sections.
+            group-btn := Rectangle {
+                width: 16px;
+                height: 16px;
+                group-ta := TouchArea {
+                    clicked => {
+                        Backend.group-by-folder = !Backend.group-by-folder;
+                        Backend.regroup-files();
+                    }
+                }
+                Image {
+                    width: 13px;
+                    height: 13px;
+                    image-fit: contain;
+                    source: @image-url("icons/folder-open.svg");
+                    colorize: Backend.group-by-folder
+                        ? Backend.accent
+                        : (group-ta.has-hover ? Backend.accent : Backend.gutter-fg);
+                }
+            }
             // Re-scan the working tree without reopening the repo (also Cmd/Ctrl-R).
             refresh-btn := Rectangle {
                 width: 16px;
@@ -692,16 +716,31 @@ component RepoBrowser inherits Rectangle {
                 }
                 for f[fidx] in Backend.files : Rectangle {
                     height: 24px;
-                    property <bool> selected: f.path == Backend.current-file;
-                    background: selected ? Backend.selection : (touch.has-hover ? Backend.hover : transparent);
+                    property <bool> selected: !f.is-section && f.path == Backend.current-file;
+                    background: selected
+                        ? Backend.selection
+                        : (!f.is-section && touch.has-hover ? Backend.hover : transparent);
                     touch := TouchArea {
                         clicked => {
-                            Backend.file-sel-index = fidx;
-                            Backend.select-file(f.path);
+                            if (!f.is-section) {
+                                Backend.file-sel-index = fidx;
+                                Backend.select-file(f.path);
+                            }
                         }
                     }
-                    HorizontalLayout {
-                        padding-left: 6px;
+
+                    // Section / group header (staged-unstaged or folder).
+                    if f.is-section : Text {
+                        x: 6px;
+                        text: f.name;
+                        color: Backend.gutter-fg;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+
+                    // A changed-file row.
+                    if !f.is-section : HorizontalLayout {
+                        padding-left: 6px + f.depth * 12px;
                         padding-right: 6px;
                         spacing: 6px;
                         StatusIcon { status: f.status; }

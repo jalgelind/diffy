@@ -303,6 +303,7 @@ main(int argc, char** argv) {
         // Keyboard navigation: ordered ids of what's currently shown, plus the
         // active pane (0 = changes list, 1 = commits list).
         std::vector<std::string> shown_files;
+        std::vector<int> file_model_index;  // model-row of each shown file (rows incl. headers)
         std::vector<std::string> shown_commits;
         int nav_pane = 0;
         std::string refresh_select;  // file to re-open after a refresh, if present
@@ -489,14 +490,15 @@ main(int argc, char** argv) {
         const std::string& needle = state.file_filter;
         auto files = std::make_shared<slint::VectorModel<FileEntry>>();
         state.shown_files.clear();
-        for (const auto& f : state.all_files) {
-            if (!needle.empty() && lower(f.path).find(needle) == std::string::npos) {
-                continue;
-            }
+        state.file_model_index.clear();
+
+        auto make_entry = [&](const diffy::gui::FileChange& f, int depth) {
             FileEntry fe;
             fe.path = ss(f.path);
             fe.status = ss(f.status);
             fe.staged = f.staged;
+            fe.is_section = false;
+            fe.depth = depth;
             const auto slash = f.path.find_last_of('/');
             if (slash == std::string::npos) {
                 fe.name = ss(f.path);
@@ -505,15 +507,68 @@ main(int argc, char** argv) {
                 fe.name = ss(f.path.substr(slash + 1));
                 fe.dir = ss(f.path.substr(0, slash + 1));
             }
+            return fe;
+        };
+        auto push_section = [&](const std::string& label) {
+            FileEntry fe;
+            fe.is_section = true;
+            fe.name = ss(label);
             files->push_back(fe);
+        };
+        auto push_file = [&](const diffy::gui::FileChange& f, int depth) {
+            files->push_back(make_entry(f, depth));
             state.shown_files.push_back(f.path);
+            state.file_model_index.push_back(static_cast<int>(files->row_count()) - 1);
+        };
+
+        std::vector<const diffy::gui::FileChange*> filtered;
+        for (const auto& f : state.all_files) {
+            if (needle.empty() || lower(f.path).find(needle) != std::string::npos) {
+                filtered.push_back(&f);
+            }
         }
+
+        if (backend.get_group_by_folder()) {
+            // Group by directory, with a header per folder (2d).
+            std::sort(filtered.begin(), filtered.end(),
+                      [](const auto* a, const auto* b) { return a->path < b->path; });
+            std::string cur_dir = "\x01";  // sentinel that no real path equals
+            for (const auto* f : filtered) {
+                const auto slash = f->path.find_last_of('/');
+                const std::string dir = slash == std::string::npos ? "" : f->path.substr(0, slash);
+                if (dir != cur_dir) {
+                    push_section(dir.empty() ? "(root)" : dir);
+                    cur_dir = dir;
+                }
+                push_file(*f, 1);
+            }
+        } else {
+            // Staged / unstaged sections (4b). Staged first, header only when both
+            // groups are present.
+            std::vector<const diffy::gui::FileChange*> staged, unstaged;
+            for (const auto* f : filtered) {
+                (f->staged ? staged : unstaged).push_back(f);
+            }
+            if (!staged.empty()) {
+                push_section("STAGED (" + std::to_string(staged.size()) + ")");
+                for (const auto* f : staged) {
+                    push_file(*f, 0);
+                }
+                if (!unstaged.empty()) {
+                    push_section("CHANGES (" + std::to_string(unstaged.size()) + ")");
+                }
+            }
+            for (const auto* f : unstaged) {
+                push_file(*f, 0);
+            }
+        }
+
         backend.set_files(files);
-        // Keep the keyboard selection pointed at the open file (or clear it).
+        // Point the keyboard selection at the open file's model row (or clear it).
         int idx = -1;
         for (size_t i = 0; i < state.shown_files.size(); ++i) {
             if (state.shown_files[i] == state.current_file) {
-                idx = static_cast<int>(i);
+                idx = state.file_model_index[i];
                 break;
             }
         }
@@ -827,16 +882,25 @@ main(int argc, char** argv) {
             if (list.empty()) {
                 return;
             }
-            int idx = backend.get_file_sel_index();
+            // The list may contain section headers, so navigate by ordinal among
+            // the file rows (derived from the open file) and map back to a model
+            // row for the scroll/highlight.
+            int ord = -1;
+            for (size_t i = 0; i < list.size(); ++i) {
+                if (list[i] == state.current_file) {
+                    ord = static_cast<int>(i);
+                    break;
+                }
+            }
             if (dir == "activate") {
-                if (idx >= 0 && idx < static_cast<int>(list.size())) {
-                    open_file(list[idx]);
+                if (ord >= 0) {
+                    open_file(list[ord]);
                 }
                 return;
             }
-            idx = step(idx, static_cast<int>(list.size()), dir);
-            backend.set_file_sel_index(idx);
-            open_file(list[idx]);  // selection opens the diff (mirrors a click)
+            ord = step(ord, static_cast<int>(list.size()), dir);
+            backend.set_file_sel_index(state.file_model_index[ord]);
+            open_file(list[ord]);  // selection opens the diff (mirrors a click)
         } else {
             const auto& list = state.shown_commits;
             if (list.empty()) {
@@ -986,6 +1050,7 @@ main(int argc, char** argv) {
     backend.on_navigate([&](slint::SharedString d) { navigate(str(d)); });
     backend.on_refresh([&]() { refresh(); });
     backend.on_auto_refresh([&]() { soft_refresh(); });
+    backend.on_regroup_files([&]() { render_files(); });
     backend.on_find([&](slint::SharedString q) { run_find(str(q)); });
     backend.on_find_next([&]() { find_step(1); });
     backend.on_find_prev([&]() { find_step(-1); });
