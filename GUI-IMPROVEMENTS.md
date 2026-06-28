@@ -55,7 +55,7 @@ font changes are cheap; theme is currently built once at startup
   copy it (plain, no gutter/markers). The custom span rows don't support native
   selection today; evaluate a selectable-text approach or a "copy file / copy
   hunk / copy selection" affordance as a pragmatic first cut.
-- [ ] **2d · Group changes by folder** (M) — a tree/flat toggle for the changes
+- [x] **2d · Group changes by folder** — *done.* (M) — a tree/flat toggle for the changes
   list so large change sets are navigable; collapse/expand directories. Keep the
   flat list as the default.
 
@@ -83,14 +83,14 @@ handling and a refresh afterward.
 - [x] **4a · Auto-refresh** (S) — *done* (periodic, not focus-based: Slint has no focus event). re-scan status when the window regains
   focus (debounced), complementing the manual refresh. Optional file-watcher
   later.
-- [ ] **4b · Staged vs unstaged sections** (S–M) — split the changes list into
+- [x] **4b · Staged vs unstaged sections** — *done.* (S–M) — split the changes list into
   "Staged" / "Changes" groups (libgit2 already distinguishes index vs worktree,
   and a per-row "staged" badge already renders — only the grouping is missing),
   so the staging workflow from Phase 3 reads clearly.
 - [x] **4c · Remember last file per repo** (S) — *done.* on reopening a repo, reselect
   the file that was open last time instead of the first changed file. *(Was
   scoped out of the earlier UI pass; revisit here.)*
-- [~] **4d · Diff against an arbitrary ref** (M) — *backend done* (`repo_model::diff_ref_file`, unit-tested path); UI ref-picker still to wire. pick a base ref/commit to diff
+- [x] **4d · Diff against an arbitrary ref** — *done (backend + option-bar ref field).* (M) — *backend done* (`repo_model::diff_ref_file`, unit-tested path); UI ref-picker still to wire. pick a base ref/commit to diff
   the working tree or a commit against (not just first-parent), with a small
   ref picker.
 
@@ -99,7 +99,7 @@ handling and a refresh afterward.
 - [x] **5a · Large-file guards** (S–M) — *done.* detect binary / very large files and
   show a placeholder instead of attempting a full token diff; cap annotation
   cost on huge hunks. Surface "binary file", "file too large", "submodule".
-- [ ] **5b · Background diff for big files** (M) — compute the diff off the UI
+- [x] **5b · Background diff for big files** — *done.* (M) — compute the diff off the UI
   thread for large blobs (the repo open is already threaded) so selecting a big
   file never blocks the event loop; show a per-file spinner.
 - [x] **5c · Virtualization** — *verified done (2026-06).* The diff renders
@@ -110,7 +110,7 @@ handling and a refresh afterward.
 
 ## Phase 6 — Quality & distribution
 
-- [~] **6a · GUI bridge test** (S–M) — *the core is already covered:*
+- [x] **6a · GUI bridge test** — *done (extracted + tested text_layout).* (S–M) — *the core is already covered:*
   `libdiffy/render/diff_view_model_tests.cc` asserts `DiffViewModel` row/span
   shape from fixtures with no display. The remaining gap is the GUI conversion
   layer — add a test over `diff_bridge`'s `build_row_model` (DiffViewModel →
@@ -119,7 +119,7 @@ handling and a refresh afterward.
   there's no automated CI. Add a GitHub Actions job that runs it (checkout with
   submodules, unit/corpus tests) **and** builds `diffy-gui` (caching the
   Slint/cargo build) on at least macOS + Linux.
-- [ ] **6c · macOS .app bundle + icon** (M) — package `diffy-gui` as a proper
+- [x] **6c · macOS .app bundle + icon** — *done (make gui-bundle).* (M) — package `diffy-gui` as a proper
   `.app` (Info.plist, icon, bundle dylibs) so it launches from Finder; a Linux
   `.desktop` entry as a follow-up.
 

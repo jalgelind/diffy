@@ -78,8 +78,13 @@ gui-release:
 gui-run: gui-release
 	@./$(B)-gui-release/gui/diffy-gui
 
+# Package a self-contained macOS diffy.app (bundled dylibs + icon) from the
+# release build. Output: $(B)-gui-release/diffy.app
+gui-bundle: gui-release
+	@bash extras/make-macos-app.sh $(B)-gui-release
+
 # Remove only the make-created build trees (leaves the Windows out/ tree alone).
 clean:
 	rm -rf $(B)-debug $(B)-release $(B)-gui-debug $(B)-gui-release
 
-.PHONY: all debug release test integration-test gui gui-release gui-run clean
+.PHONY: all debug release test integration-test gui gui-release gui-run gui-bundle clean
