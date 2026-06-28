@@ -22,20 +22,20 @@ but only editable by hand-editing `diffy.conf`. Surface them in the app.
 font changes are cheap; theme is currently built once at startup
 (`load_gui_theme`, "no runtime theme switch yet").
 
-- [ ] **1a · Settings panel shell** (S) — a modal overlay opened by a gear
+- [x] **1a · Settings panel shell** (S) — *done.* a modal overlay opened by a gear
   button (sidebar `REPOSITORY` header). Esc / click-outside closes. No settings
   yet, just the frame + open/close wiring.
   *Done when:* the gear toggles a centered card over a dimmed backdrop.
-- [ ] **1b · Diff font selection** (S–M) — family + size controls bound to
+- [x] **1b · Diff font selection** (S–M) — *done.* family + size controls bound to
   `Backend.mono-font` / `Backend.font-size`, applied live and persisted to
   `gui.font_family` / `gui.font_size`. Picker: a curated per-OS dropdown of
   common monospace families **plus** a free-text field for any installed family
   (Slint can't enumerate system fonts from `.slint`).
   *Done when:* changing the font reflows the diff immediately and survives restart.
-- [ ] **1c · Tab width + default view** (S) — a tab-width stepper (triggers a
+- [x] **1c · Tab width + default view** (S) — *done.* a tab-width stepper (triggers a
   re-diff to re-expand tabs) and a default-view (side-by-side / unified) choice,
   persisted to `gui.tab_width` / `gui.default_view`.
-- [ ] **1d · Live theme switching** (M) — theme-file dropdown (enumerate the
+- [x] **1d · Live theme switching** (M) — *done.* theme-file dropdown (enumerate the
   themes dir) + dark/light/system variant. Re-run `load_gui_theme` and re-push
   all `Backend` colour props without restart; persist `gui.theme` /
   `gui.theme_variant`. *(Deferred in the first settings-panel pass; this step
@@ -96,7 +96,7 @@ handling and a refresh afterward.
 
 ## Phase 5 — Performance & robustness
 
-- [ ] **5a · Large-file guards** (S–M) — detect binary / very large files and
+- [x] **5a · Large-file guards** (S–M) — *done.* detect binary / very large files and
   show a placeholder instead of attempting a full token diff; cap annotation
   cost on huge hunks. Surface "binary file", "file too large", "submodule".
 - [ ] **5b · Background diff for big files** (M) — compute the diff off the UI
@@ -115,7 +115,7 @@ handling and a refresh afterward.
   shape from fixtures with no display. The remaining gap is the GUI conversion
   layer — add a test over `diff_bridge`'s `build_row_model` (DiffViewModel →
   Slint `DiffRowData`: row count, `left/right_cols`, span colours/styles).
-- [ ] **6b · Automated CI** (M) — `extras/ci.sh` exists as a local script, but
+- [x] **6b · Automated CI** (M) — *done.* `extras/ci.sh` exists as a local script, but
   there's no automated CI. Add a GitHub Actions job that runs it (checkout with
   submodules, unit/corpus tests) **and** builds `diffy-gui` (caching the
   Slint/cargo build) on at least macOS + Linux.

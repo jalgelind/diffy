@@ -74,6 +74,7 @@ export global Backend {
     in-out property <int> commit-sel-index: -1;
 
     in property <string> current-file: "";
+    in property <string> diff-note: "";  // why the file isn't diffed (binary/large)
     in property <string> branch: "";
     in property <string> status-text: "Open a repository to begin.";
     in property <bool> loading: false;  // a repo open is in progress
@@ -983,9 +984,11 @@ export component AppWindow inherits Window {
                         }
                     }
                     Text {
-                        text: Backend.current-file == ""
-                            ? "Select a changed file on the left to view its diff"
-                            : "No textual changes to display";
+                        text: Backend.diff-note != ""
+                            ? Backend.diff-note
+                            : (Backend.current-file == ""
+                                ? "Select a changed file on the left to view its diff"
+                                : "No textual changes to display");
                         color: Backend.gutter-fg;
                         horizontal-alignment: center;
                         font-size: 13px;

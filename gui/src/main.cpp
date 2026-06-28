@@ -563,13 +563,23 @@ main(int argc, char** argv) {
         state.current_file = path;
         if (state.current_commit.empty()) {
             state.pair = state.repo->diff_workdir_file(path);
-            backend.set_status_text(ss("Working tree: " + path));
         } else {
             state.pair = state.repo->diff_commit_file(state.current_commit, path);
-            backend.set_status_text(
-                ss("Commit " + state.current_commit.substr(0, 8) + ": " + path));
         }
         backend.set_current_file(ss(path));
+        const std::string ctx = state.current_commit.empty()
+                                    ? "Working tree: "
+                                    : ("Commit " + state.current_commit.substr(0, 8) + ": ");
+        // Binary / oversized files aren't diffed; show the reason instead.
+        if (!state.pair.note.empty()) {
+            state.pair.ok = false;  // nothing to render; option toggles skip it
+            backend.set_diff_note(ss(state.pair.note));
+            backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
+            backend.set_status_text(ss(ctx + path + " — " + state.pair.note));
+            return;
+        }
+        backend.set_diff_note(ss(""));
+        backend.set_status_text(ss(ctx + path));
         recompute();
     };
 
@@ -656,6 +666,7 @@ main(int argc, char** argv) {
         backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
         backend.set_branch(ss(""));
         backend.set_current_file(ss(""));
+        backend.set_diff_note(ss(""));
 
         load_threads.emplace_back([path, gen, &apply_meta, &apply_files, &apply_fail]() {
             auto r = Repo::open(path);

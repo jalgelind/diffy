@@ -91,6 +91,23 @@ delta_status_code(git_delta_t s) {
     }
 }
 
+// Above this size (per side) a token diff is too costly / unhelpful.
+constexpr size_t kMaxDiffBytes = 2 * 1024 * 1024;
+
+// Classify a blob pair: "" means plain text (diff it), otherwise a reason the
+// content shouldn't be diffed (shown verbatim by the frontend).
+std::string
+classify_blob_pair(const std::string& a, const std::string& b) {
+    if (a.size() > kMaxDiffBytes || b.size() > kMaxDiffBytes) {
+        return "File too large to diff";
+    }
+    // A NUL byte is git's own binary heuristic; good enough here.
+    if (a.find('\0') != std::string::npos || b.find('\0') != std::string::npos) {
+        return "Binary file";
+    }
+    return "";
+}
+
 std::string
 status_code(unsigned int s) {
     // Prefer the working-tree state, fall back to the index state.
@@ -327,6 +344,7 @@ Repo::diff_workdir_file(const std::string& path) const {
     const std::string abs = (fs::path(workdir()) / path).string();
     pair.new_text = read_disk_file(abs);
 
+    pair.note = classify_blob_pair(pair.old_text, pair.new_text);
     pair.ok = true;
     return pair;
 }
@@ -363,6 +381,7 @@ Repo::diff_commit_file(const std::string& commit_oid, const std::string& path) c
     }
 
     git_commit_free(commit);
+    pair.note = classify_blob_pair(pair.old_text, pair.new_text);
     pair.ok = true;
     return pair;
 }

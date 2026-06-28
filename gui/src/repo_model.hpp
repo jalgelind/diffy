@@ -38,6 +38,9 @@ struct BlobPair {
     std::string new_text;
     std::string old_name;
     std::string new_name;
+    // Non-empty when the content shouldn't be diffed as text (binary, or larger
+    // than the diff size cap); the frontend shows this instead of a diff.
+    std::string note;
 };
 
 // Process-wide libgit2 lifecycle.
