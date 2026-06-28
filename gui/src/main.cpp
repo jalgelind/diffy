@@ -293,6 +293,7 @@ main(int argc, char** argv) {
         DiffComputation computation;
         GuiSettings settings;
         uint64_t load_generation = 0;  // bumped per open; old async loads are dropped
+        uint64_t diff_generation = 0;  // bumped per diff; stale background diffs dropped
         std::vector<diffy::gui::FileChange> all_files;  // unfiltered changes list
         std::string file_filter;                        // substring filter (lowercased)
         // Lazy commit-list paging.
@@ -470,15 +471,44 @@ main(int argc, char** argv) {
         backend.set_diff_scroll_row(-1);  // reset so the first n/p always re-fires
     };
 
-    // full refresh: re-run the diff for the current blob pair, then lay out
+    // full refresh: re-run the diff for the current blob pair, then lay out. Small
+    // pairs diff synchronously (instant preview); large ones run on a background
+    // thread so selecting a big file never blocks the event loop (5b).
+    constexpr size_t kBackgroundDiffBytes = 256 * 1024;
     auto recompute = [&]() {
         if (!state.pair.ok) {
             return;
         }
-        state.computation = compute_annotated_diff(state.pair.old_text, state.pair.new_text,
-                                                   state.pair.old_name, state.pair.new_name,
-                                                   pipeline_opts());
-        relayout();
+        const auto opts = pipeline_opts();
+        const size_t bytes = state.pair.old_text.size() + state.pair.new_text.size();
+        const uint64_t gen = ++state.diff_generation;
+        if (bytes < kBackgroundDiffBytes) {
+            state.computation = compute_annotated_diff(state.pair.old_text, state.pair.new_text,
+                                                       state.pair.old_name, state.pair.new_name, opts);
+            relayout();
+            return;
+        }
+        // Background: copy the inputs, compute off-thread, apply on the UI thread
+        // if no newer diff superseded it.
+        struct DiffInputs {
+            std::string a, b, na, nb;
+            DiffPipelineOptions opts;
+        };
+        auto in = std::make_shared<DiffInputs>(
+            DiffInputs{state.pair.old_text, state.pair.new_text, state.pair.old_name,
+                       state.pair.new_name, opts});
+        backend.set_status_text(ss("Diffing " + state.current_file + " …"));
+        load_threads.emplace_back([&, in, gen]() {
+            auto comp = std::make_shared<DiffComputation>(
+                compute_annotated_diff(in->a, in->b, in->na, in->nb, in->opts));
+            slint::invoke_from_event_loop([&, comp, gen]() {
+                if (gen != state.diff_generation) {
+                    return;  // a newer file/diff won
+                }
+                state.computation = std::move(*comp);
+                relayout();
+            });
+        });
     };
 
     // Rebuild the Slint file model from state.all_files, honouring the filter.
