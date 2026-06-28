@@ -51,7 +51,8 @@ endif()
 add_executable(diffy-gui
   src/main.cpp
   src/repo_model.cc
-  src/diff_bridge.cc)
+  src/diff_bridge.cc
+  src/text_layout.cc)
 
 target_include_directories(diffy-gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(diffy-gui PRIVATE diffy_core Slint::Slint ${DIFFY_LIBGIT2_TARGET})
@@ -79,7 +80,9 @@ endif()
 if(DIFFY_BUILD_TESTS)
   add_executable(diffy-gui-logic-test
     src/repo_model.cc
-    tests/repo_model_tests.cc)
+    src/text_layout.cc
+    tests/repo_model_tests.cc
+    tests/text_layout_tests.cc)
   target_include_directories(diffy-gui-logic-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/subprojects/doctest/doctest)

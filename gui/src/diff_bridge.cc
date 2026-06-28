@@ -1,5 +1,7 @@
 #include "diff_bridge.hpp"
 
+#include "text_layout.hpp"
+
 #include "config/config.hpp"
 #include "highlight/highlight_palette.hpp"
 #include "util/color.hpp"
@@ -112,39 +114,6 @@ span_fg(const GuiTheme& t, const diffy::StyledSpan& s) {
     return t.fg;
 }
 
-// Expand tabs / replace control chars (Slint has no glyph for them). `col`
-// tracks the running display column so tab stops line up across spans.
-std::string
-sanitize(const std::string& in, int tab_width, int& col) {
-    std::string out;
-    out.reserve(in.size());
-    if (tab_width < 1) {
-        tab_width = 1;
-    }
-    for (size_t i = 0; i < in.size();) {
-        const unsigned char c = static_cast<unsigned char>(in[i]);
-        if (c == '\t') {
-            int n = tab_width - (col % tab_width);
-            out.append(static_cast<size_t>(n), ' ');
-            col += n;
-            ++i;
-        } else if (c < 0x20 || c == 0x7f) {
-            out.push_back(' ');
-            ++col;
-            ++i;
-        } else {
-            out.push_back(static_cast<char>(c));
-            ++col;
-            ++i;
-            while (i < in.size() && (static_cast<unsigned char>(in[i]) & 0xc0) == 0x80) {
-                out.push_back(in[i]);
-                ++i;
-            }
-        }
-    }
-    return out;
-}
-
 std::shared_ptr<slint::VectorModel<DiffSpan>>
 make_spans(const GuiTheme& t, const diffy::DiffCell& cell, int tab_width, int& out_width,
            std::string& out_text) {
@@ -152,7 +121,7 @@ make_spans(const GuiTheme& t, const diffy::DiffCell& cell, int tab_width, int& o
     int col = 0;
     for (const auto& s : cell.spans) {
         DiffSpan d;
-        std::string piece = sanitize(s.text, tab_width, col);
+        std::string piece = expand_for_display(s.text, tab_width, col);
         out_text += piece;
         d.text = shared(piece);
         d.color = span_fg(t, s);
