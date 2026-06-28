@@ -306,6 +306,7 @@ main(int argc, char** argv) {
         std::vector<std::string> shown_commits;
         int nav_pane = 0;
         std::string refresh_select;  // file to re-open after a refresh, if present
+        bool soft_refreshing = false;  // a periodic background status re-scan is in flight
         std::vector<int> hunk_rows;  // model-row index of each hunk header
         int cur_hunk = -1;           // index into hunk_rows for n/p navigation
         std::vector<std::string> row_texts;  // lowercased searchable text per row
@@ -862,6 +863,60 @@ main(int argc, char** argv) {
         load_repo(state.repo_path);
     };
 
+    // Periodic background re-scan that updates the changes list only when it
+    // actually changed, leaving the open diff and selection untouched. (Slint
+    // exposes no window-focus event, so this is time-based.)
+    struct SoftStatus {
+        std::vector<diffy::gui::FileChange> files;
+        std::vector<Repo::BranchInfo> branches;
+    };
+    auto soft_refresh = [&]() {
+        if (state.repo_path.empty() || state.soft_refreshing || backend.get_loading() ||
+            !state.current_commit.empty()) {
+            return;  // busy, mid-load, or browsing a commit — skip this tick
+        }
+        state.soft_refreshing = true;
+        const uint64_t gen = state.load_generation;
+        const std::string path = state.repo_path;
+        load_threads.emplace_back([&, gen, path]() {
+            auto out = std::make_shared<SoftStatus>();
+            if (auto r = Repo::open(path)) {
+                out->files = r->status();
+                out->branches = r->branches();
+            }
+            slint::invoke_from_event_loop([&, out, gen]() {
+                state.soft_refreshing = false;
+                if (gen != state.load_generation) {
+                    return;
+                }
+                bool changed = out->files.size() != state.all_files.size();
+                for (size_t i = 0; !changed && i < out->files.size(); ++i) {
+                    const auto& a = out->files[i];
+                    const auto& b = state.all_files[i];
+                    changed = a.path != b.path || a.status != b.status || a.staged != b.staged;
+                }
+                if (!changed) {
+                    return;
+                }
+                set_files(out->files);
+                int staged = 0;
+                for (const auto& fc : out->files) {
+                    if (fc.staged) {
+                        ++staged;
+                    }
+                }
+                backend.set_staged_count(staged);
+                auto names = std::make_shared<slint::VectorModel<slint::SharedString>>();
+                for (const auto& bi : out->branches) {
+                    if (!bi.remote) {
+                        names->push_back(ss(bi.name));
+                    }
+                }
+                backend.set_branch_names(names);
+            });
+        });
+    };
+
     // Find-in-diff: scan the (lowercased) per-row text for the query, collect
     // matching model rows, and scroll/highlight the current one.
     auto find_show_match = [&]() {
@@ -930,6 +985,7 @@ main(int argc, char** argv) {
     backend.on_select_commit([&](slint::SharedString oid) { select_commit(str(oid)); });
     backend.on_navigate([&](slint::SharedString d) { navigate(str(d)); });
     backend.on_refresh([&]() { refresh(); });
+    backend.on_auto_refresh([&]() { soft_refresh(); });
     backend.on_find([&](slint::SharedString q) { run_find(str(q)); });
     backend.on_find_next([&]() { find_step(1); });
     backend.on_find_prev([&]() { find_step(-1); });

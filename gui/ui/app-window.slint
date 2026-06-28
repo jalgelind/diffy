@@ -130,6 +130,7 @@ export global Backend {
     callback discard-file(string);  // destructive — confirm in the UI first
     callback commit(string, bool);  // message, amend
     callback checkout-branch(string);
+    callback auto-refresh();        // periodic background status re-scan
 }
 
 // ---- icons -----------------------------------------------------------------
@@ -1218,6 +1219,13 @@ export component AppWindow inherits Window {
         }
         }
       }
+    }
+
+    // Periodic background refresh of the changes list (Slint has no focus event).
+    Timer {
+        interval: 5s;
+        running: true;
+        triggered => { Backend.auto-refresh(); }
     }
 
     // Settings overlay sits above everything.

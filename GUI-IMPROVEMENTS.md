@@ -65,22 +65,22 @@ font changes are cheap; theme is currently built once at startup
 write surface that makes it a real client. Each needs careful libgit2 error
 handling and a refresh afterward.
 
-- [ ] **3a · Stage / unstage / discard files** (M) — per-file actions in the
+- [x] **3a · Stage / unstage / discard files** (M) — *done* (backend unit-tested on temp repos). per-file actions in the
   changes list (button/context menu + keyboard); update the index and refresh.
   Discard prompts for confirmation (destructive).
-- [ ] **3b · Commit** (M) — a commit box (message + summary/body), author/email
+- [x] **3b · Commit** (M) — *done* (backend unit-tested). a commit box (message + summary/body), author/email
   from git config, commit the staged index, then refresh status and prepend the
   new commit. Include `--amend`.
 - [ ] **3c · Stage / unstage individual hunks** (L) — apply a single hunk (or
   selected lines) to the index from the diff view. Highest-value, highest-risk
   write feature; depends on 3a.
-- [ ] **3d · Branch list + checkout** (M) — list local (and optionally remote)
+- [x] **3d · Branch list + checkout** (M) — *done* (backend unit-tested). list local (and optionally remote)
   branches, show ahead/behind, switch branches with a dirty-tree guard. Today
   only the current branch name is shown.
 
 ## Phase 4 — Repo awareness & freshness
 
-- [ ] **4a · Auto-refresh on focus** (S) — re-scan status when the window regains
+- [x] **4a · Auto-refresh** (S) — *done* (periodic, not focus-based: Slint has no focus event). re-scan status when the window regains
   focus (debounced), complementing the manual refresh. Optional file-watcher
   later.
 - [ ] **4b · Staged vs unstaged sections** (S–M) — split the changes list into
@@ -90,7 +90,7 @@ handling and a refresh afterward.
 - [x] **4c · Remember last file per repo** (S) — *done.* on reopening a repo, reselect
   the file that was open last time instead of the first changed file. *(Was
   scoped out of the earlier UI pass; revisit here.)*
-- [ ] **4d · Diff against an arbitrary ref** (M) — pick a base ref/commit to diff
+- [~] **4d · Diff against an arbitrary ref** (M) — *backend done* (`repo_model::diff_ref_file`, unit-tested path); UI ref-picker still to wire. pick a base ref/commit to diff
   the working tree or a commit against (not just first-parent), with a small
   ref picker.
 
