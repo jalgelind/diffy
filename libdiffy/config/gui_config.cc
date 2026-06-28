@@ -7,6 +7,7 @@
 #include <config_parser/config_parser_utils.hpp>
 #include <config_parser/config_serializer.hpp>
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 
@@ -16,6 +17,10 @@ namespace {
 
 std::string
 diffy_conf_path() {
+    // Allow tests (and sandboxed runs) to redirect the config file.
+    if (const char* override = std::getenv("DIFFY_CONF_PATH"); override && *override) {
+        return override;
+    }
     return fmt::format("{}/diffy.conf", diffy::config_get_directory());
 }
 

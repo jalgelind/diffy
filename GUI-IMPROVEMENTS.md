@@ -40,7 +40,7 @@ font changes are cheap; theme is currently built once at startup
   all `Backend` colour props without restart; persist `gui.theme` /
   `gui.theme_variant`. *(Deferred in the first settings-panel pass; this step
   adds the runtime-switch plumbing.)*
-- [ ] **1e · gui_config round-trip tests** (S) — unit-test load→save→reload of
+- [x] **1e · gui_config round-trip tests** (S) — *done.* unit-test load→save→reload of
   the `[gui]` table including the new keys, guarding the persistence layer.
 
 ## Phase 2 — Diff navigation & usability
@@ -48,7 +48,7 @@ font changes are cheap; theme is currently built once at startup
 - [ ] **2a · Find-in-diff** (M) — Cmd/Ctrl-F opens a search field; highlight
   matches in the current diff, Enter / Shift-Enter cycle next/prev and scroll the
   match into view, with an "n of m" count. Esc closes.
-- [ ] **2b · Jump-to-hunk** (S) — `n` / `p` move to the next/previous changed
+- [x] **2b · Jump-to-hunk** (S) — *done.* `n` / `p` move to the next/previous changed
   hunk and scroll it to the top; show a hunk index (e.g. "hunk 3/12"). Builds on
   the existing keyboard-nav `FocusScope`.
 - [ ] **2c · Text selection + copy** (M–L) — let the user select diff text and
@@ -87,7 +87,7 @@ handling and a refresh afterward.
   "Staged" / "Changes" groups (libgit2 already distinguishes index vs worktree,
   and a per-row "staged" badge already renders — only the grouping is missing),
   so the staging workflow from Phase 3 reads clearly.
-- [ ] **4c · Remember last file per repo** (S) — on reopening a repo, reselect
+- [x] **4c · Remember last file per repo** (S) — *done.* on reopening a repo, reselect
   the file that was open last time instead of the first changed file. *(Was
   scoped out of the earlier UI pass; revisit here.)*
 - [ ] **4d · Diff against an arbitrary ref** (M) — pick a base ref/commit to diff
