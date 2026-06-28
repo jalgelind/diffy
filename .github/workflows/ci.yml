@@ -1,0 +1,109 @@
+name: CI
+
+# Run on every push and on pull requests targeting any branch.
+on:
+  push:
+  pull_request:
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # core: the fast gate. Builds the CLI + tests (GUI OFF), runs ctest and the
+  # python integration suite via extras/ci.sh on Linux and macOS.
+  # ---------------------------------------------------------------------------
+  core:
+    name: core (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      # extras/ci.sh honours BUILD_DIR; keep it stable for caching/debugging.
+      BUILD_DIR: build-ci
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          # tree-sitter grammars, doctest and config_parser are git submodules.
+          submodules: recursive
+
+      # Ninja is needed by extras/ci.sh; python3 is preinstalled on both runners.
+      - name: Install Ninja (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Install Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Build + test (CLI + tests + integration)
+        run: bash extras/ci.sh
+
+  # ---------------------------------------------------------------------------
+  # gui: builds the Slint git client (DIFFY_BUILD_GUI=ON, CLI/tests OFF).
+  #
+  # NOTE: the Slint C++ API is fetched from git and built from source, which
+  # pulls a Rust toolchain and compiles a large crate graph. This is HEAVY and
+  # slow on a cold cache; the cargo + _deps caches below keep warm runs fast.
+  # continue-on-error is intentionally false: a GUI build break should fail CI.
+  # ---------------------------------------------------------------------------
+  gui:
+    name: gui (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: false
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      BUILD_DIR: build-gui
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Ninja + libgit2 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgit2-dev pkg-config
+
+      - name: Install Ninja + libgit2 (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja libgit2 pkg-config
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # Cache the Rust registry/cache and the Slint-from-source build so the
+      # heavy crate compile only happens on a cold cache. Keyed on OS so the two
+      # matrix legs do not clobber each other; Cargo.lock is unavailable here
+      # (Slint is fetched during configure) so we fall back to a weekly-ish key.
+      - name: Cache cargo + Slint build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ env.BUILD_DIR }}/_deps
+            ${{ env.BUILD_DIR }}/cargo
+          key: ${{ runner.os }}-gui-slint-${{ hashFiles('gui/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-gui-slint-
+
+      - name: Configure (GUI only)
+        run: >
+          cmake -S . -B "$BUILD_DIR" -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DDIFFY_BUILD_GUI=ON
+          -DDIFFY_BUILD_CLI=OFF
+          -DDIFFY_BUILD_TESTS=OFF
+
+      - name: Build diffy-gui
+        run: ninja -C "$BUILD_DIR" diffy-gui
