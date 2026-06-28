@@ -135,6 +135,7 @@ export global Backend {
     callback checkout-branch(string);
     callback auto-refresh();        // periodic background status re-scan
     callback regroup-files();       // re-render the changes list after a grouping change
+    callback set-base-ref(string);  // diff the working tree against this ref ("" = HEAD)
 }
 
 // ---- icons -----------------------------------------------------------------
@@ -511,6 +512,13 @@ component OptionBar inherits Rectangle {
             model: ["Patience", "Myers-greedy", "Myers-linear"];
             current-index: DiffOptions.algorithm;
             selected(v) => { DiffOptions.algorithm = self.current-index; DiffOptions.rediff(); }
+        }
+
+        // Diff the working tree against an arbitrary base ref (blank = HEAD).
+        base-ref-input := LineEdit {
+            width: 120px;
+            placeholder-text: "vs ref (HEAD)";
+            edited => { Backend.set-base-ref(self.text); }
         }
     }
 }

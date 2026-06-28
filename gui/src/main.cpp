@@ -288,6 +288,7 @@ main(int argc, char** argv) {
         std::vector<RepoEntry> repos;
         std::string current_file;
         std::string current_commit;  // empty => working-tree diff
+        std::string base_ref;        // non-empty => diff working tree vs this ref
         diffy::gui::BlobPair pair;
         DiffComputation computation;
         GuiSettings settings;
@@ -653,15 +654,18 @@ main(int argc, char** argv) {
             return;
         }
         state.current_file = path;
-        if (state.current_commit.empty()) {
-            state.pair = state.repo->diff_workdir_file(path);
-        } else {
+        std::string ctx;
+        if (!state.current_commit.empty()) {
             state.pair = state.repo->diff_commit_file(state.current_commit, path);
+            ctx = "Commit " + state.current_commit.substr(0, 8) + ": ";
+        } else if (!state.base_ref.empty()) {
+            state.pair = state.repo->diff_ref_file(state.base_ref, path);
+            ctx = "vs " + state.base_ref + ": ";
+        } else {
+            state.pair = state.repo->diff_workdir_file(path);
+            ctx = "Working tree: ";
         }
         backend.set_current_file(ss(path));
-        const std::string ctx = state.current_commit.empty()
-                                    ? "Working tree: "
-                                    : ("Commit " + state.current_commit.substr(0, 8) + ": ");
         // Binary / oversized files aren't diffed; show the reason instead.
         if (!state.pair.note.empty()) {
             state.pair.ok = false;  // nothing to render; option toggles skip it
@@ -1051,6 +1055,13 @@ main(int argc, char** argv) {
     backend.on_refresh([&]() { refresh(); });
     backend.on_auto_refresh([&]() { soft_refresh(); });
     backend.on_regroup_files([&]() { render_files(); });
+    backend.on_set_base_ref([&](slint::SharedString r) {
+        state.base_ref = str(r);
+        // Re-diff the open file against the new base (working-tree mode only).
+        if (state.repo && state.current_commit.empty() && !state.current_file.empty()) {
+            open_file(state.current_file);
+        }
+    });
     backend.on_find([&](slint::SharedString q) { run_find(str(q)); });
     backend.on_find_next([&]() { find_step(1); });
     backend.on_find_prev([&]() { find_step(-1); });
