@@ -79,8 +79,14 @@ export global Backend {
     in property <bool> loading: false;  // a repo open is in progress
     in property <int> max-cols: 0;  // longest line in chars, for horizontal scroll
 
-    in property <string> mono-font: "Menlo";
-    in property <int> font-size: 13;
+    in-out property <string> mono-font: "Menlo";
+    in-out property <int> font-size: 13;
+    // Settings panel state + values it edits.
+    in-out property <bool> show-settings: false;
+    in-out property <int> tab-width: 4;
+    in property <[string]> font-choices;   // curated monospace families (per-OS)
+    in property <[string]> theme-names;     // theme .conf files found on disk
+    in-out property <string> theme-name;    // currently applied theme
     in property <color> bg: #1e1e1e;
     in property <color> panel-bg: #252526;
     in property <color> fg: #d4d4d4;
@@ -102,6 +108,8 @@ export global Backend {
     callback filter-files(string);  // substring filter for the changes list
     callback navigate(string);      // keyboard nav: "up"|"down"|"tab"|"activate"
     callback refresh();             // re-scan status + reload commits
+    callback set-tab-width(int);    // re-render with a new tab stop
+    callback set-theme(string);     // load + apply a theme by name, live
 }
 
 // ---- icons -----------------------------------------------------------------
@@ -428,7 +436,23 @@ component RepoBrowser inherits Rectangle {
         padding: 10px;
         spacing: 8px;
 
-        SectionLabel { text: "REPOSITORY"; }
+        HorizontalLayout {
+            SectionLabel { text: "REPOSITORY"; vertical-alignment: center; }
+            Rectangle { horizontal-stretch: 1; }
+            // Open the settings panel.
+            gear := Rectangle {
+                width: 16px;
+                height: 16px;
+                gear-ta := TouchArea { clicked => { Backend.show-settings = true; } }
+                Image {
+                    width: 14px;
+                    height: 14px;
+                    image-fit: contain;
+                    source: @image-url("icons/settings.svg");
+                    colorize: gear-ta.has-hover ? Backend.accent : Backend.gutter-fg;
+                }
+            }
+        }
         ComboBox {
             model: Backend.repo-names;
             selected(v) => { Backend.select-repo-index(self.current-index); }
@@ -708,6 +732,125 @@ component RepoBrowser inherits Rectangle {
     }
 }
 
+// ---- settings panel --------------------------------------------------------
+
+component SettingsPanel inherits Rectangle {
+    // Dim backdrop over the whole window; a click outside the card closes it.
+    background: #00000099;
+    visible: Backend.show-settings;
+    backdrop-ta := TouchArea { clicked => { Backend.show-settings = false; } }
+
+    // Centered card.
+    Rectangle {
+        width: 440px;
+        height: card.preferred-height;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        background: Backend.panel-bg;
+        border-radius: 10px;
+        border-width: 1px;
+        border-color: Backend.divider;
+        // Swallow clicks so they don't fall through to the backdrop.
+        TouchArea {}
+
+        card := VerticalLayout {
+            padding: 22px;
+            spacing: 16px;
+
+            Text { text: "Settings"; color: Backend.fg; font-size: 17px; font-weight: 600; }
+
+            // Diff font: curated dropdown + free-text for any installed family.
+            VerticalLayout {
+                spacing: 6px;
+                Text { text: "DIFF FONT"; color: Backend.gutter-fg; font-size: 11px; }
+                ComboBox {
+                    model: Backend.font-choices;
+                    current-value: Backend.mono-font;
+                    selected(v) => { Backend.mono-font = v; }
+                }
+                LineEdit {
+                    placeholder-text: "or type any installed family…";
+                    text: Backend.mono-font;
+                    edited => { Backend.mono-font = self.text; }
+                }
+            }
+
+            // Font size + tab width steppers.
+            HorizontalLayout {
+                spacing: 24px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text { text: "Size"; color: Backend.fg; vertical-alignment: center; }
+                    Button { text: "-"; clicked => { Backend.font-size = max(8, Backend.font-size - 1); } }
+                    Text {
+                        text: "\{Backend.font-size}";
+                        color: Backend.fg;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                        width: 24px;
+                    }
+                    Button { text: "+"; clicked => { Backend.font-size = min(32, Backend.font-size + 1); } }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text { text: "Tab"; color: Backend.fg; vertical-alignment: center; }
+                    Button {
+                        text: "-";
+                        clicked => {
+                            Backend.tab-width = max(1, Backend.tab-width - 1);
+                            Backend.set-tab-width(Backend.tab-width);
+                        }
+                    }
+                    Text {
+                        text: "\{Backend.tab-width}";
+                        color: Backend.fg;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                        width: 24px;
+                    }
+                    Button {
+                        text: "+";
+                        clicked => {
+                            Backend.tab-width = min(16, Backend.tab-width + 1);
+                            Backend.set-tab-width(Backend.tab-width);
+                        }
+                    }
+                }
+            }
+
+            // Default view.
+            VerticalLayout {
+                spacing: 6px;
+                Text { text: "VIEW"; color: Backend.gutter-fg; font-size: 11px; }
+                ComboBox {
+                    model: ["side-by-side", "unified"];
+                    current-value: DiffOptions.side-by-side ? "side-by-side" : "unified";
+                    selected(v) => {
+                        DiffOptions.side-by-side = (v == "side-by-side");
+                        DiffOptions.relayout();
+                    }
+                }
+            }
+
+            // Theme (applied live).
+            VerticalLayout {
+                spacing: 6px;
+                Text { text: "THEME"; color: Backend.gutter-fg; font-size: 11px; }
+                ComboBox {
+                    model: Backend.theme-names;
+                    current-value: Backend.theme-name;
+                    selected(v) => { Backend.theme-name = v; Backend.set-theme(v); }
+                }
+            }
+
+            HorizontalLayout {
+                alignment: end;
+                Button { text: "Done"; clicked => { Backend.show-settings = false; } }
+            }
+        }
+    }
+}
+
 // ---- the window ------------------------------------------------------------
 
 export component AppWindow inherits Window {
@@ -723,6 +866,10 @@ export component AppWindow inherits Window {
         // Global keyboard navigation. LineEdits grab focus and consume their own
         // keys, so these only fire when no text field is focused.
         key-pressed(event) => {
+            if (event.text == Key.Escape && Backend.show-settings) {
+                Backend.show-settings = false;
+                return accept;
+            }
             if (event.text == Key.UpArrow || event.text == "k") {
                 Backend.navigate("up");
                 return accept;
@@ -862,4 +1009,7 @@ export component AppWindow inherits Window {
         }
       }
     }
+
+    // Settings overlay sits above everything.
+    SettingsPanel {}
 }

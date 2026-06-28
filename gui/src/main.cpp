@@ -1,5 +1,6 @@
 #include "app-window.h"
 
+#include "config/config.hpp"  // config_get_directory
 #include "config/gui_config.hpp"
 #include "config/repos.hpp"
 #include "diff_bridge.hpp"
@@ -14,6 +15,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -45,6 +47,47 @@ ss(const std::string& s) {
 std::string
 str(const slint::SharedString& s) {
     return std::string(s.data());
+}
+
+// Curated monospace families offered in the settings dropdown (the panel also
+// accepts any free-text family). Common cross-platform faces follow the
+// OS-native ones; Slint silently falls back if a family isn't installed.
+const std::vector<std::string>&
+mono_font_choices() {
+    static const std::vector<std::string> fonts = {
+#if defined(_WIN32)
+        "Consolas", "Cascadia Code", "Cascadia Mono", "Courier New",
+#elif defined(__APPLE__)
+        "Menlo", "SF Mono", "Monaco", "Courier New",
+#else
+        "DejaVu Sans Mono", "Liberation Mono", "Noto Sans Mono", "Ubuntu Mono",
+#endif
+        "JetBrains Mono", "Fira Code", "Source Code Pro", "Hack", "Inconsolata",
+    };
+    return fonts;
+}
+
+// Theme names available for the settings dropdown: every <name>.conf in the
+// config directory except the app's own diffy.conf / repos.conf.
+std::vector<std::string>
+list_theme_names() {
+    namespace fs = std::filesystem;
+    std::vector<std::string> out;
+    std::error_code ec;
+    for (fs::directory_iterator it(diffy::config_get_directory(), ec), end; !ec && it != end;
+         it.increment(ec)) {
+        const auto& p = it->path();
+        if (p.extension() != ".conf") {
+            continue;
+        }
+        const std::string stem = p.stem().string();
+        if (stem == "diffy" || stem == "repos") {
+            continue;
+        }
+        out.push_back(stem);
+    }
+    std::sort(out.begin(), out.end());
+    return out;
 }
 
 // Native "choose a folder" dialog. Returns the picked path (UTF-8), or nullopt
@@ -296,20 +339,40 @@ main(int argc, char** argv) {
     backend.set_font_size(static_cast<int>(settings.font_size));
 
     // Colours come from the same theme .conf the CLI uses ([gui] theme), so the
-    // GUI matches `diffy`/`git diffy`. Built once (no runtime theme switch yet).
-    const auto gui_theme = diffy::gui::load_gui_theme(settings.theme);
-    backend.set_bg(gui_theme.bg);
-    backend.set_panel_bg(gui_theme.panel_bg);
-    backend.set_fg(gui_theme.fg);
-    backend.set_gutter_fg(gui_theme.gutter_fg);
-    backend.set_accent(gui_theme.accent);
-    backend.set_header_bg(gui_theme.header_bg);
-    backend.set_header_fg(gui_theme.header_fg);
-    backend.set_divider(gui_theme.divider);
-    // Selection/hover are accent/fg tints so they read correctly on either a
-    // light or dark theme background.
-    backend.set_selection(gui_theme.accent.with_alpha(0.30f));
-    backend.set_hover(gui_theme.fg.with_alpha(0.08f));
+    // GUI matches `diffy`/`git diffy`. Mutable so the settings panel can switch
+    // it live (apply_theme_colors re-pushes the palette; on_set_theme re-renders).
+    diffy::gui::GuiTheme gui_theme = diffy::gui::load_gui_theme(settings.theme);
+    auto apply_theme_colors = [&]() {
+        backend.set_bg(gui_theme.bg);
+        backend.set_panel_bg(gui_theme.panel_bg);
+        backend.set_fg(gui_theme.fg);
+        backend.set_gutter_fg(gui_theme.gutter_fg);
+        backend.set_accent(gui_theme.accent);
+        backend.set_header_bg(gui_theme.header_bg);
+        backend.set_header_fg(gui_theme.header_fg);
+        backend.set_divider(gui_theme.divider);
+        // Selection/hover are accent/fg tints so they read correctly on either a
+        // light or dark theme background.
+        backend.set_selection(gui_theme.accent.with_alpha(0.30f));
+        backend.set_hover(gui_theme.fg.with_alpha(0.08f));
+    };
+    apply_theme_colors();
+
+    // Settings-panel inputs: tab width, font choices, theme list + current name.
+    backend.set_tab_width(static_cast<int>(settings.tab_width));
+    backend.set_theme_name(ss(settings.theme));
+    {
+        auto fonts = std::make_shared<slint::VectorModel<slint::SharedString>>();
+        for (const auto& f : mono_font_choices()) {
+            fonts->push_back(ss(f));
+        }
+        backend.set_font_choices(fonts);
+        auto themes = std::make_shared<slint::VectorModel<slint::SharedString>>();
+        for (const auto& name : list_theme_names()) {
+            themes->push_back(ss(name));
+        }
+        backend.set_theme_names(themes);
+    }
     options.set_side_by_side(settings.view_mode() == ViewMode::SideBySide);
     options.set_show_line_numbers(settings.show_line_numbers);
     options.set_word_wrap(settings.word_wrap);
@@ -737,6 +800,20 @@ main(int argc, char** argv) {
     backend.on_select_commit([&](slint::SharedString oid) { select_commit(str(oid)); });
     backend.on_navigate([&](slint::SharedString d) { navigate(str(d)); });
     backend.on_refresh([&]() { refresh(); });
+    backend.on_set_tab_width([&](int w) {
+        state.settings.tab_width = w;
+        if (state.pair.ok) {
+            relayout();  // tab expansion happens during render; no re-diff needed
+        }
+    });
+    backend.on_set_theme([&](slint::SharedString name) {
+        state.settings.theme = str(name);
+        gui_theme = diffy::gui::load_gui_theme(state.settings.theme);
+        apply_theme_colors();
+        if (state.pair.ok) {
+            relayout();  // re-render so span colours pick up the new theme
+        }
+    });
     backend.on_load_more_commits([&]() { fetch_more_commits(kCommitPage); });
     backend.on_load_all_commits([&]() { fetch_more_commits(0); });
     options.on_relayout([&]() {
@@ -770,6 +847,10 @@ main(int argc, char** argv) {
     state.settings.token_granularity = options.get_token_granularity();
     state.settings.context_lines = options.get_context_lines();
     state.settings.algorithm = options.get_algorithm();
+    state.settings.font_family = str(backend.get_mono_font());
+    state.settings.font_size = backend.get_font_size();
+    state.settings.tab_width = backend.get_tab_width();
+    state.settings.theme = str(backend.get_theme_name());
     state.settings.sidebar_width = static_cast<int64_t>(backend.get_sidebar_width());
     state.settings.commits_panel_height =
         static_cast<int64_t>(backend.get_commits_panel_height());
