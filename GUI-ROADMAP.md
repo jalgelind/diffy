@@ -52,8 +52,8 @@ the diff. The two-file path remains a CLI concern.
 
 ## 2. Current state (assessment)
 
-Today everything compiles straight into `diffy` and `diffy-test` via `meson.build`
-(see `src=[...]`). Notable couplings to break:
+Today everything compiles straight into `diffy` and `diffy-test` from one
+shared source list. Notable couplings to break:
 
 | Area | File(s) | Problem for reuse |
 |------|---------|-------------------|
@@ -69,8 +69,8 @@ diff_hunk_annotate), `util/{readlines,utf8decode,hash,bipolar_array}`.
 **Build-system reality:** Slint's C++ story is CMake-first (`find_package(Slint)`
 → FetchContent of `slint-ui/slint`, then `slint_target_sources(tgt ui/*.slint)`,
 link `Slint::Slint`). `libgit2`, `fmt`, `GSL`, `crc32c`, `platform_folders`,
-`doctest` are all CMake-native. Only the two local subprojects (`getopt`,
-`config_parser`) are Meson-only. This pushes us toward CMake (see §4).
+`doctest` are all CMake-native, as are the two local subprojects (`getopt`,
+`config_parser`). See §4.
 
 ---
 
@@ -114,12 +114,11 @@ link `Slint::Slint`). `libgit2`, `fmt`, `GSL`, `crc32c`, `platform_folders`,
 ## 4. Build-system strategy
 
 **Decision: migrate the build to CMake** — **DONE.** CMake is now the sole build
-system (CLI, GUI, tests, tree-sitter highlighting); Meson has been removed. The
-rationale below is kept for context. All build trees live under `out/`.
+system (CLI, GUI, tests, tree-sitter highlighting). All build trees live under
+`out/`; the rationale below is kept for context.
 
-Rationale: Slint + libgit2 + every third-party submodule are CMake-native;
-keeping Meson would mean either bolting a second build system onto the GUI or
-fighting Slint's unsupported Meson path. One build system also lets `libdiffy` be
+Rationale: Slint + libgit2 + every third-party submodule are CMake-native, and
+Slint ships no supported alternative. One build system also lets `libdiffy` be
 a real consumable target for both apps.
 
 Work involved:
@@ -129,14 +128,10 @@ Work involved:
 - Per-target `CMakeLists.txt` in `libdiffy/`, `config/`, `cli/`, `gui/`, `tests/`.
 - Add small `CMakeLists.txt` to the two local subprojects (`getopt`,
   `config_parser`) — both are a handful of files.
-- Reuse the existing `CMAKE_POLICY_VERSION_MINIMUM=3.5` shim (already needed for
-  crc32c under CMake ≥4; see `meson.build` lines 33-43) for old submodules.
+- Reuse the existing `CMAKE_POLICY_VERSION_MINIMUM=3.5` shim (needed for crc32c
+  under CMake ≥4) for old submodules.
 - Bring Slint in exactly as the template does (FetchContent `release/1`,
   `SOURCE_SUBDIR api/cpp`); bring libgit2 via FetchContent or `find_package`.
-
-Fallback if CMake migration stalls: keep Meson for `libdiffy`+CLI, install
-`libdiffy` as a static lib + headers, and have the GUI's CMake `find_package` it.
-Workable but maintains two build descriptions — not preferred.
 
 ---
 
@@ -375,7 +370,7 @@ optionally persist back.
 
 **M0 — CMake parity (no behaviour change).**
 Add top-level + per-dir `CMakeLists.txt`; CMakeLists for `getopt`/`config_parser`;
-build `diffy` (CLI) and `diffy-test` under CMake. Meson still works. *Done when:*
+build `diffy` (CLI) and `diffy-test` under CMake. *Done when:*
 CLI + all tests build and pass under CMake.
 
 **M1 — Carve out `libdiffy` + `libdiffy-config`.**
@@ -407,11 +402,9 @@ changed file, see its real diff.
 `[gui]` load/save; `repos.conf` load/add/remove/pin; restore last repo + window.
 *Done when:* relaunch restores recent repos and view preferences.
 
-**M7 — Polish & retire Meson.**
-HiDPI/font tuning, copy/selection, large-file perf pass, keyboard nav; remove
-`meson.build` once CMake is the sole build. *Done when:* docs/CI updated, Meson
-deleted. — **Meson retired:** `meson.build` deleted, CI/Makefile/docs on CMake
-only, all build trees under `out/`. (Polish items remain ongoing.)
+**M7 — Polish.**
+HiDPI/font tuning, copy/selection, large-file perf pass, keyboard nav. *Done
+when:* those land. (CMake is the sole build system — see §4.)
 
 ---
 
@@ -421,8 +414,7 @@ only, all build trees under `out/`. (Polish items remain ongoing.)
   dependency, structured blob access). Shelling out is a fallback if libgit2
   packaging proves painful on a target platform.
 - **CMake migration scope.** Two local subprojects need CMakeLists; the old-CMake
-  policy shim must cover all submodules. Mitigated by keeping Meson alive through
-  M6.
+  policy shim must cover all submodules. (Resolved — migration complete.)
 - **Large-diff performance.** Virtualization is mandatory; also consider lazy
   per-file diff computation and capping annotation cost on huge files.
 - **Theme reuse.** `SpanStyle → RGB` for the GUI relies on `TermColor` already

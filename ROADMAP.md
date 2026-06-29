@@ -42,7 +42,7 @@ Sizes: **S** ≈ <1h · **M** ≈ a few hours · **L** ≈ a day+.
   convention), E2 (unified stat-failure abort) all fixed and verified on the
   binary; suite **27 cases / 894 assertions** green (debug + ASAN).
 - **Bootstrap fixed permanently:** `CMAKE_POLICY_VERSION_MINIMUM` baked into
-  `meson.build`; `make` works on CMake 4.x with no env var (clean-room verified).
+  the CMake build; `make` works on CMake 4.x with no env var (clean-room verified).
 - **Integration test wired:** `make integration-test` runs the `tests/testsuite.py`
   unified-diff → `patch` → matches-B round-trip; passes for all configs/fixtures.
 - **C1 (`-W` overload) fixed** — `--no-ignore-whitespace` decoupled from `--width`
@@ -294,10 +294,8 @@ Found in a second review pass (`util/tty.cc`, `util/hash.cc`, and the
 
 ### Current state
 
-- **Unit tests (doctest)** cover only `tokenizer`, `bipolar_array`, `utf8decode`
-  (`meson.build:83-90`). `config_parser` ships its own tests via
-  `config_parser_test_dep`; the refs at `meson.build:85-87` are stale
-  (`src/util/config_parser/...`) and commented out.
+- **Unit tests (doctest)** cover only `tokenizer`, `bipolar_array`, `utf8decode`.
+  `config_parser` ships its own tests via `config_parser_test_dep`.
 - **No unit tests** for the three diff algorithms, `compose_hunks`,
   `annotate_hunks`, either renderer, or color/config parsing.
 - The `tests/test_cases/` `_a`/`_b` pairs (from `extras/git-extract-test-cases`)
@@ -308,17 +306,16 @@ Found in a second review pass (`util/tty.cc`, `util/hash.cc`, and the
 
 - [x] `git submodule update --init` — done; all five `subprojects/*` checked out
   (GSL v4.0.0, crc32c 1.1.2, doctest v2.4.9, fmt 9.0.0, platform_folders 4.2.0).
-- [x] **Bootstrap blocker — FIXED in `meson.build`.** CMake >= 4 dropped
+- [x] **Bootstrap blocker — FIXED in the CMake build.** CMake >= 4 dropped
   compatibility with `cmake_minimum_required(VERSION <3.5)`, which the pinned
   `crc32c` *and* `GSL` (its `tests/`) subprojects declare. Now passing
-  `CMAKE_POLICY_VERSION_MINIMUM=3.5` as a cmake define to the crc32c/fmt/GSL/
-  platform_folders subprojects (and `GSL_TEST=OFF` to skip building googletest).
-  Verified with a clean-room `meson setup && ninja && diffy-test` **without** the
-  env var — all green. No more env-var dance for `make`.
+  `CMAKE_POLICY_VERSION_MINIMUM=3.5` to the crc32c/fmt/GSL/platform_folders
+  subprojects (and `GSL_TEST=OFF` to skip building googletest).
+  Verified with a clean-room `cmake` configure + build + `diffy-test` **without**
+  the env var — all green. No more env-var dance for `make`.
 - [x] `make test` green — debug build + `diffy-test`: **8 cases / 499 assertions,
   0 failed**. (Build log confirms the `config_parser` tests already link into
-  `diffy-test` via `config_parser_test_dep` — the commented `meson.build:85-87`
-  refs are dead, not missing coverage.)
+  `diffy-test` via `config_parser_test_dep`.)
 - [x] `make sanitize-address` green — `diffy-test` under ASAN: 499 assertions,
   0 failed, no sanitizer reports. Baseline established.
 - [ ] Optional coverage: add `-Db_coverage=true` option; `gcovr` is not installed
@@ -351,7 +348,7 @@ Found in a second review pass (`util/tty.cc`, `util/hash.cc`, and the
 - [x] **P2a · Diff-algorithm invariant over the whole fixture corpus** — DONE
   (`src/algorithms/algorithm_tests.cc`). Reconstruct invariant for all three
   algorithms; runs over all **65** fixture pairs (`DIFFY_TEST_CASES_DIR` injected
-  via meson). MyersGreedy is capped to pairs ≤ 3000 lines (its `O(D·(N+M))`
+  by the build). MyersGreedy is capped to pairs ≤ 3000 lines (its `O(D·(N+M))`
   memory), logged in the test output; MyersLinear + Patience run on all. Green
   under both the debug and ASAN builds.
 - [x] **P2b · Algorithm edge & boundary cases** — DONE. empty/empty,
@@ -419,11 +416,8 @@ Fixed input + fixed theme + injected width.
 
 ### Housekeeping
 
-- [x] Removed the stale commented refs in `meson.build`; confirmed the
-  `config_parser` tests execute in `diffy-test` (build log lists them, and the new
-  tokenizer tests run there).
-- [x] Added `subprojects/.wraplock` to `.gitignore` — meson generates it on build
-  and it was untracked (would have been swept into a commit).
+- [x] Confirmed the `config_parser` tests execute in `diffy-test` (build log lists
+  them, and the new tokenizer tests run there).
 - [ ] Minor: the `readlines`/`unified` tests write fixtures into the system temp
   dir (`temp_directory_path()`) and don't clean them up. Harmless (system temp,
   fixed names), but a TestFixture/RAII cleanup would be tidier if revisited.
@@ -462,8 +456,7 @@ in but expect a known-red window.
 5. **P2f** — color/config parsing (asserts the *correct* bg behavior → red until A1).
 6. **config_parser unit tests** — number tokenization (D1, D2), serializer
    round-trip (D3), `OrderedMap` duplicate-key semantics (D4); add edge/fuzz
-   cases for the malformed-input concerns. Wire these into `diffy-test` (fixes
-   the stale `meson.build:85-87` refs).
+   cases for the malformed-input concerns. Wire these into `diffy-test`.
 
 **Stage 3 — Fixes covered by Stage-2 tests (turn the red tests green)**
 7. **A1, B4** (color), **D1, D2** (tokenizer numbers), **D3** (serializer escape),
@@ -488,8 +481,7 @@ throwaway characterization goldens)
 14. **Phase 4** — sanitized corpus runner, renderer golden regression, CI.
 
 **Stage 8 — Remaining behavior change + housekeeping**
-15. **C2** (`right_trim`) with its hash-dependency test; **D6** decision; meson
-    housekeeping.
+15. **C2** (`right_trim`) with its hash-dependency test; **D6** decision.
 
 Defer: Windows `getdelim`; config_parser malformed-input hardening until fuzzing
 confirms a live bug.
