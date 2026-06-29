@@ -399,8 +399,10 @@ Side by side options:
         return 0;
     }
 
-    auto left_line_data = diffy::readlines(opts.left_file, opts.ignore_line_endings);
-    auto right_line_data = diffy::readlines(opts.right_file, opts.ignore_line_endings);
+    // ignore_whitespace makes line matching whitespace-insensitive at read time, so
+    // reindent-only lines share a checksum and the diff treats them as unchanged.
+    auto left_line_data = diffy::readlines(opts.left_file, opts.ignore_line_endings, opts.ignore_whitespace);
+    auto right_line_data = diffy::readlines(opts.right_file, opts.ignore_line_endings, opts.ignore_whitespace);
 
     gsl::span<diffy::Line> left_lines{left_line_data};
     gsl::span<diffy::Line> right_lines{right_line_data};

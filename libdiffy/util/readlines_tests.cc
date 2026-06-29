@@ -67,3 +67,40 @@ TEST_CASE("readlines") {
         CHECK(l1[0].checksum != l3[0].checksum);
     }
 }
+
+TEST_CASE("readlines ignore_whitespace") {
+    auto hash_of = [](const std::string& content) {
+        return readlines_from_string(content, /*ignore_line_endings=*/false,
+                                     /*ignore_whitespace=*/true);
+    };
+
+    SUBCASE("lines differing only in whitespace hash equal") {
+        auto a = hash_of("\tif (x) {\n");
+        auto b = hash_of("    if (x) {\n");      // tab vs spaces, reindented
+        auto c = hash_of("if(x){\n");           // inter-token spacing removed
+        REQUIRE(a.size() == 1);
+        REQUIRE(b.size() == 1);
+        REQUIRE(c.size() == 1);
+        CHECK(a[0].checksum == b[0].checksum);
+        CHECK(a[0].checksum == c[0].checksum);
+        // Display text is preserved; only the comparison checksum is normalized.
+        CHECK(a[0].line == "\tif (x) {\n");
+        CHECK(b[0].line == "    if (x) {\n");
+    }
+
+    SUBCASE("a real content change still differs") {
+        auto a = hash_of("int a = 1;\n");
+        auto b = hash_of("int a = 2;\n");
+        REQUIRE(a.size() == 1);
+        REQUIRE(b.size() == 1);
+        CHECK(a[0].checksum != b[0].checksum);
+    }
+
+    SUBCASE("blank and whitespace-only lines collapse together") {
+        auto a = hash_of("\n");
+        auto b = hash_of("   \t\n");
+        REQUIRE(a.size() == 1);
+        REQUIRE(b.size() == 1);
+        CHECK(a[0].checksum == b[0].checksum);
+    }
+}

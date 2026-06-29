@@ -58,8 +58,10 @@ compute_annotated_diff(const std::string& a_text,
     DiffComputation c;
     c.a_name = a_name;
     c.b_name = b_name;
-    c.a_lines = readlines_from_string(a_text, options.ignore_line_endings);
-    c.b_lines = readlines_from_string(b_text, options.ignore_line_endings);
+    // ignore_whitespace makes line matching whitespace-insensitive at read time, so
+    // reindent-only lines share a checksum and the diff treats them as unchanged.
+    c.a_lines = readlines_from_string(a_text, options.ignore_line_endings, options.ignore_whitespace);
+    c.b_lines = readlines_from_string(b_text, options.ignore_line_endings, options.ignore_whitespace);
 
     auto input = c.input();
 
