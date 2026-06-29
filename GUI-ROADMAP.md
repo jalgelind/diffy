@@ -113,8 +113,9 @@ link `Slint::Slint`). `libgit2`, `fmt`, `GSL`, `crc32c`, `platform_folders`,
 
 ## 4. Build-system strategy
 
-**Decision: migrate the build to CMake**, with Meson kept working until CMake
-reaches parity, then retired.
+**Decision: migrate the build to CMake** — **DONE.** CMake is now the sole build
+system (CLI, GUI, tests, tree-sitter highlighting); Meson has been removed. The
+rationale below is kept for context. All build trees live under `out/`.
 
 Rationale: Slint + libgit2 + every third-party submodule are CMake-native;
 keeping Meson would mean either bolting a second build system onto the GUI or
@@ -409,7 +410,8 @@ changed file, see its real diff.
 **M7 — Polish & retire Meson.**
 HiDPI/font tuning, copy/selection, large-file perf pass, keyboard nav; remove
 `meson.build` once CMake is the sole build. *Done when:* docs/CI updated, Meson
-deleted.
+deleted. — **Meson retired:** `meson.build` deleted, CI/Makefile/docs on CMake
+only, all build trees under `out/`. (Polish items remain ongoing.)
 
 ---
 
