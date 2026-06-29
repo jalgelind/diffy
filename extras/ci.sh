@@ -9,7 +9,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-BUILD_DIR="${BUILD_DIR:-build-ci}"
+BUILD_DIR="${BUILD_DIR:-out/ci}"
 
 echo "==> Configuring ($BUILD_DIR)"
 cmake -S . -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release \

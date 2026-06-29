@@ -1,8 +1,7 @@
 .vscode
+# All build trees live under out/ (Makefile, build-windows.cmd, CI). A stray
+# top-level build*/ dir is intentionally NOT ignored so it surfaces as untracked.
 out/
-build/
-build-linux/
-build-gui*/
 tests/_test_runner
 .ccls-cache/
 subprojects/.wraplock

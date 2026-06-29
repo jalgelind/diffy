@@ -24,7 +24,8 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     env:
       # extras/ci.sh honours BUILD_DIR; keep it stable for caching/debugging.
-      BUILD_DIR: build-ci
+      # All build trees live under out/ (the project-wide convention).
+      BUILD_DIR: out/ci
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
@@ -61,7 +62,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     env:
-      BUILD_DIR: build-gui
+      BUILD_DIR: out/gui
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
