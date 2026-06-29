@@ -38,6 +38,13 @@ if(NOT DIFFY_BUILD_HASH)
 endif()
 
 # --- vendored third-party dependencies -------------------------------------
+# Link our vendored deps statically into the diffy binaries. A vcpkg toolchain
+# with a dynamic triplet (e.g. x64-windows) sets BUILD_SHARED_LIBS=ON, which makes
+# fmt build as fmt.dll and leaves the CLI unable to start without it next to the
+# exe. A normal (non-cache) set shadows that for our add_subdirectory deps; vcpkg
+# packages we *consume* (e.g. libgit2) are unaffected and stay dynamic.
+set(BUILD_SHARED_LIBS OFF)
+
 set(FMT_INSTALL OFF CACHE BOOL "" FORCE)
 add_subdirectory(subprojects/fmt EXCLUDE_FROM_ALL)
 
