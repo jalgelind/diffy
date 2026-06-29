@@ -666,6 +666,23 @@ main(int argc, char** argv) {
         state.repo = std::move(f->repo);
         state.current_commit.clear();  // opening a repo starts in working-tree mode
         backend.set_loading(false);
+        // Staged count (enables Commit) + local branches (for the checkout combo).
+        int staged = 0;
+        for (const auto& fc : f->files) {
+            if (fc.staged) {
+                ++staged;
+            }
+        }
+        backend.set_staged_count(staged);
+        {
+            auto names = std::make_shared<slint::VectorModel<slint::SharedString>>();
+            for (const auto& b : state.repo->branches()) {
+                if (!b.remote) {
+                    names->push_back(ss(b.name));
+                }
+            }
+            backend.set_branch_names(names);
+        }
         // Re-open the file the user was viewing: a pending refresh selection
         // wins; otherwise fall back to this repo's remembered last file (which
         // repos_add carried to the front entry).
@@ -917,6 +934,43 @@ main(int argc, char** argv) {
     backend.on_find_next([&]() { find_step(1); });
     backend.on_find_prev([&]() { find_step(-1); });
     backend.on_find_close([&]() { find_close(); });
+    // Write actions: delegate to the (UI-agnostic) repo_model, then re-scan.
+    backend.on_stage_file([&](slint::SharedString p) {
+        if (state.repo) {
+            state.repo->stage_file(str(p));
+            refresh();
+        }
+    });
+    backend.on_unstage_file([&](slint::SharedString p) {
+        if (state.repo) {
+            state.repo->unstage_file(str(p));
+            refresh();
+        }
+    });
+    backend.on_discard_file([&](slint::SharedString p) {
+        if (state.repo) {
+            state.repo->discard_changes(str(p));
+            refresh();
+        }
+    });
+    backend.on_commit([&](slint::SharedString msg, bool amend) {
+        if (!state.repo) {
+            return;
+        }
+        const bool ok = state.repo->commit(str(msg), amend);
+        backend.set_status_text(
+            ss(ok ? "Committed." : "Commit failed (is user.name / user.email set?)"));
+        refresh();
+    });
+    backend.on_checkout_branch([&](slint::SharedString name) {
+        if (!state.repo) {
+            return;
+        }
+        if (!state.repo->checkout_branch(str(name))) {
+            backend.set_status_text(ss("Checkout failed — commit or stash changes first."));
+        }
+        refresh();
+    });
     backend.on_set_tab_width([&](int w) {
         state.settings.tab_width = w;
         if (state.pair.ok) {

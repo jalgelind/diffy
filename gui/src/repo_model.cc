@@ -386,4 +386,174 @@ Repo::diff_commit_file(const std::string& commit_oid, const std::string& path) c
     return pair;
 }
 
+bool
+Repo::stage_file(const std::string& path) const {
+    git_index* idx = nullptr;
+    if (git_repository_index(&idx, repo_) != 0) {
+        return false;
+    }
+    std::error_code ec;
+    const bool on_disk = fs::exists(fs::path(workdir()) / path, ec);
+    int rc = on_disk ? git_index_add_bypath(idx, path.c_str())
+                     : git_index_remove_bypath(idx, path.c_str());
+    if (rc == 0) {
+        rc = git_index_write(idx);
+    }
+    git_index_free(idx);
+    return rc == 0;
+}
+
+bool
+Repo::unstage_file(const std::string& path) const {
+    char* paths[1] = {const_cast<char*>(path.c_str())};
+    git_strarray arr{paths, 1};
+
+    git_object* head = nullptr;
+    if (git_revparse_single(&head, repo_, "HEAD") != 0) {
+        // Unborn HEAD: there's nothing to reset to, so just drop it from the index.
+        git_index* idx = nullptr;
+        if (git_repository_index(&idx, repo_) != 0) {
+            return false;
+        }
+        int rc = git_index_remove_bypath(idx, path.c_str());
+        if (rc == 0) {
+            rc = git_index_write(idx);
+        }
+        git_index_free(idx);
+        return rc == 0;
+    }
+    const int rc = git_reset_default(repo_, head, &arr);
+    git_object_free(head);
+    return rc == 0;
+}
+
+bool
+Repo::discard_changes(const std::string& path) const {
+    unsigned int st = 0;
+    if (git_status_file(&st, repo_, path.c_str()) == 0 && (st & GIT_STATUS_WT_NEW)) {
+        // Untracked: discarding means deleting the file.
+        std::error_code ec;
+        fs::remove(fs::path(workdir()) / path, ec);
+        return !ec;
+    }
+    git_checkout_options opts;
+    git_checkout_options_init(&opts, GIT_CHECKOUT_OPTIONS_VERSION);
+    opts.checkout_strategy = GIT_CHECKOUT_FORCE;
+    char* paths[1] = {const_cast<char*>(path.c_str())};
+    opts.paths.strings = paths;
+    opts.paths.count = 1;
+    return git_checkout_head(repo_, &opts) == 0;
+}
+
+bool
+Repo::commit(const std::string& message, bool amend) const {
+    git_index* idx = nullptr;
+    if (git_repository_index(&idx, repo_) != 0) {
+        return false;
+    }
+    git_oid tree_oid;
+    int rc = git_index_write_tree(&tree_oid, idx);
+    git_index_free(idx);
+    if (rc != 0) {
+        return false;
+    }
+    git_tree* tree = nullptr;
+    if (git_tree_lookup(&tree, repo_, &tree_oid) != 0) {
+        return false;
+    }
+    git_signature* sig = nullptr;
+    if (git_signature_default(&sig, repo_) != 0) {
+        git_tree_free(tree);
+        return false;
+    }
+
+    git_object* head_obj = nullptr;
+    git_commit* head_commit = nullptr;
+    if (git_revparse_single(&head_obj, repo_, "HEAD") == 0) {
+        git_commit_lookup(&head_commit, repo_, git_object_id(head_obj));
+    }
+
+    git_oid out_oid;
+    if (amend && head_commit) {
+        rc = git_commit_amend(&out_oid, head_commit, "HEAD", sig, sig, nullptr, message.c_str(),
+                              tree);
+    } else {
+        const git_commit* parents[1] = {head_commit};
+        const size_t nparents = head_commit ? 1 : 0;
+        rc = git_commit_create(&out_oid, repo_, "HEAD", sig, sig, nullptr, message.c_str(), tree,
+                               nparents, parents);
+    }
+
+    if (head_commit) {
+        git_commit_free(head_commit);
+    }
+    if (head_obj) {
+        git_object_free(head_obj);
+    }
+    git_signature_free(sig);
+    git_tree_free(tree);
+    return rc == 0;
+}
+
+std::vector<Repo::BranchInfo>
+Repo::branches() const {
+    std::vector<BranchInfo> out;
+    git_branch_iterator* it = nullptr;
+    if (git_branch_iterator_new(&it, repo_, GIT_BRANCH_ALL) != 0) {
+        return out;
+    }
+    git_reference* ref = nullptr;
+    git_branch_t type;
+    while (git_branch_next(&ref, &type, it) == 0) {
+        const char* name = nullptr;
+        if (git_branch_name(&name, ref) == 0 && name) {
+            BranchInfo bi;
+            bi.name = name;
+            bi.remote = (type == GIT_BRANCH_REMOTE);
+            bi.current = (git_branch_is_head(ref) == 1);
+            out.push_back(std::move(bi));
+        }
+        git_reference_free(ref);
+    }
+    git_branch_iterator_free(it);
+    return out;
+}
+
+bool
+Repo::checkout_branch(const std::string& name) const {
+    git_object* treeish = nullptr;
+    if (git_revparse_single(&treeish, repo_, name.c_str()) != 0) {
+        return false;
+    }
+    git_checkout_options opts;
+    git_checkout_options_init(&opts, GIT_CHECKOUT_OPTIONS_VERSION);
+    opts.checkout_strategy = GIT_CHECKOUT_SAFE;  // refuses to clobber dirty changes
+    const int rc = git_checkout_tree(repo_, treeish, &opts);
+    git_object_free(treeish);
+    if (rc != 0) {
+        return false;
+    }
+    const std::string refname = "refs/heads/" + name;
+    return git_repository_set_head(repo_, refname.c_str()) == 0;
+}
+
+BlobPair
+Repo::diff_ref_file(const std::string& base_ref, const std::string& path) const {
+    BlobPair pair;
+    pair.old_name = path;
+    pair.new_name = path;
+
+    git_object* obj = nullptr;
+    const std::string spec = base_ref + "^{tree}";
+    if (git_revparse_single(&obj, repo_, spec.c_str()) == 0) {
+        pair.old_text = blob_text_in_tree(reinterpret_cast<git_tree*>(obj), path);
+        git_object_free(obj);
+    }
+    const std::string abs = (fs::path(workdir()) / path).string();
+    pair.new_text = read_disk_file(abs);
+    pair.note = classify_blob_pair(pair.old_text, pair.new_text);
+    pair.ok = true;
+    return pair;
+}
+
 }  // namespace diffy::gui

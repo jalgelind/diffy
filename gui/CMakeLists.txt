@@ -71,3 +71,18 @@ if(WIN32)
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:diffy-gui> $<TARGET_FILE_DIR:diffy-gui>
     COMMAND_EXPAND_LISTS)
 endif()
+
+# A Slint-free test of the reusable git layer (repo_model). It links only
+# libgit2 — no Slint, no diffy_core — which is exactly the point: it proves the
+# repository logic can be driven by a non-Slint frontend, and exercises the
+# write operations against throwaway temp repos. Builds fast (no Rust/Slint).
+if(DIFFY_BUILD_TESTS)
+  add_executable(diffy-gui-logic-test
+    src/repo_model.cc
+    tests/repo_model_tests.cc)
+  target_include_directories(diffy-gui-logic-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/subprojects/doctest/doctest)
+  target_link_libraries(diffy-gui-logic-test PRIVATE ${DIFFY_LIBGIT2_TARGET})
+  add_test(NAME gui-logic-tests COMMAND diffy-gui-logic-test)
+endif()

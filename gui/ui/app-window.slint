@@ -73,6 +73,9 @@ export global Backend {
     in-out property <int> file-sel-index: -1;
     in-out property <int> commit-sel-index: -1;
 
+    in property <[string]> branch-names;   // local branches for the checkout combo
+    in property <int> staged-count: 0;     // staged files (enables Commit)
+    in-out property <string> confirm-discard: "";  // path pending a discard confirm
     in property <string> current-file: "";
     in property <string> diff-note: "";  // why the file isn't diffed (binary/large)
     in-out property <int> diff-scroll-row: -1;  // jump the diff to this model row
@@ -122,6 +125,11 @@ export global Backend {
     callback find-next();
     callback find-prev();
     callback find-close();
+    callback stage-file(string);
+    callback unstage-file(string);
+    callback discard-file(string);  // destructive — confirm in the UI first
+    callback commit(string, bool);  // message, amend
+    callback checkout-branch(string);
 }
 
 // ---- icons -----------------------------------------------------------------
@@ -564,13 +572,12 @@ component RepoBrowser inherits Rectangle {
                 source: @image-url("icons/git-branch.svg");
                 colorize: Backend.accent;
             }
-            Text {
-                text: Backend.branch;
-                color: Backend.accent;
-                font-size: 12px;
-                vertical-alignment: center;
-                overflow: elide;
+            // Branch list + checkout (switches on selection).
+            ThemedCombo {
                 horizontal-stretch: 1;
+                model: Backend.branch-names;
+                current-value: Backend.branch;
+                selected(v) => { Backend.checkout-branch(v); }
             }
         }
 
@@ -722,6 +729,36 @@ component RepoBrowser inherits Rectangle {
                                 background: #73c991;
                             }
                         }
+                        // Per-file actions: stage/unstage toggle + discard.
+                        Rectangle {
+                            width: 16px;
+                            stage-ta := TouchArea {
+                                clicked => {
+                                    if (f.staged) { Backend.unstage-file(f.path); }
+                                    else { Backend.stage-file(f.path); }
+                                }
+                            }
+                            Image {
+                                width: 13px;
+                                height: 13px;
+                                source: f.staged
+                                    ? @image-url("icons/circle-minus.svg")
+                                    : @image-url("icons/circle-plus.svg");
+                                colorize: stage-ta.has-hover ? Backend.accent : Backend.gutter-fg;
+                            }
+                        }
+                        Rectangle {
+                            width: 16px;
+                            discard-ta := TouchArea {
+                                clicked => { Backend.confirm-discard = f.path; }
+                            }
+                            Image {
+                                width: 13px;
+                                height: 13px;
+                                source: @image-url("icons/undo.svg");
+                                colorize: discard-ta.has-hover ? #f48771 : Backend.gutter-fg;
+                            }
+                        }
                     }
                 }
             }
@@ -810,6 +847,28 @@ component RepoBrowser inherits Rectangle {
                         text: "Load all";
                         enabled: !Backend.loading-commits;
                         clicked => { Backend.load-all-commits(); }
+                    }
+                }
+            }
+        }
+
+        // Commit bar: message + amend, enabled only when something is staged.
+        VerticalLayout {
+            spacing: 6px;
+            commit-msg := LineEdit {
+                placeholder-text: "Commit message";
+                enabled: Backend.staged-count > 0;
+            }
+            HorizontalLayout {
+                spacing: 6px;
+                amend-cb := CheckBox { text: "Amend"; }
+                Rectangle { horizontal-stretch: 1; }
+                Button {
+                    text: "Commit (\{Backend.staged-count})";
+                    enabled: Backend.staged-count > 0 && commit-msg.text != "";
+                    clicked => {
+                        Backend.commit(commit-msg.text, amend-cb.checked);
+                        commit-msg.text = "";
                     }
                 }
             }
@@ -1163,4 +1222,49 @@ export component AppWindow inherits Window {
 
     // Settings overlay sits above everything.
     SettingsPanel {}
+
+    // Discard confirmation (destructive — always confirm first).
+    if Backend.confirm-discard != "" : Rectangle {
+        background: #00000099;
+        TouchArea { clicked => { Backend.confirm-discard = ""; } }
+        Rectangle {
+            width: 380px;
+            height: 150px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: Backend.panel-bg;
+            border-radius: 10px;
+            border-width: 1px;
+            border-color: Backend.divider;
+            TouchArea {}
+            VerticalLayout {
+                padding: 20px;
+                spacing: 12px;
+                Text { text: "Discard changes?"; color: Backend.fg; font-size: 16px; font-weight: 600; }
+                Text {
+                    text: Backend.confirm-discard;
+                    color: Backend.gutter-fg;
+                    font-size: 12px;
+                    overflow: elide;
+                }
+                Text {
+                    text: "This cannot be undone.";
+                    color: #f48771;
+                    font-size: 11px;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Rectangle { horizontal-stretch: 1; }
+                    Button { text: "Cancel"; clicked => { Backend.confirm-discard = ""; } }
+                    Button {
+                        text: "Discard";
+                        clicked => {
+                            Backend.discard-file(Backend.confirm-discard);
+                            Backend.confirm-discard = "";
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

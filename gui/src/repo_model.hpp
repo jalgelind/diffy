@@ -91,6 +91,48 @@ class Repo {
     BlobPair
     diff_commit_file(const std::string& commit_oid, const std::string& path) const;
 
+    // --- write operations -------------------------------------------------
+    // These mutate the repository (index / working tree / refs). All return
+    // false on libgit2 error so the UI can report failure and re-scan. They are
+    // deliberately UI-agnostic so a non-Slint frontend can drive them too.
+
+    // Stage `path`: add it to the index, or stage its deletion if it's gone.
+    bool
+    stage_file(const std::string& path) const;
+
+    // Unstage `path`: reset its index entry to HEAD (or remove it if unborn).
+    bool
+    unstage_file(const std::string& path) const;
+
+    // Discard working-tree changes to `path`: restore it from HEAD, or delete it
+    // if it's untracked. Destructive — the UI should confirm first.
+    bool
+    discard_changes(const std::string& path) const;
+
+    // Commit the currently-staged index with `message`. `amend` replaces HEAD.
+    bool
+    commit(const std::string& message, bool amend = false) const;
+
+    struct BranchInfo {
+        std::string name;
+        bool current = false;
+        bool remote = false;
+    };
+
+    // Local + remote branches; `current` marks the checked-out one.
+    std::vector<BranchInfo>
+    branches() const;
+
+    // Check out a local branch by short name. Fails (false) if the working tree
+    // is dirty in a conflicting way (safe checkout), guarding against data loss.
+    bool
+    checkout_branch(const std::string& name) const;
+
+    // old = `base_ref`'s blob for `path`, new = current on-disk content. Lets the
+    // UI diff the working tree against an arbitrary ref instead of just HEAD.
+    BlobPair
+    diff_ref_file(const std::string& base_ref, const std::string& path) const;
+
    private:
     explicit Repo(git_repository* repo) : repo_(repo) {}
     git_repository* repo_ = nullptr;
