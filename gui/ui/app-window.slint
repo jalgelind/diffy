@@ -1,4 +1,7 @@
-import { Button, CheckBox, ListView, ScrollView, LineEdit } from "std-widgets.slint";
+// Button + CheckBox are defined below as theme-aware components (the std-widgets
+// ones are locked to the compile-time fluent-dark style and become unreadable on
+// light diffy themes — e.g. white text on a white button).
+import { ListView, ScrollView, LineEdit } from "std-widgets.slint";
 
 // ---- shared data structures (mirrored by generated C++ types) --------------
 
@@ -195,6 +198,86 @@ component StatusIcon inherits Rectangle {
     }
 }
 
+// ---- theme-aware Button / CheckBox (replace the fixed-style std-widgets) -----
+
+component Button inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    in property <bool> primary: false;
+    in property <image> icon;
+    in property <bool> colorize-icon: false;
+    callback clicked();
+    height: 28px;
+    min-width: 30px;
+    border-radius: 5px;
+    border-width: root.primary ? 0px : 1px;
+    border-color: Backend.divider;
+    background: !root.enabled ? Backend.bg
+              : root.primary ? Backend.accent
+              : (btn-ta.has-hover ? Backend.hover : Backend.bg);
+    btn-ta := TouchArea {
+        enabled <=> root.enabled;
+        clicked => { root.clicked(); }
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
+        alignment: center;
+        if root.colorize-icon : Image {
+            width: 14px;
+            height: 14px;
+            image-fit: contain;
+            source: root.icon;
+            colorize: root.primary ? Backend.on-accent : Backend.fg;
+        }
+        Text {
+            text: root.text;
+            color: !root.enabled ? Backend.gutter-fg
+                 : (root.primary ? Backend.on-accent : Backend.fg);
+            font-size: 12px;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+    }
+}
+
+component CheckBox inherits Rectangle {
+    in property <string> text;
+    in-out property <bool> checked;
+    callback toggled(bool);
+    height: 24px;
+    cb-ta := TouchArea {
+        clicked => { root.checked = !root.checked; root.toggled(root.checked); }
+    }
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        Rectangle {
+            width: 16px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 3px;
+            border-width: 1px;
+            border-color: root.checked ? Backend.accent : Backend.divider;
+            background: root.checked ? Backend.accent : transparent;
+            if root.checked : Text {
+                text: "✓";
+                color: Backend.on-accent;
+                font-size: 12px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        Text {
+            text: root.text;
+            color: Backend.fg;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+    }
+}
+
 // ---- one diff line ---------------------------------------------------------
 
 component DiffCellView inherits Rectangle {
@@ -229,13 +312,21 @@ component DiffCellView inherits Rectangle {
     }
 }
 
-component LineNo inherits Text {
+component LineNo inherits Rectangle {
+    in property <string> text;
     width: 48px;
-    color: Backend.gutter-fg;
-    font-family: Backend.mono-font;
-    font-size: Backend.font-size * 1px;
-    horizontal-alignment: right;
-    vertical-alignment: center;
+    // Right-align the number but keep a right margin so it doesn't touch the diff.
+    Text {
+        x: 0;
+        width: max(0px, parent.width - 10px);
+        height: parent.height;
+        text: root.text;
+        color: Backend.gutter-fg;
+        font-family: Backend.mono-font;
+        font-size: Backend.font-size * 1px;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
 }
 
 // One full diff row used as a (virtualized) ListView delegate. Side-by-side
@@ -278,12 +369,12 @@ component DiffRow inherits Rectangle {
     body := HorizontalLayout {
         visible: !rowdata.is-header;
         spacing: 0px;
-        LineNo { text: rowdata.old-no; visible: DiffOptions.show-line-numbers; }
-        // unified shows both line numbers in the left gutter
+        // Side-by-side: old# on the left (new# is the right gutter below). Unified:
+        // a single gutter showing the new line number, or the old one for deletions.
         LineNo {
-            text: rowdata.new-no;
-            width: (!sxs && DiffOptions.show-line-numbers) ? 48px : 0px;
-            visible: !sxs && DiffOptions.show-line-numbers;
+            text: sxs ? rowdata.old-no : (rowdata.new-no != "" ? rowdata.new-no : rowdata.old-no);
+            width: DiffOptions.show-line-numbers ? 48px : 0px;
+            visible: DiffOptions.show-line-numbers;
         }
         leftcell := DiffCellView {
             width: cellw;
@@ -1265,6 +1356,7 @@ component SettingsPanel inherits Rectangle {
 
 export component AppWindow inherits Window {
     title: "diffy";
+    icon: @image-url("icons/app-icon.svg");
     preferred-width: 1280px;
     preferred-height: 800px;
     min-width: 480px;
