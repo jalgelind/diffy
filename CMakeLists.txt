@@ -38,11 +38,15 @@ if(NOT DIFFY_BUILD_HASH)
 endif()
 
 # --- vendored third-party dependencies -------------------------------------
-# Link our vendored deps statically into the diffy binaries. A vcpkg toolchain
-# with a dynamic triplet (e.g. x64-windows) sets BUILD_SHARED_LIBS=ON, which makes
-# fmt build as fmt.dll and leaves the CLI unable to start without it next to the
-# exe. A normal (non-cache) set shadows that for our add_subdirectory deps; vcpkg
-# packages we *consume* (e.g. libgit2) are unaffected and stay dynamic.
+# Build these vendored deps as STATIC regardless of the toolchain default. A vcpkg
+# toolchain with a dynamic triplet (e.g. x64-windows) sets BUILD_SHARED_LIBS=ON,
+# which makes fmt build as fmt.dll and leaves the CLI unable to start without it
+# next to the exe. Scope the override to just these deps and restore it before
+# gui/ is added: forcing it globally would also flip Slint (fetched in gui/) from
+# shared to static, and the static winit path drops its Windows system-lib (imm32,
+# …) linkage and fails to link the GUI. vcpkg packages we *consume* (libgit2) are
+# unaffected and stay dynamic.
+set(_diffy_prev_shared "${BUILD_SHARED_LIBS}")
 set(BUILD_SHARED_LIBS OFF)
 
 set(FMT_INSTALL OFF CACHE BOOL "" FORCE)
@@ -60,6 +64,11 @@ add_subdirectory(subprojects/crc32c EXCLUDE_FROM_ALL)
 add_subdirectory(subprojects/platform_folders EXCLUDE_FROM_ALL)
 add_subdirectory(subprojects/getopt)
 add_subdirectory(subprojects/config_parser)
+
+# Restore the toolchain default so Slint (fetched in gui/) builds as it did before
+# (shared under a dynamic vcpkg triplet); only the vendored deps above are forced
+# static.
+set(BUILD_SHARED_LIBS "${_diffy_prev_shared}")
 
 # --- our libraries / applications ------------------------------------------
 add_subdirectory(libdiffy)
