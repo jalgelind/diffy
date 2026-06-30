@@ -47,8 +47,11 @@ struct RowModel {
 
 // Convert a laid-out diff model into a Slint VectorModel of rows, coloured by
 // `theme`. Tabs and control characters are expanded/sanitized so the text
-// renders without missing-glyph boxes.
+// renders without missing-glyph boxes. When `wrap` is set, lines wider than
+// `wrap_cols` display columns are split into multiple visual lines that keep
+// their per-token colours (wrap_cols < 1 disables wrapping).
 RowModel
-build_row_model(const diffy::DiffViewModel& model, const GuiTheme& theme, int tab_width);
+build_row_model(const diffy::DiffViewModel& model, const GuiTheme& theme, int tab_width,
+                bool wrap, int wrap_cols);
 
 }  // namespace diffy::gui

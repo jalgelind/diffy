@@ -222,7 +222,8 @@ run_selftest(const std::string& repo_path, const GuiSettings& settings) {
             auto vm = build_diff_view_from_text(pair.old_text, pair.new_text, pair.old_name,
                                                 pair.new_name, p, l);
             auto model = diffy::gui::build_row_model(vm, theme,
-                                                     static_cast<int>(settings.tab_width));
+                                                     static_cast<int>(settings.tab_width),
+                                                     /*wrap=*/false, /*wrap_cols=*/0);
             std::fprintf(stderr, "selftest: '%s' (%s) [%s] -> %zu view rows, %d slint rows\n",
                          f.path.c_str(), f.status.c_str(),
                          mode == ViewMode::SideBySide ? "side-by-side" : "unified", vm.rows.size(),
@@ -431,6 +432,11 @@ main(int argc, char** argv) {
         return l;
     };
 
+    // Wrap column count, derived by the UI from the diff cell width + the measured
+    // monospace advance and reported via Backend.set-wrap-metrics. 0 disables
+    // wrapping (the state before the first report).
+    int wrap_cols = 0;
+
     // layout-only refresh: reuse the cached annotated hunks
     auto relayout = [&]() {
         auto input = state.computation.input();
@@ -441,7 +447,8 @@ main(int argc, char** argv) {
         // build_row_model expands tabs and reports the widest line (in display
         // columns), which drives the horizontal scroll extent.
         auto model = diffy::gui::build_row_model(vm, gui_theme,
-                                                 static_cast<int>(state.settings.tab_width));
+                                                 static_cast<int>(state.settings.tab_width),
+                                                 options.get_word_wrap(), wrap_cols);
         backend.set_max_cols(model.max_cols);
         backend.set_rows(model.rows);
 
@@ -1155,6 +1162,22 @@ main(int argc, char** argv) {
         }
     });
     options.on_rediff([&]() { recompute(); });
+
+    // The UI reports the cell width + measured font advance; derive the wrap column
+    // count and re-wrap the rows when it changes (only meaningful with wrap on).
+    backend.on_set_wrap_metrics([&](float cell_px, float advance_px) {
+        // Columns that fit, accounting for the 6px left pad plus a little slack.
+        int wc = (advance_px > 0.5f) ? static_cast<int>((cell_px - 12.0f) / advance_px) : 0;
+        if (wc < 1) {
+            wc = 1;
+        }
+        if (wc != wrap_cols) {
+            wrap_cols = wc;
+            if (options.get_word_wrap() && state.pair.ok) {
+                relayout();
+            }
+        }
+    });
 
     set_repo_names();
     if (settings.restore_last_repo && !state.repos.empty()) {

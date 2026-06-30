@@ -114,22 +114,52 @@ span_fg(const GuiTheme& t, const diffy::StyledSpan& s) {
     return t.fg;
 }
 
-std::shared_ptr<slint::VectorModel<DiffSpan>>
-make_spans(const GuiTheme& t, const diffy::DiffCell& cell, int tab_width, int& out_width,
-           std::string& out_text) {
-    auto spans = std::make_shared<slint::VectorModel<DiffSpan>>();
+uint32_t
+pack(slint::Color c) {
+    return (static_cast<uint32_t>(c.alpha()) << 24) | (static_cast<uint32_t>(c.red()) << 16) |
+           (static_cast<uint32_t>(c.green()) << 8) | static_cast<uint32_t>(c.blue());
+}
+
+slint::Color
+unpack(uint32_t a) {
+    return slint::Color::from_argb_uint8((a >> 24) & 0xff, (a >> 16) & 0xff, (a >> 8) & 0xff, a & 0xff);
+}
+
+// Build a cell's visual lines: expand tabs, resolve each span's colour, and (when
+// wrapping) split into sub-lines at `wrap_cols` columns while keeping colours.
+// `out_width` reports the unwrapped display width (for the horizontal extent).
+std::shared_ptr<slint::VectorModel<DiffLine>>
+make_lines(const GuiTheme& t, const diffy::DiffCell& cell, int tab_width, bool wrap, int wrap_cols,
+           int& out_width) {
+    std::vector<DisplayRun> runs;
     int col = 0;
     for (const auto& s : cell.spans) {
-        DiffSpan d;
         std::string piece = expand_for_display(s.text, tab_width, col);
-        out_text += piece;
-        d.text = shared(piece);
-        d.color = span_fg(t, s);
-        d.bold = is_bold(s.style);
-        spans->push_back(d);
+        if (piece.empty()) {
+            continue;
+        }
+        runs.push_back(DisplayRun{std::move(piece), pack(span_fg(t, s)), is_bold(s.style)});
     }
     out_width = col;
-    return spans;
+
+    const int wc = (wrap && wrap_cols >= 1) ? wrap_cols : 0;
+    auto vlines = wrap_display_runs(runs, wc);
+
+    auto lines = std::make_shared<slint::VectorModel<DiffLine>>();
+    for (const auto& vl : vlines) {
+        auto spans = std::make_shared<slint::VectorModel<DiffSpan>>();
+        for (const auto& r : vl) {
+            DiffSpan d;
+            d.text = shared(r.text);
+            d.color = unpack(r.argb);
+            d.bold = r.bold;
+            spans->push_back(d);
+        }
+        DiffLine dl;
+        dl.spans = spans;
+        lines->push_back(dl);
+    }
+    return lines;
 }
 
 }  // namespace
@@ -173,7 +203,8 @@ load_gui_theme(const std::string& theme_name) {
 }
 
 RowModel
-build_row_model(const diffy::DiffViewModel& model, const GuiTheme& theme, int tab_width) {
+build_row_model(const diffy::DiffViewModel& model, const GuiTheme& theme, int tab_width, bool wrap,
+                int wrap_cols) {
     RowModel result;
     result.rows = std::make_shared<slint::VectorModel<DiffRowData>>();
 
@@ -184,8 +215,8 @@ build_row_model(const diffy::DiffViewModel& model, const GuiTheme& theme, int ta
             d.header = shared(r.header_text);
             d.left_present = false;
             d.right_present = false;
-            d.left_spans = std::make_shared<slint::VectorModel<DiffSpan>>();
-            d.right_spans = std::make_shared<slint::VectorModel<DiffSpan>>();
+            d.left_lines = std::make_shared<slint::VectorModel<DiffLine>>();
+            d.right_lines = std::make_shared<slint::VectorModel<DiffLine>>();
             result.rows->push_back(d);
             continue;
         }
@@ -198,11 +229,8 @@ build_row_model(const diffy::DiffViewModel& model, const GuiTheme& theme, int ta
         d.left_bg = cell_bg(theme, r.left);
         d.right_bg = cell_bg(theme, r.right);
         int lw = 0, rw = 0;
-        std::string lt, rt;
-        d.left_spans = make_spans(theme, r.left, tab_width, lw, lt);
-        d.right_spans = make_spans(theme, r.right, tab_width, rw, rt);
-        d.left_text = shared(lt);
-        d.right_text = shared(rt);
+        d.left_lines = make_lines(theme, r.left, tab_width, wrap, wrap_cols, lw);
+        d.right_lines = make_lines(theme, r.right, tab_width, wrap, wrap_cols, rw);
         d.left_cols = lw;
         d.right_cols = rw;
         result.max_cols = std::max(result.max_cols, std::max(lw, rw));
