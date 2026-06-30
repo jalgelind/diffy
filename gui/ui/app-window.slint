@@ -1147,9 +1147,11 @@ export component AppWindow inherits Window {
                 vertical-stretch: 1;
                 clip: true;
 
-                // Measured monospace advance (logical px/column): a 40-char sample
-                // sized to its content, divided by 40. Real metric, not a guess.
-                property <length> advance: calib.width / 40;
+                // Measured monospace advance (logical px/column): the *content*
+                // width of a 40-char sample / 40. Must use preferred-width — a
+                // non-layout child's `width` fills the parent, which would make the
+                // advance scale with the pane and the wrap column count constant.
+                property <length> advance: calib.preferred-width / 40;
                 property <length> gut: DiffOptions.show-line-numbers ? 48px : 0px;
                 // One diff cell's width at the *visible* pane width (mirrors
                 // DiffRow.cellw). Pushed to C++ to derive the wrap column count.
@@ -1173,16 +1175,6 @@ export component AppWindow inherits Window {
                     // to fill the (plain Rectangle) diff area explicitly.
                     width: 100%;
                     height: 100%;
-                    // Horizontal scroll only in unified + wrap-off: there the row
-                    // is one cell, so widening it to the longest line and letting the
-                    // list scroll works. In side-by-side, widening the row and halving
-                    // it would push the right cell (and divider) off-screen, and when
-                    // wrapping the rows must fit the visible width — so keep those at
-                    // the visible width (long lines clip / wrap as appropriate).
-                    viewport-width: (DiffOptions.word-wrap || DiffOptions.side-by-side)
-                        ? self.visible-width
-                        : max(self.visible-width,
-                              Backend.max-cols * diff-area.advance + 2 * diff-area.gut + 17px);
                     // Jump-to-hunk: scroll so the requested row is near the top.
                     // Approximate (uniform row height) — exact enough to land.
                     property <int> scroll-to: Backend.diff-scroll-row;
@@ -1191,8 +1183,11 @@ export component AppWindow inherits Window {
                             self.viewport-y = -self.scroll-to * Backend.font-size * 1.6px;
                         }
                     }
+                    // Rows fill the list width so they re-size (and re-split / re-wrap)
+                    // live with the window. Long lines clip at the cell edge when wrap
+                    // is off; turn on Wrap (or Unified) to see them in full.
                     for data[idx] in Backend.rows : DiffRow {
-                        width: diff-list.viewport-width;
+                        width: parent.width;
                         rowdata: data;
                         highlight: idx == Backend.find-current-row;
                     }

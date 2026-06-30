@@ -1166,8 +1166,9 @@ main(int argc, char** argv) {
     // The UI reports the cell width + measured font advance; derive the wrap column
     // count and re-wrap the rows when it changes (only meaningful with wrap on).
     backend.on_set_wrap_metrics([&](float cell_px, float advance_px) {
-        // Columns that fit, accounting for the 6px left pad plus a little slack.
-        int wc = (advance_px > 0.5f) ? static_cast<int>((cell_px - 12.0f) / advance_px) : 0;
+        // Columns that fit: 6px left pad + slack for the vertical scrollbar so the
+        // last column never clips (better to wrap a char early than to truncate).
+        int wc = (advance_px > 0.5f) ? static_cast<int>((cell_px - 16.0f) / advance_px) : 0;
         if (wc < 1) {
             wc = 1;
         }
