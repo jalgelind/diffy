@@ -128,6 +128,15 @@ class Repo {
     bool
     checkout_branch(const std::string& name) const;
 
+    // Detach HEAD at `commit_oid` (view a historical commit). Safe checkout —
+    // refuses to clobber a dirty working tree.
+    bool
+    checkout_commit(const std::string& commit_oid) const;
+
+    // Create local branch `name` at `commit_oid` and check it out (safe checkout).
+    bool
+    create_branch_at(const std::string& name, const std::string& commit_oid) const;
+
     // old = `base_ref`'s blob for `path`, new = current on-disk content. Lets the
     // UI diff the working tree against an arbitrary ref instead of just HEAD.
     BlobPair

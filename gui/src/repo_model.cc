@@ -537,6 +537,46 @@ Repo::checkout_branch(const std::string& name) const {
     return git_repository_set_head(repo_, refname.c_str()) == 0;
 }
 
+bool
+Repo::checkout_commit(const std::string& commit_oid) const {
+    git_object* obj = nullptr;
+    if (git_revparse_single(&obj, repo_, commit_oid.c_str()) != 0) {
+        return false;
+    }
+    git_checkout_options opts;
+    git_checkout_options_init(&opts, GIT_CHECKOUT_OPTIONS_VERSION);
+    opts.checkout_strategy = GIT_CHECKOUT_SAFE;  // refuses to clobber dirty changes
+    int rc = git_checkout_tree(repo_, obj, &opts);
+    if (rc == 0) {
+        rc = git_repository_set_head_detached(repo_, git_object_id(obj));
+    }
+    git_object_free(obj);
+    return rc == 0;
+}
+
+bool
+Repo::create_branch_at(const std::string& name, const std::string& commit_oid) const {
+    git_object* obj = nullptr;
+    if (git_revparse_single(&obj, repo_, commit_oid.c_str()) != 0) {
+        return false;
+    }
+    git_commit* commit = nullptr;
+    const int look = git_commit_lookup(&commit, repo_, git_object_id(obj));
+    git_object_free(obj);
+    if (look != 0) {
+        return false;
+    }
+    git_reference* branch = nullptr;
+    const int rc = git_branch_create(&branch, repo_, name.c_str(), commit, 0);
+    git_commit_free(commit);
+    if (rc != 0) {
+        return false;  // name already exists, invalid, etc.
+    }
+    git_reference_free(branch);
+    // Switch to the new branch (safe checkout + move HEAD).
+    return checkout_branch(name);
+}
+
 BlobPair
 Repo::diff_ref_file(const std::string& base_ref, const std::string& path) const {
     BlobPair pair;

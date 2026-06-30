@@ -144,6 +144,14 @@ export global Backend {
     // Report the diff cell width and measured monospace advance (both in logical
     // px) so C++ can compute the exact wrap column count and re-wrap the rows.
     callback set-wrap-metrics(float /* cell-px */, float /* advance-px */);
+
+    // Context-menu actions.
+    callback copy-to-clipboard(string);
+    callback open-file(string);     // repo-relative path
+    callback reveal-file(string);   // repo-relative path
+    callback checkout-commit(string);          // oid (detached)
+    callback create-branch(string, string);    // (oid, branch-name)
+    in-out property <string> create-branch-oid: "";  // non-empty -> show name prompt
 }
 
 // ---- icons -----------------------------------------------------------------
@@ -829,6 +837,27 @@ component FilesPanel inherits Rectangle {
                         }
                     }
 
+                    // Right-click actions (non-visual; expands to the row).
+                    if !f.is-section : ContextMenuArea {
+                        Menu {
+                            MenuItem {
+                                title: f.staged ? "Unstage" : "Stage";
+                                activated => {
+                                    if (f.staged) { Backend.unstage-file(f.path); }
+                                    else { Backend.stage-file(f.path); }
+                                }
+                            }
+                            MenuItem { title: "Discard changes…"; activated => { Backend.confirm-discard = f.path; } }
+                            MenuSeparator {}
+                            MenuItem { title: "View diff"; activated => { Backend.select-file(f.path); } }
+                            MenuItem { title: "Open file"; activated => { Backend.open-file(f.path); } }
+                            MenuItem { title: "Reveal in Explorer"; activated => { Backend.reveal-file(f.path); } }
+                            MenuSeparator {}
+                            MenuItem { title: "Copy path"; activated => { Backend.copy-to-clipboard(f.path); } }
+                            MenuItem { title: "Copy name"; activated => { Backend.copy-to-clipboard(f.name); } }
+                        }
+                    }
+
                     // Section / group header (staged-unstaged or folder).
                     if f.is-section : Text {
                         x: 6px;
@@ -969,6 +998,26 @@ component CommitsPanel inherits Rectangle {
                     clicked => {
                         Backend.commit-sel-index = cidx;
                         Backend.select-commit(c.oid);
+                    }
+                }
+                // Right-click actions for a commit.
+                ContextMenuArea {
+                    Menu {
+                        MenuItem {
+                            title: "View changes";
+                            activated => { Backend.commit-sel-index = cidx; Backend.select-commit(c.oid); }
+                        }
+                        MenuItem {
+                            title: "Diff working tree against this";
+                            activated => { Backend.set-base-ref(c.oid); }
+                        }
+                        MenuSeparator {}
+                        MenuItem { title: "Copy SHA"; activated => { Backend.copy-to-clipboard(c.oid); } }
+                        MenuItem { title: "Copy short SHA"; activated => { Backend.copy-to-clipboard(c.short-oid); } }
+                        MenuItem { title: "Copy summary"; activated => { Backend.copy-to-clipboard(c.summary); } }
+                        MenuSeparator {}
+                        MenuItem { title: "Checkout commit"; activated => { Backend.checkout-commit(c.oid); } }
+                        MenuItem { title: "Create branch here…"; activated => { Backend.create-branch-oid = c.oid; } }
                     }
                 }
                 HorizontalLayout {
@@ -1499,6 +1548,48 @@ export component AppWindow inherits Window {
                         clicked => {
                             Backend.discard-file(Backend.confirm-discard);
                             Backend.confirm-discard = "";
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Create-branch name prompt (opened from a commit's context menu).
+    if Backend.create-branch-oid != "" : Rectangle {
+        background: #00000099;
+        TouchArea { clicked => { Backend.create-branch-oid = ""; } }
+        Rectangle {
+            width: 380px;
+            height: 156px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: Backend.panel-bg;
+            border-radius: 10px;
+            border-width: 1px;
+            border-color: Backend.divider;
+            TouchArea {}
+            VerticalLayout {
+                padding: 20px;
+                spacing: 12px;
+                Text { text: "New branch"; color: Backend.fg; font-size: 16px; font-weight: 600; }
+                branch-name := LineEdit {
+                    placeholder-text: "branch name";
+                    init => { self.focus(); }
+                    accepted => {
+                        Backend.create-branch(Backend.create-branch-oid, self.text);
+                        Backend.create-branch-oid = "";
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Rectangle { horizontal-stretch: 1; }
+                    Button { text: "Cancel"; clicked => { Backend.create-branch-oid = ""; } }
+                    Button {
+                        text: "Create";
+                        clicked => {
+                            Backend.create-branch(Backend.create-branch-oid, branch-name.text);
+                            Backend.create-branch-oid = "";
                         }
                     }
                 }

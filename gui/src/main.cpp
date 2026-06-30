@@ -32,10 +32,78 @@
 #endif
 #include <windows.h>
 #include <shobjidl.h>
+#include <shellapi.h>
 #endif
 
 using namespace diffy;
 using diffy::gui::Repo;
+
+namespace {
+
+#ifdef _WIN32
+std::wstring
+to_wide(const std::string& s) {
+    if (s.empty()) {
+        return std::wstring();
+    }
+    const int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+    std::wstring w(n > 0 ? n - 1 : 0, L'\0');
+    if (n > 0) {
+        MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, w.data(), n);
+    }
+    return w;
+}
+
+void
+copy_to_clipboard(const std::string& utf8) {
+    if (!OpenClipboard(nullptr)) {
+        return;
+    }
+    EmptyClipboard();
+    const int n = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
+    if (n > 0) {
+        HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, static_cast<SIZE_T>(n) * sizeof(wchar_t));
+        if (h) {
+            MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, static_cast<wchar_t*>(GlobalLock(h)), n);
+            GlobalUnlock(h);
+            SetClipboardData(CF_UNICODETEXT, h);  // ownership passes to the clipboard
+        }
+    }
+    CloseClipboard();
+}
+
+void
+shell_open(const std::string& abs_path) {
+    ShellExecuteW(nullptr, L"open", to_wide(abs_path).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+void
+shell_reveal(const std::string& abs_path) {
+    const std::wstring arg = L"/select,\"" + to_wide(abs_path) + L"\"";
+    ShellExecuteW(nullptr, L"open", L"explorer.exe", arg.c_str(), nullptr, SW_SHOWNORMAL);
+}
+#else
+// TODO: xdg-open / pbcopy equivalents for Linux/macOS.
+void copy_to_clipboard(const std::string&) {}
+void shell_open(const std::string&) {}
+void shell_reveal(const std::string&) {}
+#endif
+
+// Join a repo workdir with a repo-relative path.
+std::string
+join_path(const std::string& base, const std::string& rel) {
+    if (base.empty()) {
+        return rel;
+    }
+    std::string out = base;
+    if (out.back() != '/' && out.back() != '\\') {
+        out += '/';
+    }
+    out += rel;
+    return out;
+}
+
+}  // namespace
 
 namespace {
 
@@ -1143,6 +1211,36 @@ main(int argc, char** argv) {
         }
         if (!state.repo->checkout_branch(str(name))) {
             backend.set_status_text(ss("Checkout failed — commit or stash changes first."));
+        }
+        refresh();
+    });
+    // --- context-menu actions ----------------------------------------------
+    backend.on_copy_to_clipboard([&](slint::SharedString t) { copy_to_clipboard(str(t)); });
+    backend.on_open_file([&](slint::SharedString p) {
+        if (state.repo) {
+            shell_open(join_path(state.repo->workdir(), str(p)));
+        }
+    });
+    backend.on_reveal_file([&](slint::SharedString p) {
+        if (state.repo) {
+            shell_reveal(join_path(state.repo->workdir(), str(p)));
+        }
+    });
+    backend.on_checkout_commit([&](slint::SharedString oid) {
+        if (!state.repo) {
+            return;
+        }
+        if (!state.repo->checkout_commit(str(oid))) {
+            backend.set_status_text(ss("Checkout failed — commit or stash changes first."));
+        }
+        refresh();
+    });
+    backend.on_create_branch([&](slint::SharedString oid, slint::SharedString name) {
+        if (!state.repo || str(name).empty()) {
+            return;
+        }
+        if (!state.repo->create_branch_at(str(name), str(oid))) {
+            backend.set_status_text(ss("Create branch failed (name exists or dirty tree)."));
         }
         refresh();
     });
