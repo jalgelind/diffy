@@ -832,6 +832,14 @@ component FilesPanel inherits Rectangle {
                     // selected first. Declared before `touch` so `touch` (above it,
                     // below the action icons) receives the right-click to drive it.
                     fmenu := ContextMenuArea {
+                        // Zero-sized and pinned to the row's top-left so it never
+                        // auto-shows; the row's TouchArea drives it via show() after
+                        // selecting. x/y:0 keeps show()'s position measured from the
+                        // row origin (a 0-sized element otherwise centres in the row).
+                        x: 0;
+                        y: 0;
+                        width: 0px;
+                        height: 0px;
                         Menu {
                             MenuItem {
                                 title: f.staged ? "Unstage" : "Stage";
@@ -1008,6 +1016,12 @@ component CommitsPanel inherits Rectangle {
                 // Context menu, shown manually on right-click so the commit is
                 // selected first (declared before ctouch so ctouch sits above it).
                 cmenu := ContextMenuArea {
+                    // Zero-sized + pinned to the row origin so it never auto-shows and
+                    // show()'s position is measured from the row's top-left.
+                    x: 0;
+                    y: 0;
+                    width: 0px;
+                    height: 0px;
                     Menu {
                         MenuItem {
                             title: "View changes";
