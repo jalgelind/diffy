@@ -57,6 +57,21 @@ add_executable(diffy-gui
 target_include_directories(diffy-gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(diffy-gui PRIVATE diffy_core Slint::Slint ${DIFFY_LIBGIT2_TARGET})
 
+# Slint's winit/skia backend is built as a static Rust library; the macOS
+# frameworks and the ObjC runtime its objc2/winit/skia/accesskit crates call
+# into aren't propagated to the final link, so name them explicitly. Without
+# these the link fails with undefined ObjC runtime symbols (_objc_msgSend,
+# _sel_registerName, …) and missing AppKit/Foundation/Metal classes.
+if(APPLE)
+  foreach(_fw AppKit Foundation CoreFoundation CoreGraphics CoreText
+              QuartzCore Metal MetalKit IOSurface CoreVideo Security
+              OpenGL Carbon)
+    find_library(DIFFY_FW_${_fw} ${_fw} REQUIRED)
+    target_link_libraries(diffy-gui PRIVATE ${DIFFY_FW_${_fw}})
+  endforeach()
+  target_link_libraries(diffy-gui PRIVATE objc)
+endif()
+
 # The native "Browse for folder" dialog (IFileOpenDialog) lives in the COM/shell
 # libraries.
 if(WIN32)
