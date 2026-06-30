@@ -562,6 +562,7 @@ main(int argc, char** argv) {
     // monospace advance and reported via Backend.set-wrap-metrics. 0 disables
     // wrapping (the state before the first report).
     int wrap_cols = 0;
+    slint::Timer wrap_debounce;  // coalesces re-wraps during a live resize
 
     // layout-only refresh: reuse the cached annotated hunks
     auto relayout = [&]() {
@@ -1329,12 +1330,21 @@ main(int argc, char** argv) {
         if (wc < 1) {
             wc = 1;
         }
-        if (wc != wrap_cols) {
-            wrap_cols = wc;
+        if (wc == wrap_cols) {
+            return;
+        }
+        wrap_cols = wc;
+        if (!options.get_word_wrap() || !state.pair.ok) {
+            return;
+        }
+        // Re-wrapping rebuilds every row — too heavy to run on each resize tick (it
+        // stalls painting, so the window goes blank). Coalesce: re-wrap once the
+        // size settles.
+        wrap_debounce.start(slint::TimerMode::SingleShot, std::chrono::milliseconds(80), [&]() {
             if (options.get_word_wrap() && state.pair.ok) {
                 relayout();
             }
-        }
+        });
     });
 
     set_repo_names();
