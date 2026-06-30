@@ -828,17 +828,10 @@ component FilesPanel inherits Rectangle {
                     background: selected
                         ? Backend.selection
                         : (!f.is-section && touch.has-hover ? Backend.hover : transparent);
-                    touch := TouchArea {
-                        clicked => {
-                            if (!f.is-section) {
-                                Backend.file-sel-index = fidx;
-                                Backend.select-file(f.path);
-                            }
-                        }
-                    }
-
-                    // Right-click actions (non-visual; expands to the row).
-                    if !f.is-section : ContextMenuArea {
+                    // Context menu, shown manually on right-click so the row is
+                    // selected first. Declared before `touch` so `touch` (above it,
+                    // below the action icons) receives the right-click to drive it.
+                    fmenu := ContextMenuArea {
                         Menu {
                             MenuItem {
                                 title: f.staged ? "Unstage" : "Stage";
@@ -855,6 +848,24 @@ component FilesPanel inherits Rectangle {
                             MenuSeparator {}
                             MenuItem { title: "Copy path"; activated => { Backend.copy-to-clipboard(f.path); } }
                             MenuItem { title: "Copy name"; activated => { Backend.copy-to-clipboard(f.name); } }
+                        }
+                    }
+                    touch := TouchArea {
+                        clicked => {
+                            if (!f.is-section) {
+                                Backend.file-sel-index = fidx;
+                                Backend.select-file(f.path);
+                            }
+                        }
+                        // Right-click selects the row first, then opens its menu.
+                        pointer-event(e) => {
+                            if (!f.is-section
+                                && e.button == PointerEventButton.right
+                                && e.kind == PointerEventKind.down) {
+                                Backend.file-sel-index = fidx;
+                                Backend.select-file(f.path);
+                                fmenu.show({ x: self.mouse-x, y: self.mouse-y });
+                            }
                         }
                     }
 
@@ -994,14 +1005,9 @@ component CommitsPanel inherits Rectangle {
                 background: cidx == Backend.commit-sel-index
                             ? Backend.selection
                             : (ctouch.has-hover ? Backend.hover : transparent);
-                ctouch := TouchArea {
-                    clicked => {
-                        Backend.commit-sel-index = cidx;
-                        Backend.select-commit(c.oid);
-                    }
-                }
-                // Right-click actions for a commit.
-                ContextMenuArea {
+                // Context menu, shown manually on right-click so the commit is
+                // selected first (declared before ctouch so ctouch sits above it).
+                cmenu := ContextMenuArea {
                     Menu {
                         MenuItem {
                             title: "View changes";
@@ -1018,6 +1024,20 @@ component CommitsPanel inherits Rectangle {
                         MenuSeparator {}
                         MenuItem { title: "Checkout commit"; activated => { Backend.checkout-commit(c.oid); } }
                         MenuItem { title: "Create branch here…"; activated => { Backend.create-branch-oid = c.oid; } }
+                    }
+                }
+                ctouch := TouchArea {
+                    clicked => {
+                        Backend.commit-sel-index = cidx;
+                        Backend.select-commit(c.oid);
+                    }
+                    // Right-click selects the commit first, then opens its menu.
+                    pointer-event(e) => {
+                        if (e.button == PointerEventButton.right && e.kind == PointerEventKind.down) {
+                            Backend.commit-sel-index = cidx;
+                            Backend.select-commit(c.oid);
+                            cmenu.show({ x: self.mouse-x, y: self.mouse-y });
+                        }
                     }
                 }
                 HorizontalLayout {
