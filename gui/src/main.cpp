@@ -33,7 +33,10 @@
 #include <windows.h>
 #include <shobjidl.h>
 #include <shellapi.h>
+#include <dwmapi.h>
 #endif
+
+#include <chrono>
 
 using namespace diffy;
 using diffy::gui::Repo;
@@ -87,6 +90,54 @@ shell_reveal(const std::string& abs_path) {
 void copy_to_clipboard(const std::string&) {}
 void shell_open(const std::string&) {}
 void shell_reveal(const std::string&) {}
+#endif
+
+#ifdef _WIN32
+// The main Slint window's HWND: our process's visible, unowned, sizable top-level
+// window (excludes the owned/small popup windows). Title-independent.
+HWND
+find_main_hwnd() {
+    struct Ctx { DWORD pid; HWND hwnd; };
+    Ctx ctx{GetCurrentProcessId(), nullptr};
+    EnumWindows(
+        [](HWND h, LPARAM lp) -> BOOL {
+            auto* c = reinterpret_cast<Ctx*>(lp);
+            DWORD pid = 0;
+            GetWindowThreadProcessId(h, &pid);
+            if (pid == c->pid && IsWindowVisible(h) && GetWindow(h, GW_OWNER) == nullptr) {
+                RECT r{};
+                GetWindowRect(h, &r);
+                if ((r.right - r.left) > 200 && (r.bottom - r.top) > 200) {
+                    c->hwnd = h;
+                    return FALSE;  // found the main window; stop
+                }
+            }
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&ctx));
+    return ctx.hwnd;
+}
+
+// Tint the OS-drawn title bar to match the theme (Windows 11): immersive dark
+// mode + caption/text/border colours. No-op on older Windows for the colours.
+void
+apply_window_chrome(const diffy::gui::GuiTheme& t) {
+    HWND h = find_main_hwnd();
+    if (!h) {
+        return;
+    }
+    BOOL dark = t.dark ? TRUE : FALSE;
+    DwmSetWindowAttribute(h, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &dark, sizeof(dark));
+    COLORREF caption = RGB(t.bg.red(), t.bg.green(), t.bg.blue());
+    COLORREF text = RGB(t.fg.red(), t.fg.green(), t.fg.blue());
+    COLORREF border = RGB(t.divider.red(), t.divider.green(), t.divider.blue());
+    DwmSetWindowAttribute(h, 35 /* DWMWA_CAPTION_COLOR */, &caption, sizeof(caption));
+    DwmSetWindowAttribute(h, 36 /* DWMWA_TEXT_COLOR */, &text, sizeof(text));
+    DwmSetWindowAttribute(h, 34 /* DWMWA_BORDER_COLOR */, &border, sizeof(border));
+}
+#else
+void
+apply_window_chrome(const diffy::gui::GuiTheme&) {}
 #endif
 
 // Join a repo workdir with a repo-relative path.
@@ -1254,6 +1305,7 @@ main(int argc, char** argv) {
         state.settings.theme = str(name);
         gui_theme = diffy::gui::load_gui_theme(state.settings.theme);
         apply_theme_colors();
+        apply_window_chrome(gui_theme);  // retint the title bar
         if (state.pair.ok) {
             relayout();  // re-render so span colours pick up the new theme
         }
@@ -1288,6 +1340,10 @@ main(int argc, char** argv) {
     if (settings.restore_last_repo && !state.repos.empty()) {
         load_repo(state.repos.front().path);
     }
+
+    // Theme the OS title bar once the native window exists (after the loop starts).
+    slint::Timer::single_shot(std::chrono::milliseconds(120),
+                              [&]() { apply_window_chrome(gui_theme); });
 
     ui->run();
 

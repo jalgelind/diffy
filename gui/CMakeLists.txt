@@ -60,7 +60,13 @@ target_link_libraries(diffy-gui PRIVATE diffy_core Slint::Slint ${DIFFY_LIBGIT2_
 # The native "Browse for folder" dialog (IFileOpenDialog) lives in the COM/shell
 # libraries.
 if(WIN32)
-  target_link_libraries(diffy-gui PRIVATE ole32 shell32)
+  target_link_libraries(diffy-gui PRIVATE ole32 shell32 dwmapi)
+  # GUI-subsystem app so launching it doesn't pop a console window. Keep the
+  # standard int main() entry point under MSVC's /SUBSYSTEM:WINDOWS.
+  set_target_properties(diffy-gui PROPERTIES WIN32_EXECUTABLE TRUE)
+  if(MSVC)
+    target_link_options(diffy-gui PRIVATE /ENTRY:mainCRTStartup)
+  endif()
 endif()
 
 # Compiles ui/app-window.slint and exposes the generated app-window.h.
