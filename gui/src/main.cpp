@@ -237,6 +237,12 @@ run_selftest(const std::string& repo_path, const GuiSettings& settings) {
 
 int
 main(int argc, char** argv) {
+#ifdef DIFFY_PLATFORM_WINDOWS
+    // Per-monitor DPI awareness: without it Windows renders the UI at 96 DPI and
+    // bitmap-scales it up on HiDPI displays, which looks blurry. Must run before
+    // the Slint window is created. Slint already honours window().scale_factor().
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+#endif
     diffy::gui::git_runtime_init();
 
     GuiSettings settings;
