@@ -478,6 +478,7 @@ main(int argc, char** argv) {
     // it live (apply_theme_colors re-pushes the palette; on_set_theme re-renders).
     diffy::gui::GuiTheme gui_theme = diffy::gui::load_gui_theme(settings.theme);
     auto apply_theme_colors = [&]() {
+        backend.set_dark(gui_theme.dark);  // flips the std-widgets (scrollbar) palette
         backend.set_bg(gui_theme.bg);
         backend.set_panel_bg(gui_theme.panel_bg);
         backend.set_fg(gui_theme.fg);

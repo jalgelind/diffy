@@ -1,7 +1,7 @@
 // Button + CheckBox are defined below as theme-aware components (the std-widgets
 // ones are locked to the compile-time fluent-dark style and become unreadable on
 // light diffy themes — e.g. white text on a white button).
-import { ListView, ScrollView } from "std-widgets.slint";
+import { ListView, ScrollView, Palette } from "std-widgets.slint";
 
 // ---- shared data structures (mirrored by generated C++ types) --------------
 
@@ -98,6 +98,7 @@ export global Backend {
     in property <string> branch: "";
     in property <string> status-text: "Open a repository to begin.";
     in property <bool> loading: false;  // a repo open is in progress
+    in property <bool> dark: true;      // active theme is dark (drives std-widget chrome)
     in property <int> max-cols: 0;  // longest line in chars, for horizontal scroll
 
     in-out property <string> mono-font: "Menlo";
@@ -1383,6 +1384,11 @@ component SettingsPanel inherits Rectangle {
 export component AppWindow inherits Window {
     title: "diffy";
     icon: @image-url("icons/app-icon.svg");
+    // Drive the std-widgets palette (scrollbars etc.) from the active theme's
+    // light/darkness so they stop looking dark on a light theme.
+    property <bool> is-dark: Backend.dark;
+    init => { Palette.color-scheme = Backend.dark ? ColorScheme.dark : ColorScheme.light; }
+    changed is-dark => { Palette.color-scheme = is-dark ? ColorScheme.dark : ColorScheme.light; }
     preferred-width: 1280px;
     preferred-height: 800px;
     min-width: 480px;
