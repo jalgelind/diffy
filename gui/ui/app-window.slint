@@ -628,6 +628,50 @@ component SectionLabel inherits Text {
     font-size: 11px;
 }
 
+// A self-drawn context menu (a PopupWindow we fully control), positioned at the
+// cursor by the row that opens it. `items` labels the rows; "-" is a separator.
+// Avoids ContextMenuArea, whose auto right-click trigger swallowed the click before
+// the row could select itself.
+component MenuPopup inherits PopupWindow {
+    in property <[string]> items;
+    callback activated(int);
+    // The popup needs a definite width or its content Rectangle has nothing to fill
+    // and the menu renders transparent.
+    width: 210px;
+    Rectangle {
+        background: Backend.panel-bg;
+        border-width: 1px;
+        border-color: Backend.divider;
+        border-radius: 6px;
+        drop-shadow-blur: 10px;
+        drop-shadow-color: #00000066;
+        VerticalLayout {
+            padding: 4px;
+            for it[i] in items : Rectangle {
+                height: it == "-" ? 9px : 26px;
+                border-radius: 4px;
+                background: (it != "-" && row-ta.has-hover) ? Backend.hover : transparent;
+                row-ta := TouchArea {
+                    enabled: it != "-";
+                    clicked => { root.activated(i); root.close(); }
+                }
+                if it == "-" : Rectangle {
+                    width: parent.width - 16px;
+                    height: 1px;
+                    background: Backend.divider;
+                }
+                if it != "-" : Text {
+                    x: 10px;
+                    text: it;
+                    color: Backend.fg;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
+
 // Left sidebar: repo picker, changed-files list, and the commit bar.
 component FilesPanel inherits Rectangle {
     width: Backend.sidebar-width;
@@ -635,8 +679,35 @@ component FilesPanel inherits Rectangle {
     // Transient disclosure state: reveal the open-a-repo fields / the file filter.
     property <bool> show-open: false;
     property <bool> show-filter: false;
+    // Context of the right-clicked row + cursor position, for the shared menu below.
+    property <string> ctx-path;
+    property <string> ctx-name;
+    property <bool> ctx-staged;
+    property <length> ctx-mx;
+    property <length> ctx-my;
     // Divider on the panel's right edge (it sits on the left side of the window).
     Rectangle { x: parent.width - 1px; width: 1px; background: Backend.divider; }
+
+    // Shared right-click menu (a popup can't be repeated inside the file `for`).
+    fmenu := MenuPopup {
+        x: root.ctx-mx;
+        y: root.ctx-my;
+        // Right-click already selects + shows the file's diff, so no "View diff".
+        items: [root.ctx-staged ? "Unstage" : "Stage", "Discard changes…", "-",
+                "Open file", "Reveal in Explorer", "-",
+                "Copy path", "Copy name"];
+        activated(i) => {
+            if (i == 0) {
+                if (root.ctx-staged) { Backend.unstage-file(root.ctx-path); }
+                else { Backend.stage-file(root.ctx-path); }
+            }
+            if (i == 1) { Backend.confirm-discard = root.ctx-path; }
+            if (i == 3) { Backend.open-file(root.ctx-path); }
+            if (i == 4) { Backend.reveal-file(root.ctx-path); }
+            if (i == 6) { Backend.copy-to-clipboard(root.ctx-path); }
+            if (i == 7) { Backend.copy-to-clipboard(root.ctx-name); }
+        }
+    }
 
     VerticalLayout {
         padding: 8px;
@@ -828,36 +899,6 @@ component FilesPanel inherits Rectangle {
                     background: selected
                         ? Backend.selection
                         : (!f.is-section && touch.has-hover ? Backend.hover : transparent);
-                    // Context menu, shown manually on right-click so the row is
-                    // selected first. Declared before `touch` so `touch` (above it,
-                    // below the action icons) receives the right-click to drive it.
-                    fmenu := ContextMenuArea {
-                        // Zero-sized and pinned to the row's top-left so it never
-                        // auto-shows; the row's TouchArea drives it via show() after
-                        // selecting. x/y:0 keeps show()'s position measured from the
-                        // row origin (a 0-sized element otherwise centres in the row).
-                        x: 0;
-                        y: 0;
-                        width: 0px;
-                        height: 0px;
-                        Menu {
-                            MenuItem {
-                                title: f.staged ? "Unstage" : "Stage";
-                                activated => {
-                                    if (f.staged) { Backend.unstage-file(f.path); }
-                                    else { Backend.stage-file(f.path); }
-                                }
-                            }
-                            MenuItem { title: "Discard changes…"; activated => { Backend.confirm-discard = f.path; } }
-                            MenuSeparator {}
-                            MenuItem { title: "View diff"; activated => { Backend.select-file(f.path); } }
-                            MenuItem { title: "Open file"; activated => { Backend.open-file(f.path); } }
-                            MenuItem { title: "Reveal in Explorer"; activated => { Backend.reveal-file(f.path); } }
-                            MenuSeparator {}
-                            MenuItem { title: "Copy path"; activated => { Backend.copy-to-clipboard(f.path); } }
-                            MenuItem { title: "Copy name"; activated => { Backend.copy-to-clipboard(f.name); } }
-                        }
-                    }
                     touch := TouchArea {
                         clicked => {
                             if (!f.is-section) {
@@ -865,14 +906,21 @@ component FilesPanel inherits Rectangle {
                                 Backend.select-file(f.path);
                             }
                         }
-                        // Right-click selects the row first, then opens its menu.
+                        // Right-click selects the row, then opens the shared menu at
+                        // the cursor (popups can't live inside a `for`, so one menu
+                        // per panel is parameterised by the clicked row).
                         pointer-event(e) => {
                             if (!f.is-section
                                 && e.button == PointerEventButton.right
                                 && e.kind == PointerEventKind.down) {
                                 Backend.file-sel-index = fidx;
                                 Backend.select-file(f.path);
-                                fmenu.show({ x: self.mouse-x, y: self.mouse-y });
+                                root.ctx-path = f.path;
+                                root.ctx-name = f.name;
+                                root.ctx-staged = f.staged;
+                                root.ctx-mx = self.absolute-position.x - root.absolute-position.x + self.mouse-x;
+                                root.ctx-my = self.absolute-position.y - root.absolute-position.y + self.mouse-y;
+                                fmenu.show();
                             }
                         }
                     }
@@ -980,8 +1028,32 @@ component CommitsPanel inherits Rectangle {
     in property <length> panel-width;
     width: panel-width;
     background: Backend.panel-bg;
+    // Right-clicked commit's data + cursor position, for the shared menu below.
+    property <string> ctx-oid;
+    property <string> ctx-short;
+    property <string> ctx-summary;
+    property <length> ctx-mx;
+    property <length> ctx-my;
     // Divider on the panel's left edge (it sits on the right side of the window).
     Rectangle { x: 0; width: 1px; background: Backend.divider; }
+
+    // Shared right-click menu (a popup can't be repeated inside the commit `for`).
+    cmenu := MenuPopup {
+        x: root.ctx-mx;
+        y: root.ctx-my;
+        // Right-click already selects + shows the commit, so no redundant "View".
+        items: ["Diff working tree against this", "-",
+                "Copy SHA", "Copy short SHA", "Copy summary", "-",
+                "Checkout commit", "Create branch here…"];
+        activated(i) => {
+            if (i == 0) { Backend.set-base-ref(root.ctx-oid); }
+            if (i == 2) { Backend.copy-to-clipboard(root.ctx-oid); }
+            if (i == 3) { Backend.copy-to-clipboard(root.ctx-short); }
+            if (i == 4) { Backend.copy-to-clipboard(root.ctx-summary); }
+            if (i == 6) { Backend.checkout-commit(root.ctx-oid); }
+            if (i == 7) { Backend.create-branch-oid = root.ctx-oid; }
+        }
+    }
 
     VerticalLayout {
         padding: 8px;
@@ -1013,44 +1085,23 @@ component CommitsPanel inherits Rectangle {
                 background: cidx == Backend.commit-sel-index
                             ? Backend.selection
                             : (ctouch.has-hover ? Backend.hover : transparent);
-                // Context menu, shown manually on right-click so the commit is
-                // selected first (declared before ctouch so ctouch sits above it).
-                cmenu := ContextMenuArea {
-                    // Zero-sized + pinned to the row origin so it never auto-shows and
-                    // show()'s position is measured from the row's top-left.
-                    x: 0;
-                    y: 0;
-                    width: 0px;
-                    height: 0px;
-                    Menu {
-                        MenuItem {
-                            title: "View changes";
-                            activated => { Backend.commit-sel-index = cidx; Backend.select-commit(c.oid); }
-                        }
-                        MenuItem {
-                            title: "Diff working tree against this";
-                            activated => { Backend.set-base-ref(c.oid); }
-                        }
-                        MenuSeparator {}
-                        MenuItem { title: "Copy SHA"; activated => { Backend.copy-to-clipboard(c.oid); } }
-                        MenuItem { title: "Copy short SHA"; activated => { Backend.copy-to-clipboard(c.short-oid); } }
-                        MenuItem { title: "Copy summary"; activated => { Backend.copy-to-clipboard(c.summary); } }
-                        MenuSeparator {}
-                        MenuItem { title: "Checkout commit"; activated => { Backend.checkout-commit(c.oid); } }
-                        MenuItem { title: "Create branch here…"; activated => { Backend.create-branch-oid = c.oid; } }
-                    }
-                }
                 ctouch := TouchArea {
                     clicked => {
                         Backend.commit-sel-index = cidx;
                         Backend.select-commit(c.oid);
                     }
-                    // Right-click selects the commit first, then opens its menu.
+                    // Right-click selects the commit, then opens the shared menu at
+                    // the cursor (one menu per panel, parameterised by the row).
                     pointer-event(e) => {
                         if (e.button == PointerEventButton.right && e.kind == PointerEventKind.down) {
                             Backend.commit-sel-index = cidx;
                             Backend.select-commit(c.oid);
-                            cmenu.show({ x: self.mouse-x, y: self.mouse-y });
+                            root.ctx-oid = c.oid;
+                            root.ctx-short = c.short-oid;
+                            root.ctx-summary = c.summary;
+                            root.ctx-mx = self.absolute-position.x - root.absolute-position.x + self.mouse-x;
+                            root.ctx-my = self.absolute-position.y - root.absolute-position.y + self.mouse-y;
+                            cmenu.show();
                         }
                     }
                 }
