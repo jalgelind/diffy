@@ -310,24 +310,56 @@ component SegToggle inherits Rectangle {
     in property <image> icon;
     in property <bool> active;
     callback clicked();
-    width: 116px;
+    width: 52px;
     background: active ? Backend.accent : transparent;
-    HorizontalLayout {
+    VerticalLayout {
         alignment: center;
-        spacing: 6px;
-        Icon {
-            size: 14px;
-            source: root.icon;
-            colorize: active ? Backend.on-accent : Backend.fg;
+        spacing: 1px;
+        HorizontalLayout {
+            alignment: center;
+            Icon { size: 15px; source: root.icon; colorize: active ? Backend.on-accent : Backend.fg; }
         }
         Text {
             text: label;
             color: active ? Backend.on-accent : Backend.fg;
-            font-size: 12px;
-            vertical-alignment: center;
+            font-size: 9px;
+            horizontal-alignment: center;
         }
     }
     TouchArea { clicked => { root.clicked(); } }
+}
+
+// A compact toolbar toggle: an icon over a tiny caption, tinted when active.
+component BarToggle inherits Rectangle {
+    in property <image> icon;
+    in property <string> caption;
+    in property <bool> active;
+    callback clicked();
+    width: 42px;
+    // Active toggles get a filled pill so on/off reads at a glance, not just a tint.
+    border-radius: 5px;
+    background: root.active ? Backend.selection : (ta.has-hover ? Backend.hover : transparent);
+    ta := TouchArea { clicked => { root.clicked(); } }
+    VerticalLayout {
+        alignment: center;
+        spacing: 1px;
+        HorizontalLayout {
+            alignment: center;
+            Image {
+                width: 16px;
+                height: 16px;
+                image-fit: contain;
+                source: root.icon;
+                colorize: root.active ? Backend.accent : Backend.gutter-fg;
+            }
+        }
+        Text {
+            text: root.caption;
+            font-size: 9px;
+            horizontal-alignment: center;
+            color: root.active ? Backend.accent : Backend.gutter-fg;
+        }
+    }
 }
 
 component Divider inherits Rectangle {
@@ -362,13 +394,21 @@ component ThemedCombo inherits Rectangle {
             horizontal-stretch: 1;
             overflow: elide;
         }
-        Text { text: "▾"; color: Backend.gutter-fg; vertical-alignment: center; }
+        Image {
+            width: 12px;
+            height: 12px;
+            image-fit: contain;
+            source: @image-url("icons/chevron-down.svg");
+            colorize: Backend.gutter-fg;
+        }
     }
     TouchArea { clicked => { popup.show(); } }
     popup := PopupWindow {
         x: 0;
         y: root.height + 2px;
-        width: root.width;
+        // At least the combo width, but grow to fit longer entries (repo paths,
+        // branch / theme names) instead of clipping them.
+        min-width: root.width;
         Rectangle {
             background: Backend.panel-bg;
             border-width: 1px;
@@ -409,9 +449,10 @@ component OptionBar inherits Rectangle {
 
     HorizontalLayout {
         padding: 6px;
-        spacing: 10px;
+        spacing: 8px;
         alignment: start;
 
+        // View mode — icon + caption segments.
         Rectangle {
             border-radius: 5px;
             border-width: 1px;
@@ -420,7 +461,7 @@ component OptionBar inherits Rectangle {
             HorizontalLayout {
                 spacing: 0px;
                 SegToggle {
-                    label: "Side by side";
+                    label: "Split";
                     icon: @image-url("icons/columns-2.svg");
                     active: DiffOptions.side-by-side;
                     clicked => { DiffOptions.side-by-side = true; DiffOptions.relayout(); }
@@ -435,71 +476,139 @@ component OptionBar inherits Rectangle {
             }
         }
 
-        CheckBox {
-            text: "Wrap";
-            checked: DiffOptions.word-wrap;
-            toggled => { DiffOptions.word-wrap = self.checked; DiffOptions.relayout(); }
+        // Layout toggles (relayout only).
+        BarToggle {
+            icon: @image-url("icons/wrap-text.svg");
+            caption: "Wrap";
+            active: DiffOptions.word-wrap;
+            clicked => { DiffOptions.word-wrap = !DiffOptions.word-wrap; DiffOptions.relayout(); }
         }
-        CheckBox {
-            text: "Line #";
-            checked: DiffOptions.show-line-numbers;
-            toggled => { DiffOptions.show-line-numbers = self.checked; DiffOptions.relayout(); }
-        }
-
-        Divider {}
-
-        CheckBox {
-            text: "Ignore WS";
-            checked: DiffOptions.ignore-whitespace;
-            toggled => { DiffOptions.ignore-whitespace = self.checked; DiffOptions.rediff(); }
-        }
-        CheckBox {
-            text: "Tokens";
-            checked: DiffOptions.token-granularity;
-            toggled => { DiffOptions.token-granularity = self.checked; DiffOptions.rediff(); }
-        }
-        CheckBox {
-            text: "Syntax";
-            checked: DiffOptions.syntax-highlight;
-            toggled => { DiffOptions.syntax-highlight = self.checked; DiffOptions.rediff(); }
+        BarToggle {
+            icon: @image-url("icons/hash.svg");
+            caption: "Lines";
+            active: DiffOptions.show-line-numbers;
+            clicked => { DiffOptions.show-line-numbers = !DiffOptions.show-line-numbers; DiffOptions.relayout(); }
         }
 
         Divider {}
 
-        Text { text: "Context"; color: Backend.fg; vertical-alignment: center; }
-        Button {
-            text: "-";
-            clicked => {
-                if (DiffOptions.context-lines > 0) {
-                    DiffOptions.context-lines -= 1;
-                    DiffOptions.rediff();
+        // Diff-content toggles (re-diff).
+        BarToggle {
+            icon: @image-url("icons/space.svg");
+            caption: "WS";
+            active: DiffOptions.ignore-whitespace;
+            clicked => { DiffOptions.ignore-whitespace = !DiffOptions.ignore-whitespace; DiffOptions.rediff(); }
+        }
+        BarToggle {
+            icon: @image-url("icons/braces.svg");
+            caption: "Tokens";
+            active: DiffOptions.token-granularity;
+            clicked => { DiffOptions.token-granularity = !DiffOptions.token-granularity; DiffOptions.rediff(); }
+        }
+        BarToggle {
+            icon: @image-url("icons/palette.svg");
+            caption: "Syntax";
+            active: DiffOptions.syntax-highlight;
+            clicked => { DiffOptions.syntax-highlight = !DiffOptions.syntax-highlight; DiffOptions.rediff(); }
+        }
+
+        Divider {}
+
+        // Less-frequent diff settings (context, algorithm, base ref) in a pop-out.
+        more-btn := Rectangle {
+            width: 42px;
+            more-ta := TouchArea { clicked => { more-popup.show(); } }
+            VerticalLayout {
+                alignment: center;
+                spacing: 1px;
+                HorizontalLayout {
+                    alignment: center;
+                    Image {
+                        width: 16px;
+                        height: 16px;
+                        image-fit: contain;
+                        source: @image-url("icons/sliders-horizontal.svg");
+                        colorize: more-ta.has-hover ? Backend.fg : Backend.gutter-fg;
+                    }
+                }
+                Text {
+                    text: "More";
+                    font-size: 9px;
+                    horizontal-alignment: center;
+                    color: Backend.gutter-fg;
                 }
             }
-        }
-        Text {
-            text: DiffOptions.context-lines;
-            color: Backend.fg;
-            vertical-alignment: center;
-            width: 16px;
-            horizontal-alignment: center;
-        }
-        Button {
-            text: "+";
-            clicked => { DiffOptions.context-lines += 1; DiffOptions.rediff(); }
-        }
-
-        ThemedCombo {
-            width: 150px;
-            model: ["Patience", "Myers-greedy", "Myers-linear"];
-            current-index: DiffOptions.algorithm;
-            selected(v) => { DiffOptions.algorithm = self.current-index; DiffOptions.rediff(); }
-        }
-
-        // Diff the working tree against an arbitrary base ref (blank = HEAD).
-        base-ref-input := LineEdit {
-            width: 120px;
-            placeholder-text: "vs ref (HEAD)";
-            edited => { Backend.set-base-ref(self.text); }
+            more-popup := PopupWindow {
+                x: 0;
+                y: parent.height + 4px;
+                Rectangle {
+                    width: 230px;
+                    background: Backend.panel-bg;
+                    border-width: 1px;
+                    border-color: Backend.divider;
+                    border-radius: 6px;
+                    VerticalLayout {
+                        padding: 12px;
+                        spacing: 12px;
+                        // Context lines.
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Text { text: "Context"; color: Backend.fg; vertical-alignment: center; horizontal-stretch: 1; }
+                            Button {
+                                text: "-";
+                                clicked => {
+                                    if (DiffOptions.context-lines > 0) {
+                                        DiffOptions.context-lines -= 1;
+                                        DiffOptions.rediff();
+                                    }
+                                }
+                            }
+                            Text {
+                                text: DiffOptions.context-lines;
+                                color: Backend.fg;
+                                width: 20px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            Button {
+                                text: "+";
+                                clicked => { DiffOptions.context-lines += 1; DiffOptions.rediff(); }
+                            }
+                        }
+                        // Algorithm — radio-style rows (avoids a popup inside a popup).
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text { text: "ALGORITHM"; color: Backend.gutter-fg; font-size: 11px; }
+                            for alg[i] in ["Patience", "Myers-greedy", "Myers-linear"] : Rectangle {
+                                height: 26px;
+                                border-radius: 4px;
+                                background: i == DiffOptions.algorithm
+                                    ? Backend.selection
+                                    : (algta.has-hover ? Backend.hover : transparent);
+                                algta := TouchArea {
+                                    clicked => { DiffOptions.algorithm = i; DiffOptions.rediff(); }
+                                }
+                                Text {
+                                    x: 8px;
+                                    text: alg;
+                                    color: Backend.fg;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                        // Compare against an arbitrary base ref (blank = HEAD).
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text { text: "COMPARE AGAINST REF"; color: Backend.gutter-fg; font-size: 11px; }
+                            LineEdit {
+                                placeholder-text: "vs ref (HEAD)";
+                                edited => { Backend.set-base-ref(self.text); }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -511,53 +620,72 @@ component SectionLabel inherits Text {
     font-size: 11px;
 }
 
-component RepoBrowser inherits Rectangle {
+// Left sidebar: repo picker, changed-files list, and the commit bar.
+component FilesPanel inherits Rectangle {
     width: Backend.sidebar-width;
     background: Backend.panel-bg;
-    // Height of the RECENT COMMITS panel; persisted via Backend.commits-panel-height
-    // and adjusted by the drag handle below.
-    property <length> commits-height <=> Backend.commits-panel-height;
+    // Transient disclosure state: reveal the open-a-repo fields / the file filter.
+    property <bool> show-open: false;
+    property <bool> show-filter: false;
+    // Divider on the panel's right edge (it sits on the left side of the window).
     Rectangle { x: parent.width - 1px; width: 1px; background: Backend.divider; }
 
     VerticalLayout {
-        padding: 10px;
-        spacing: 8px;
+        padding: 8px;
+        spacing: 6px;
 
+        // Repo picker: the combo switches repos; the folder icon reveals the
+        // open-a-new-repo fields; the gear opens settings.
         HorizontalLayout {
-            SectionLabel { text: "REPOSITORY"; vertical-alignment: center; }
-            Rectangle { horizontal-stretch: 1; }
-            // Open the settings panel.
+            spacing: 6px;
+            ThemedCombo {
+                horizontal-stretch: 1;
+                model: Backend.repo-names;
+                selected(v) => { Backend.select-repo-index(self.current-index); }
+            }
+            open-toggle := Rectangle {
+                width: 16px;
+                open-ta := TouchArea { clicked => { root.show-open = !root.show-open; } }
+                Image {
+                    width: 16px;
+                    height: 16px;
+                    image-fit: contain;
+                    source: @image-url("icons/folder-plus.svg");
+                    colorize: root.show-open || open-ta.has-hover ? Backend.accent : Backend.gutter-fg;
+                }
+            }
             gear := Rectangle {
                 width: 16px;
-                height: 16px;
                 gear-ta := TouchArea { clicked => { Backend.show-settings = true; } }
                 Image {
-                    width: 14px;
-                    height: 14px;
+                    width: 16px;
+                    height: 16px;
                     image-fit: contain;
                     source: @image-url("icons/settings.svg");
                     colorize: gear-ta.has-hover ? Backend.accent : Backend.gutter-fg;
                 }
             }
         }
-        ThemedCombo {
-            model: Backend.repo-names;
-            selected(v) => { Backend.select-repo-index(self.current-index); }
-        }
-        HorizontalLayout {
-            spacing: 4px;
-            path-input := LineEdit {
-                placeholder-text: "/path/to/repo";
-                horizontal-stretch: 1;
-                accepted => { Backend.open-repo(self.text); }
+        // Open a different repo — hidden until the folder icon is clicked, then
+        // collapses again once a repo is chosen.
+        if root.show-open : VerticalLayout {
+            spacing: 6px;
+            HorizontalLayout {
+                spacing: 4px;
+                path-input := LineEdit {
+                    placeholder-text: "/path/to/repo";
+                    horizontal-stretch: 1;
+                    init => { self.focus(); }
+                    accepted => { Backend.open-repo(self.text); root.show-open = false; }
+                }
+                Button { text: "Open"; clicked => { Backend.open-repo(path-input.text); root.show-open = false; } }
             }
-            Button { text: "Open"; clicked => { Backend.open-repo(path-input.text); } }
-        }
-        Button {
-            text: "Browse…";
-            icon: @image-url("icons/folder-open.svg");
-            colorize-icon: true;
-            clicked => { Backend.browse-repo(); }
+            Button {
+                text: "Browse…";
+                icon: @image-url("icons/folder-open.svg");
+                colorize-icon: true;
+                clicked => { Backend.browse-repo(); root.show-open = false; }
+            }
         }
         if Backend.branch != "" : HorizontalLayout {
             spacing: 6px;
@@ -583,6 +711,23 @@ component RepoBrowser inherits Rectangle {
                 vertical-alignment: center;
             }
             Rectangle { horizontal-stretch: 1; }
+            // Toggle the file-filter field below.
+            search-btn := Rectangle {
+                width: 16px;
+                search-ta := TouchArea {
+                    clicked => {
+                        root.show-filter = !root.show-filter;
+                        if (!root.show-filter) { Backend.filter-files(""); }
+                    }
+                }
+                Image {
+                    width: 13px;
+                    height: 13px;
+                    image-fit: contain;
+                    source: @image-url("icons/search.svg");
+                    colorize: root.show-filter || search-ta.has-hover ? Backend.accent : Backend.gutter-fg;
+                }
+            }
             // Toggle folder grouping vs staged/unstaged sections.
             group-btn := Rectangle {
                 width: 16px;
@@ -637,8 +782,8 @@ component RepoBrowser inherits Rectangle {
             }
         }
 
-        // Filter the changes list by substring.
-        HorizontalLayout {
+        // Filter the changes list — revealed by the search icon in the header.
+        if root.show-filter : HorizontalLayout {
             spacing: 4px;
             Icon {
                 size: 13px;
@@ -648,51 +793,16 @@ component RepoBrowser inherits Rectangle {
             filter-input := LineEdit {
                 placeholder-text: "Filter files";
                 horizontal-stretch: 1;
+                init => { self.focus(); }
                 edited => { Backend.filter-files(self.text); }
             }
         }
 
-        // Files and commits share the remaining space, split by a draggable
-        // divider. The drag is captured by a TouchArea that FILLS this (fixed)
-        // area, so the pointer is always measured against a stable origin.
-        // Dragging the handle directly would jitter, because the handle moves
-        // with the layout and its position lags the pointer by a frame.
-        lists-area := Rectangle {
+        // Changed files fill the remaining height. Commit history lives in a
+        // separate panel (CommitsPanel) on the other side of the diff.
+        files-list := ListView {
             vertical-stretch: 1;
-            property <length> handle-h: 10px;
-            // Files pane height; the commits pane takes the rest (>= 80px each).
-            property <length> files-h: clamp(self.height - root.commits-height - self.handle-h,
-                                             80px, self.height - 80px);
-
-            // Lowest z, fills the area. Only presses that fall through the
-            // divider gap reach it (the lists above consume their own), and
-            // mouse-y here is relative to this non-moving rectangle.
-            resize-ta := TouchArea {
-                mouse-cursor: row-resize;
-                property <bool> dragging;
-                pointer-event(e) => {
-                    if (e.kind == PointerEventKind.down) {
-                        self.dragging = self.mouse-y >= lists-area.files-h - 6px
-                                     && self.mouse-y <= lists-area.files-h + lists-area.handle-h + 6px;
-                    }
-                    if (e.kind == PointerEventKind.up) {
-                        self.dragging = false;
-                    }
-                }
-                moved => {
-                    if (self.dragging) {
-                        root.commits-height = clamp(
-                            lists-area.height - self.mouse-y - lists-area.handle-h / 2,
-                            80px, lists-area.height - 80px);
-                    }
-                }
-            }
-
-            files-list := ListView {
-                y: 0;
-                height: lists-area.files-h;
-                width: 100%;
-                // Scroll the keyboard-selected row into view when it changes.
+            // Scroll the keyboard-selected row into view when it changes.
                 property <int> sel: Backend.file-sel-index;
                 changed sel => {
                     if (self.sel >= 0) {
@@ -792,101 +902,12 @@ component RepoBrowser inherits Rectangle {
                 }
             }
 
-            // The divider itself is visual only (no TouchArea) so presses land
-            // on resize-ta beneath it.
-            Rectangle {
-                y: lists-area.files-h;
-                width: 100%;
-                height: lists-area.handle-h;
-                Rectangle {
-                    width: 28px;
-                    height: 2px;
-                    border-radius: 1px;
-                    background: resize-ta.dragging || resize-ta.has-hover ? Backend.gutter-fg : Backend.divider;
-                }
-            }
-
-            VerticalLayout {
-                y: lists-area.files-h + lists-area.handle-h;
-                width: 100%;
-                height: lists-area.height - lists-area.files-h - lists-area.handle-h;
-                SectionLabel { text: "RECENT COMMITS"; }
-                commits-list := ListView {
-                    vertical-stretch: 1;
-                    // Scroll the keyboard-selected commit into view when it changes.
-                    property <int> sel: Backend.commit-sel-index;
-                    changed sel => {
-                        if (self.sel >= 0) {
-                            if (self.sel * 38px < -self.viewport-y) {
-                                self.viewport-y = -self.sel * 38px;
-                            } else if ((self.sel + 1) * 38px > -self.viewport-y + self.height) {
-                                self.viewport-y = -((self.sel + 1) * 38px - self.height);
-                            }
-                        }
-                    }
-                    for c[cidx] in Backend.commits : Rectangle {
-                        height: 38px;
-                        background: cidx == Backend.commit-sel-index
-                                    ? Backend.selection
-                                    : (ctouch.has-hover ? Backend.hover : transparent);
-                        ctouch := TouchArea {
-                            clicked => {
-                                Backend.commit-sel-index = cidx;
-                                Backend.select-commit(c.oid);
-                            }
-                        }
-                        HorizontalLayout {
-                            padding-left: 6px;
-                            padding-right: 6px;
-                            spacing: 6px;
-                            Icon {
-                                size: 14px;
-                                source: @image-url("icons/git-commit.svg");
-                                colorize: Backend.gutter-fg;
-                            }
-                            VerticalLayout {
-                                padding-top: 4px;
-                                padding-bottom: 4px;
-                                Text {
-                                    text: c.summary;
-                                    color: Backend.fg;
-                                    overflow: elide;
-                                    font-size: 12px;
-                                }
-                                Text {
-                                    text: c.short-oid;
-                                    color: Backend.gutter-fg;
-                                    font-family: Backend.mono-font;
-                                    font-size: 10px;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Lazy paging footer: load the next page or the whole history.
-                if Backend.more-commits || Backend.loading-commits : HorizontalLayout {
-                    spacing: 6px;
-                    Button {
-                        text: Backend.loading-commits ? "Loading…" : "Load more";
-                        enabled: !Backend.loading-commits;
-                        clicked => { Backend.load-more-commits(); }
-                    }
-                    Button {
-                        text: "Load all";
-                        enabled: !Backend.loading-commits;
-                        clicked => { Backend.load-all-commits(); }
-                    }
-                }
-            }
-        }
-
-        // Commit bar: message + amend, enabled only when something is staged.
-        VerticalLayout {
+        // Commit bar — only while something is staged (nothing to commit otherwise),
+        // which also hands its space back to the list when idle.
+        if Backend.staged-count > 0 : VerticalLayout {
             spacing: 6px;
             commit-msg := LineEdit {
                 placeholder-text: "Commit message";
-                enabled: Backend.staged-count > 0;
             }
             HorizontalLayout {
                 spacing: 6px;
@@ -894,13 +915,93 @@ component RepoBrowser inherits Rectangle {
                 Rectangle { horizontal-stretch: 1; }
                 Button {
                     text: "Commit (\{Backend.staged-count})";
-                    enabled: Backend.staged-count > 0 && commit-msg.text != "";
+                    enabled: commit-msg.text != "";
                     clicked => {
                         Backend.commit(commit-msg.text, amend-cb.checked);
                         commit-msg.text = "";
                     }
                 }
             }
+        }
+    }
+}
+
+// Right sidebar: commit history, lazy-loaded as you scroll.
+component CommitsPanel inherits Rectangle {
+    in property <length> panel-width;
+    width: panel-width;
+    background: Backend.panel-bg;
+    // Divider on the panel's left edge (it sits on the right side of the window).
+    Rectangle { x: 0; width: 1px; background: Backend.divider; }
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 6px;
+        SectionLabel { text: "RECENT COMMITS"; }
+        commits-list := ListView {
+            vertical-stretch: 1;
+            // Lazy-load: fetch the next page as the list nears the bottom.
+            changed viewport-y => {
+                if (Backend.more-commits && !Backend.loading-commits
+                    && -self.viewport-y + self.visible-height >= self.viewport-height - 200px) {
+                    Backend.load-more-commits();
+                }
+            }
+            // Scroll the keyboard-selected commit into view when it changes.
+            property <int> sel: Backend.commit-sel-index;
+            changed sel => {
+                if (self.sel >= 0) {
+                    if (self.sel * 38px < -self.viewport-y) {
+                        self.viewport-y = -self.sel * 38px;
+                    } else if ((self.sel + 1) * 38px > -self.viewport-y + self.height) {
+                        self.viewport-y = -((self.sel + 1) * 38px - self.height);
+                    }
+                }
+            }
+            for c[cidx] in Backend.commits : Rectangle {
+                height: 38px;
+                background: cidx == Backend.commit-sel-index
+                            ? Backend.selection
+                            : (ctouch.has-hover ? Backend.hover : transparent);
+                ctouch := TouchArea {
+                    clicked => {
+                        Backend.commit-sel-index = cidx;
+                        Backend.select-commit(c.oid);
+                    }
+                }
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    spacing: 6px;
+                    Icon {
+                        size: 14px;
+                        source: @image-url("icons/git-commit.svg");
+                        colorize: Backend.gutter-fg;
+                    }
+                    VerticalLayout {
+                        padding-top: 4px;
+                        padding-bottom: 4px;
+                        Text {
+                            text: c.summary;
+                            color: Backend.fg;
+                            overflow: elide;
+                            font-size: 12px;
+                        }
+                        Text {
+                            text: c.short-oid;
+                            color: Backend.gutter-fg;
+                            font-family: Backend.mono-font;
+                            font-size: 10px;
+                        }
+                    }
+                }
+            }
+        }
+        if Backend.loading-commits : Text {
+            text: "Loading…";
+            color: Backend.gutter-fg;
+            font-size: 11px;
+            horizontal-alignment: center;
         }
     }
 }
@@ -1030,8 +1131,8 @@ export component AppWindow inherits Window {
     title: "diffy";
     preferred-width: 1280px;
     preferred-height: 800px;
-    min-width: 800px;
-    min-height: 480px;
+    min-width: 480px;
+    min-height: 360px;
     background: Backend.bg;
 
     forward-focus: key-scope;
@@ -1084,32 +1185,33 @@ export component AppWindow inherits Window {
         }
 
       content := Rectangle {
+        // Files panel (left) and commits panel (right) collapse independently.
+        property <bool> files-collapsed: false;
+        property <bool> commits-collapsed: false;
+        property <length> commits-width: 280px;
         HorizontalLayout {
         spacing: 0px;
-        RepoBrowser {}
 
-        // Draggable resize gutter between the sidebar and the diff. The handle's
-        // TouchArea is local (so the cursor/hover highlight are correct), but it
-        // derives the new width from the pointer's absolute position, so it can't
-        // drift or feed back on itself as the layout reflows.
-        Rectangle {
+        // LEFT: changed-files panel + its resize handle (grows as it drags right).
+        if !content.files-collapsed : FilesPanel {}
+        if !content.files-collapsed : Rectangle {
             width: 6px;
             background: Backend.panel-bg;
-            sidebar-handle := TouchArea {
+            files-handle := TouchArea {
                 mouse-cursor: col-resize;
                 moved => {
                     if (self.pressed) {
                         Backend.sidebar-width = clamp(
                             self.absolute-position.x - content.absolute-position.x
                                 + self.mouse-x - 3px,
-                            180px, content.width - 360px);
+                            180px, content.width - 520px);
                     }
                 }
             }
             Rectangle {
                 x: 2px;
                 width: 2px;
-                background: sidebar-handle.pressed || sidebar-handle.has-hover
+                background: files-handle.pressed || files-handle.has-hover
                             ? Backend.gutter-fg : transparent;
             }
         }
@@ -1117,6 +1219,10 @@ export component AppWindow inherits Window {
         VerticalLayout {
             spacing: 0px;
             horizontal-stretch: 1;
+            // Let the centre shrink freely so the window resizes naturally. Without
+            // this, the OptionBar's many controls (and a long file path) force a
+            // large min-width on the whole window; overflowing controls just clip.
+            min-width: 0px;
 
             // header strip
             Rectangle {
@@ -1124,14 +1230,49 @@ export component AppWindow inherits Window {
                 background: Backend.bg;
                 Rectangle { y: parent.height - 1px; height: 1px; background: Backend.divider; }
                 HorizontalLayout {
-                    padding-left: 12px;
+                    padding-left: 8px;
+                    padding-right: 8px;
                     spacing: 8px;
+                    // Collapse / expand the left (files) panel.
+                    files-btn := Rectangle {
+                        width: 20px;
+                        files-ta := TouchArea {
+                            clicked => { content.files-collapsed = !content.files-collapsed; }
+                        }
+                        Image {
+                            width: 16px;
+                            height: 16px;
+                            image-fit: contain;
+                            source: @image-url("icons/panel-left.svg");
+                            colorize: content.files-collapsed
+                                ? Backend.gutter-fg
+                                : (files-ta.has-hover ? Backend.accent : Backend.fg);
+                        }
+                    }
                     Text {
                         text: Backend.current-file == "" ? "No file selected" : Backend.current-file;
                         color: Backend.current-file == "" ? Backend.gutter-fg : Backend.fg;
                         vertical-alignment: center;
                         font-family: Backend.mono-font;
                         font-size: 12px;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                    }
+                    // Collapse / expand the right (commits) panel.
+                    commits-btn := Rectangle {
+                        width: 20px;
+                        commits-ta := TouchArea {
+                            clicked => { content.commits-collapsed = !content.commits-collapsed; }
+                        }
+                        Image {
+                            width: 16px;
+                            height: 16px;
+                            image-fit: contain;
+                            source: @image-url("icons/panel-right.svg");
+                            colorize: content.commits-collapsed
+                                ? Backend.gutter-fg
+                                : (commits-ta.has-hover ? Backend.accent : Backend.fg);
+                        }
                     }
                 }
             }
@@ -1187,7 +1328,10 @@ export component AppWindow inherits Window {
                     // live with the window. Long lines clip at the cell edge when wrap
                     // is off; turn on Wrap (or Unified) to see them in full.
                     for data[idx] in Backend.rows : DiffRow {
-                        width: parent.width;
+                        // Visible width (not full width) so the rows never exceed the
+                        // viewport when the vertical scrollbar is present — otherwise a
+                        // spurious horizontal scrollbar + corner box shows at the bottom.
+                        width: diff-list.visible-width;
                         rowdata: data;
                         highlight: idx == Backend.find-current-row;
                     }
@@ -1271,6 +1415,30 @@ export component AppWindow inherits Window {
                 }
             }
         }
+
+        // RIGHT: commit-history panel + its resize handle (grows as it drags left).
+        if !content.commits-collapsed : Rectangle {
+            width: 6px;
+            background: Backend.panel-bg;
+            commits-handle := TouchArea {
+                mouse-cursor: col-resize;
+                moved => {
+                    if (self.pressed) {
+                        content.commits-width = clamp(
+                            content.width - (self.absolute-position.x
+                                - content.absolute-position.x + self.mouse-x) + 3px,
+                            180px, content.width - 520px);
+                    }
+                }
+            }
+            Rectangle {
+                x: 2px;
+                width: 2px;
+                background: commits-handle.pressed || commits-handle.has-hover
+                            ? Backend.gutter-fg : transparent;
+            }
+        }
+        if !content.commits-collapsed : CommitsPanel { panel-width: content.commits-width; }
         }
       }
     }
