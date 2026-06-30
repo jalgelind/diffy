@@ -1319,20 +1319,6 @@ component SettingsPanel inherits Rectangle {
                 }
             }
 
-            // Default view.
-            VerticalLayout {
-                spacing: 6px;
-                Text { text: "VIEW"; color: Backend.gutter-fg; font-size: 11px; }
-                ThemedCombo {
-                    model: ["side-by-side", "unified"];
-                    current-value: DiffOptions.side-by-side ? "side-by-side" : "unified";
-                    selected(v) => {
-                        DiffOptions.side-by-side = (v == "side-by-side");
-                        DiffOptions.relayout();
-                    }
-                }
-            }
-
             // Theme (applied live).
             VerticalLayout {
                 spacing: 6px;
