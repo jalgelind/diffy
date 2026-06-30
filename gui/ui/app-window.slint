@@ -1,7 +1,7 @@
 // Button + CheckBox are defined below as theme-aware components (the std-widgets
 // ones are locked to the compile-time fluent-dark style and become unreadable on
 // light diffy themes — e.g. white text on a white button).
-import { ListView, ScrollView, LineEdit } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 
 // ---- shared data structures (mirrored by generated C++ types) --------------
 
@@ -275,6 +275,46 @@ component CheckBox inherits Rectangle {
             font-size: 12px;
             vertical-alignment: center;
         }
+    }
+}
+
+// Theme-aware single-line text field (the std-widgets LineEdit is locked to the
+// fixed style and renders light-on-light on light themes).
+component LineEdit inherits Rectangle {
+    in property <string> placeholder-text;
+    in-out property <string> text <=> ti.text;
+    in property <bool> enabled <=> ti.enabled;
+    callback edited(string);
+    callback accepted();
+    // Makes the component focusable and forwards self.focus() to the TextInput.
+    forward-focus: ti;
+    height: 28px;
+    min-width: 40px;
+    border-radius: 5px;
+    border-width: 1px;
+    border-color: ti.has-focus ? Backend.accent : Backend.divider;
+    background: Backend.bg;
+    Text {
+        x: 8px;
+        width: parent.width - 16px;
+        height: 100%;
+        visible: ti.text == "";
+        text: root.placeholder-text;
+        color: Backend.gutter-fg;
+        font-size: 13px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    ti := TextInput {
+        x: 8px;
+        width: parent.width - 16px;
+        height: 100%;
+        color: Backend.fg;
+        font-size: 13px;
+        single-line: true;
+        vertical-alignment: center;
+        edited => { root.edited(self.text); }
+        accepted => { root.accepted(); }
     }
 }
 
