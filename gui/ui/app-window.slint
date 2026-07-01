@@ -686,6 +686,8 @@ component OptionBar inherits Rectangle {
             more-popup := PopupWindow {
                 x: 0;
                 y: parent.height + 4px;
+                // Stay open while adjusting settings; only an outside click closes it.
+                close-policy: PopupClosePolicy.close-on-click-outside;
                 Rectangle {
                     width: 230px;
                     background: Backend.panel-bg;
