@@ -127,10 +127,12 @@ unpack(uint32_t a) {
 
 // Build a cell's visual lines: expand tabs, resolve each span's colour, and (when
 // wrapping) split into sub-lines at `wrap_cols` columns while keeping colours.
+// Returns one entry per visual line (the spans to render on that line); the
+// caller emits one row per entry so every row is a single text line tall.
 // `out_width` reports the unwrapped display width (for the horizontal extent).
-std::shared_ptr<slint::VectorModel<DiffLine>>
-make_lines(const GuiTheme& t, const diffy::DiffCell& cell, int tab_width, bool wrap, int wrap_cols,
-           int& out_width) {
+std::vector<std::vector<DiffSpan>>
+cell_visual_lines(const GuiTheme& t, const diffy::DiffCell& cell, int tab_width, bool wrap,
+                  int wrap_cols, int& out_width) {
     std::vector<DisplayRun> runs;
     int col = 0;
     for (const auto& s : cell.spans) {
@@ -156,21 +158,31 @@ make_lines(const GuiTheme& t, const diffy::DiffCell& cell, int tab_width, bool w
     const int wc = (wrap && wrap_cols >= 1) ? wrap_cols : 0;
     auto vlines = wrap_display_runs(runs, wc);
 
-    auto lines = std::make_shared<slint::VectorModel<DiffLine>>();
+    std::vector<std::vector<DiffSpan>> out;
+    out.reserve(vlines.size());
     for (const auto& vl : vlines) {
-        auto spans = std::make_shared<slint::VectorModel<DiffSpan>>();
+        std::vector<DiffSpan> spans;
+        spans.reserve(vl.size());
         for (const auto& r : vl) {
             DiffSpan d;
             d.text = shared(r.text);
             d.color = unpack(r.argb);
             d.bold = r.bold;
-            spans->push_back(d);
+            spans.push_back(std::move(d));
         }
-        DiffLine dl;
-        dl.spans = spans;
-        lines->push_back(dl);
+        out.push_back(std::move(spans));
     }
-    return lines;
+    return out;
+}
+
+// Wrap a span list into a Slint model (one visual line's worth of spans).
+std::shared_ptr<slint::VectorModel<DiffSpan>>
+spans_model(const std::vector<DiffSpan>& spans) {
+    auto m = std::make_shared<slint::VectorModel<DiffSpan>>();
+    for (const auto& s : spans) {
+        m->push_back(s);
+    }
+    return m;
 }
 
 }  // namespace
@@ -218,34 +230,56 @@ build_row_model(const diffy::DiffViewModel& model, const GuiTheme& theme, int ta
                 int wrap_cols) {
     RowModel result;
     result.rows = std::make_shared<slint::VectorModel<DiffRowData>>();
+    result.first_visual.reserve(model.rows.size());
+
+    const auto empty_spans = []() { return std::make_shared<slint::VectorModel<DiffSpan>>(); };
 
     for (const auto& r : model.rows) {
-        DiffRowData d;
+        // Record where this logical row's first rendered row lands, so hunk/find
+        // navigation (which indexes model.rows) can map to the visual list.
+        result.first_visual.push_back(static_cast<int>(result.rows->row_count()));
+
         if (r.kind == diffy::RowKind::HunkHeader) {
+            DiffRowData d;
             d.is_header = true;
             d.header = shared(r.header_text);
             d.left_present = false;
             d.right_present = false;
-            d.left_lines = std::make_shared<slint::VectorModel<DiffLine>>();
-            d.right_lines = std::make_shared<slint::VectorModel<DiffLine>>();
+            d.left_spans = empty_spans();
+            d.right_spans = empty_spans();
             result.rows->push_back(d);
             continue;
         }
 
-        d.is_header = false;
-        d.old_no = r.old_lineno ? shared(std::to_string(*r.old_lineno)) : slint::SharedString();
-        d.new_no = r.new_lineno ? shared(std::to_string(*r.new_lineno)) : slint::SharedString();
-        d.left_present = r.left.present;
-        d.right_present = r.right.present;
-        d.left_bg = cell_bg(theme, r.left);
-        d.right_bg = cell_bg(theme, r.right);
         int lw = 0, rw = 0;
-        d.left_lines = make_lines(theme, r.left, tab_width, wrap, wrap_cols, lw);
-        d.right_lines = make_lines(theme, r.right, tab_width, wrap, wrap_cols, rw);
-        d.left_cols = lw;
-        d.right_cols = rw;
+        auto left = cell_visual_lines(theme, r.left, tab_width, wrap, wrap_cols, lw);
+        auto right = cell_visual_lines(theme, r.right, tab_width, wrap, wrap_cols, rw);
         result.max_cols = std::max(result.max_cols, std::max(lw, rw));
-        result.rows->push_back(d);
+
+        const slint::Color left_bg = cell_bg(theme, r.left);
+        const slint::Color right_bg = cell_bg(theme, r.right);
+        const slint::SharedString old_no =
+            r.old_lineno ? shared(std::to_string(*r.old_lineno)) : slint::SharedString();
+        const slint::SharedString new_no =
+            r.new_lineno ? shared(std::to_string(*r.new_lineno)) : slint::SharedString();
+
+        // Emit one row per visual line; the left/right cells wrap independently, so
+        // pad the shorter side with blank rows to keep them aligned across the
+        // divider. Line numbers show on the first visual row only.
+        const size_t n = std::max<size_t>(std::max(left.size(), right.size()), 1);
+        for (size_t i = 0; i < n; ++i) {
+            DiffRowData d;
+            d.is_header = false;
+            d.old_no = (i == 0) ? old_no : slint::SharedString();
+            d.new_no = (i == 0) ? new_no : slint::SharedString();
+            d.left_present = r.left.present;
+            d.right_present = r.right.present;
+            d.left_bg = left_bg;
+            d.right_bg = right_bg;
+            d.left_spans = (i < left.size()) ? spans_model(left[i]) : empty_spans();
+            d.right_spans = (i < right.size()) ? spans_model(right[i]) : empty_spans();
+            result.rows->push_back(d);
+        }
     }
 
     return result;

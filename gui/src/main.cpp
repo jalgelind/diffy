@@ -436,10 +436,11 @@ main(int argc, char** argv) {
         int nav_pane = 0;
         std::string refresh_select;  // file to re-open after a refresh, if present
         bool soft_refreshing = false;  // a periodic background status re-scan is in flight
-        std::vector<int> hunk_rows;  // model-row index of each hunk header
+        std::vector<int> first_visual;  // logical row -> first visual (rendered) row
+        std::vector<int> hunk_rows;  // visual-row index of each hunk header
         int cur_hunk = -1;           // index into hunk_rows for n/p navigation
-        std::vector<std::string> row_texts;  // lowercased searchable text per row
-        std::vector<int> find_rows;          // model rows matching the find query
+        std::vector<std::string> row_texts;  // lowercased searchable text per logical row
+        std::vector<int> find_rows;          // visual rows matching the find query
         int find_idx = -1;                   // index into find_rows
     } state;
     constexpr int kCommitPage = 50;  // commits per lazy page
@@ -579,6 +580,10 @@ main(int argc, char** argv) {
         backend.set_max_cols(model.max_cols);
         backend.set_rows(model.rows);
 
+        // A logical line may render as several wrapped rows; navigation targets the
+        // first visual row of the matching logical line.
+        state.first_visual = model.first_visual;
+
         // Record hunk-header row positions for n/p jump-to-hunk navigation.
         state.hunk_rows.clear();
         state.row_texts.clear();
@@ -586,7 +591,7 @@ main(int argc, char** argv) {
         for (size_t i = 0; i < vm.rows.size(); ++i) {
             const auto& r = vm.rows[i];
             if (r.kind == diffy::RowKind::HunkHeader) {
-                state.hunk_rows.push_back(static_cast<int>(i));
+                state.hunk_rows.push_back(state.first_visual[i]);
             }
             std::string t = r.header_text;
             for (const auto& sp : r.left.spans) {
@@ -1170,7 +1175,8 @@ main(int argc, char** argv) {
         if (!q.empty()) {
             for (size_t i = 0; i < state.row_texts.size(); ++i) {
                 if (state.row_texts[i].find(q) != std::string::npos) {
-                    state.find_rows.push_back(static_cast<int>(i));
+                    // Highlight/scroll to the logical line's first visual row.
+                    state.find_rows.push_back(state.first_visual[i]);
                 }
             }
         }

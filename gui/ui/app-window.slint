@@ -11,24 +11,21 @@ export struct DiffSpan {
     bold: bool,
 }
 
-// One visual line of a cell: a list of coloured spans. A cell is a list of these
-// — one when unwrapped, several when word-wrap split it (C++ does the wrapping so
-// each wrapped sub-line keeps its per-token colours).
-export struct DiffLine {
-    spans: [DiffSpan],
-}
-
+// One rendered row: a single visual line of each cell (its list of coloured
+// spans). C++ does the word-wrapping and emits ONE DiffRowData per visual line —
+// a logical diff line that wraps into N sub-lines becomes N consecutive rows, so
+// every row is exactly one text line tall. That uniform height is what keeps the
+// ListView scrollbar exact and jump-to-hunk precise. Continuation rows carry the
+// same cell background but blank line numbers (set on the first row only).
 export struct DiffRowData {
     is-header: bool,
     header: string,
     old-no: string,
     new-no: string,
-    left-lines: [DiffLine],
-    left-cols: int,      // unwrapped display width in columns (horizontal extent)
+    left-spans: [DiffSpan],
     left-bg: color,
     left-present: bool,
-    right-lines: [DiffLine],
-    right-cols: int,
+    right-spans: [DiffSpan],
     right-bg: color,
     right-present: bool,
 }
@@ -325,38 +322,30 @@ component LineEdit inherits Rectangle {
 // ---- one diff line ---------------------------------------------------------
 
 component DiffCellView inherits Rectangle {
-    in property <[DiffLine]> lines;
+    in property <[DiffSpan]> spans;
     in property <color> bg;
 
-    // The line height the row uses to size itself; one per wrapped sub-line.
-    property <length> line-h: Backend.font-size * 1.6px;
-    // Natural height for the (possibly wrapped) content — referenced by the row.
-    out property <length> content-height: lines.length * line-h;
-
     background: bg;
-    clip: true;  // long lines clip at the cell edge; horizontal scroll reveals them
+    clip: true;  // long lines clip at the cell edge; wrap/unified reveals them
 
-    // Each sub-line is a row of coloured spans. Wrapping happened in C++, so every
-    // line — wrapped or not — keeps its per-token syntax/diff colours.
-    VerticalLayout {
+    // One visual line: a row of coloured spans. Wrapping already happened in C++
+    // (this cell is a single wrapped sub-line), so every span keeps its per-token
+    // syntax/diff colour.
+    HorizontalLayout {
         alignment: start;
-        for line in lines : HorizontalLayout {
-            alignment: start;
-            // No inter-span gap: spans must butt together so the rendered text width
-            // is exact. (The style's default layout-spacing would insert a gap
-            // between every span, and re-tokenising on WS-toggle changes the span
-            // count — making the spacing between words visibly shift.)
-            spacing: 0px;
-            padding-left: 6px;
-            min-height: line-h;
-            for span in line.spans : Text {
-                text: span.text;
-                color: span.color;
-                font-family: Backend.mono-font;
-                font-size: Backend.font-size * 1px;
-                font-weight: span.bold ? 700 : 400;
-                vertical-alignment: center;
-            }
+        // No inter-span gap: spans must butt together so the rendered text width
+        // is exact. (The style's default layout-spacing would insert a gap between
+        // every span, and re-tokenising on WS-toggle changes the span count —
+        // making the spacing between words visibly shift.)
+        spacing: 0px;
+        padding-left: 6px;
+        for span in spans : Text {
+            text: span.text;
+            color: span.color;
+            font-family: Backend.mono-font;
+            font-size: Backend.font-size * 1px;
+            font-weight: span.bold ? 700 : 400;
+            vertical-alignment: center;
         }
     }
 }
@@ -393,11 +382,11 @@ component DiffRow inherits Rectangle {
     property <length> cellw: max(10px, sxs
         ? (root.width - 2 * gut - 1px) / 2
         : (root.width - 2 * gut));
-    // ListView delegates need a concrete height. Each cell reports an exact
-    // height (line-height x its sub-line count), so wrapped rows grow precisely.
-    height: rowdata.is-header
-        ? Backend.font-size * 1.6px
-        : max(Backend.font-size * 1.6px, leftcell.content-height, rightcell.content-height);
+    // Every row — header or content, wrapped or not — is exactly one text line
+    // tall. C++ already split wrapped lines into separate rows, so this uniform
+    // height makes the ListView's total extent (and thus the scrollbar thumb and
+    // jump-to-hunk offsets) exact rather than estimated.
+    height: Backend.font-size * 1.6px;
 
     if rowdata.is-header : Rectangle {
         height: Backend.font-size * 1.6px;
@@ -427,7 +416,7 @@ component DiffRow inherits Rectangle {
         }
         leftcell := DiffCellView {
             width: cellw;
-            lines: rowdata.left-lines;
+            spans: rowdata.left-spans;
             bg: rowdata.left-bg;
         }
         Rectangle { width: sxs ? 1px : 0px; background: Backend.divider; }
@@ -438,7 +427,7 @@ component DiffRow inherits Rectangle {
         }
         rightcell := DiffCellView {
             width: sxs ? cellw : 0px;
-            lines: rowdata.right-lines;
+            spans: rowdata.right-spans;
             bg: rowdata.right-bg;
         }
     }
@@ -1593,8 +1582,8 @@ export component AppWindow inherits Window {
                     // the horizontal scrollbar — the fluent style otherwise draws its
                     // track as a white strip across the bottom of the diff.
                     horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
-                    // Jump-to-hunk: scroll so the requested row is near the top.
-                    // Approximate (uniform row height) — exact enough to land.
+                    // Jump-to-hunk: scroll so the requested (visual) row is near
+                    // the top. Rows are uniform-height, so this offset is exact.
                     property <int> scroll-to: Backend.diff-scroll-row;
                     changed scroll-to => {
                         if (self.scroll-to >= 0) {

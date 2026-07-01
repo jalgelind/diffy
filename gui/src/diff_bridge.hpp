@@ -11,6 +11,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace diffy::gui {
 
@@ -39,17 +40,22 @@ GuiTheme
 load_gui_theme(const std::string& theme_name);
 
 // The Slint row list plus the widest line (in display columns) it contains,
-// which the UI uses to size the horizontal scroll extent.
+// which the UI uses to size the horizontal scroll extent. `first_visual` maps a
+// source (logical) row index — as used by hunk/find navigation over the
+// DiffViewModel — to the index of its first rendered (visual) row, since one
+// logical line may expand into several wrapped rows.
 struct RowModel {
     std::shared_ptr<slint::VectorModel<DiffRowData>> rows;
     int max_cols = 0;
+    std::vector<int> first_visual;
 };
 
 // Convert a laid-out diff model into a Slint VectorModel of rows, coloured by
 // `theme`. Tabs and control characters are expanded/sanitized so the text
-// renders without missing-glyph boxes. When `wrap` is set, lines wider than
-// `wrap_cols` display columns are split into multiple visual lines that keep
-// their per-token colours (wrap_cols < 1 disables wrapping).
+// renders without missing-glyph boxes. Each rendered row is a single visual
+// line: when `wrap` is set, a logical line wider than `wrap_cols` display
+// columns becomes several consecutive rows (line numbers on the first only), so
+// every row is one text line tall (wrap_cols < 1 disables wrapping).
 RowModel
 build_row_model(const diffy::DiffViewModel& model, const GuiTheme& theme, int tab_width,
                 bool wrap, int wrap_cols);
