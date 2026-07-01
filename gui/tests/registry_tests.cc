@@ -98,7 +98,7 @@ fake_plugin(std::string id, std::string needle) {
     p.matches = [n](const RemoteUrl& u) {
         return u.host.find(n) != std::string::npos;
     };
-    p.make = [](const RemoteConfig&, HttpClient&,
+    p.make = [](const RemoteUrl&, const RemoteConfig&, HttpClient&,
                 const Credential&) -> std::unique_ptr<ReviewProvider> {
         return nullptr;
     };

@@ -57,8 +57,11 @@ struct RemoteConfig {
 struct ProviderPlugin {
     std::string id;
     std::function<bool(const RemoteUrl&)> matches;
-    std::function<std::unique_ptr<ReviewProvider>(const RemoteConfig&, HttpClient&,
-                                                   const Credential&)>
+    // Builds a live provider. Receives the parsed RemoteUrl (host/owner/repo — the
+    // provider needs owner+repo to address the repository), the per-repo override
+    // config, the shared HTTP client, and the resolved credential.
+    std::function<std::unique_ptr<ReviewProvider>(const RemoteUrl&, const RemoteConfig&,
+                                                  HttpClient&, const Credential&)>
         make;
     AuthDescriptor auth;
 };

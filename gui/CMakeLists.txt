@@ -64,7 +64,8 @@ set(DIFFY_REVIEW_SOURCES
   src/review/review.cc
   src/review/secret_store.cc
   src/review/link_header.cc
-  src/review/registry.cc)
+  src/review/registry.cc
+  src/review/providers/bitbucket_cloud.cc)
 if(WIN32)
   list(APPEND DIFFY_REVIEW_SOURCES src/review/http_win.cpp src/review/secret_store_win.cpp)
 elseif(APPLE)
@@ -150,7 +151,8 @@ if(DIFFY_BUILD_TESTS)
     tests/text_layout_tests.cc
     tests/review_tests.cc
     tests/registry_tests.cc
-    tests/conformance_tests.cc)
+    tests/conformance_tests.cc
+    tests/bitbucket_cloud_tests.cc)
   target_include_directories(diffy-gui-logic-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/subprojects/doctest/doctest)
