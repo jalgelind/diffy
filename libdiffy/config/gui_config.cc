@@ -90,6 +90,7 @@ diffy::gui_settings_load(GuiSettings& settings) {
     sync_int("gui.sidebar_width", settings.sidebar_width);
     sync_int("gui.commits_panel_height", settings.commits_panel_height);
     sync_bool("gui.restore_last_repo", settings.restore_last_repo);
+    sync_str("gui.bitbucket_account", settings.bitbucket_account);
 
     // Optional [gui.syntax] table: group-name -> "#rrggbb". Read-only (we don't
     // write defaults, so the file is only what the user added).
@@ -134,6 +135,7 @@ diffy::gui_settings_save(const GuiSettings& settings) {
     table.set_value_at("gui.commits_panel_height",
                        Value{static_cast<int>(settings.commits_panel_height)});
     table.set_value_at("gui.restore_last_repo", Value{settings.restore_last_repo});
+    table.set_value_at("gui.bitbucket_account", Value{settings.bitbucket_account});
 
     write_table(table);
 }

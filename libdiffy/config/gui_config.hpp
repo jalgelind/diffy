@@ -36,6 +36,10 @@ struct GuiSettings {
     int64_t sidebar_width = 300;
     int64_t commits_panel_height = 150;
     bool restore_last_repo = true;
+    // Persisted PR-review connection (non-secret): the Atlassian account email used
+    // for Bitbucket Basic auth. The token itself lives only in the OS credential
+    // vault, keyed by this account. Empty => no persisted connection.
+    std::string bitbucket_account;
 
     // Optional per-group syntax colour overrides from the [gui.syntax] table,
     // as (group-name, "#rrggbb") pairs. The frontend resolves names to groups.

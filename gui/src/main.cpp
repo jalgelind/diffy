@@ -455,10 +455,30 @@ main(int argc, char** argv) {
         std::vector<std::string> row_texts;  // lowercased searchable text per logical row
         std::vector<int> find_rows;          // visual rows matching the find query
         int find_idx = -1;                   // index into find_rows
+        // Active Bitbucket credential (from a live connect or restored from the
+        // vault at startup); drives detection/PR listing for bitbucket.org repos.
+        std::optional<diffy::review::Credential> bitbucket_cred;
     } state;
     constexpr int kCommitPage = 50;  // commits per lazy page
     state.settings = settings;
     state.repos = repos_load();
+
+    // Restore a persisted Bitbucket connection: the account email is stored in
+    // config, its token in the OS credential vault. (Bearer/access-token connects
+    // are session-only — not persisted.)
+    if (!state.settings.bitbucket_account.empty()) {
+        const std::string base = "https://api.bitbucket.org/2.0";
+        if (auto tok = diffy::review::SecretStore::get(diffy::review::build_key(
+                "bitbucket-cloud", base, state.settings.bitbucket_account))) {
+            diffy::review::Credential c;
+            c.method = diffy::review::AuthMethod::BasicToken;
+            c.principal = state.settings.bitbucket_account;
+            c.secret = *tok;
+            state.bitbucket_cred = c;
+            backend.set_bitbucket_connected(true);
+            backend.set_bitbucket_status(ss("Connected as " + state.settings.bitbucket_account));
+        }
+    }
 
     // Outstanding background repo-load threads, joined before libgit2 shuts down.
     std::vector<std::thread> load_threads;
@@ -1365,10 +1385,28 @@ main(int argc, char** argv) {
             }
             rv::log_line(std::string("connect result: ") + (ok ? "OK — " : "FAIL — ") + status);
 
-            slint::invoke_from_event_loop([&, ok, status]() {
+            slint::invoke_from_event_loop([&, ok, status, u, p]() {
                 backend.set_bitbucket_connecting(false);
                 backend.set_bitbucket_connected(ok);
                 backend.set_bitbucket_status(ss(status));
+                if (ok) {
+                    rv::Credential c;
+                    if (u.empty()) {
+                        c.method = rv::AuthMethod::Bearer;
+                        c.secret = p;
+                    } else {
+                        c.method = rv::AuthMethod::BasicToken;
+                        c.principal = u;
+                        c.secret = p;
+                    }
+                    state.bitbucket_cred = c;
+                    // Persist the Basic/email account so it auto-reconnects next
+                    // launch (Bearer access tokens stay session-only).
+                    if (!u.empty()) {
+                        state.settings.bitbucket_account = u;
+                        gui_settings_save(state.settings);
+                    }
+                }
             });
         });
     });
