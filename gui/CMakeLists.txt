@@ -48,6 +48,18 @@ if(NOT DIFFY_LIBGIT2_TARGET)
   set(DIFFY_LIBGIT2_TARGET PkgConfig::LIBGIT2)
 endif()
 
+# --- diffy_review: backend-agnostic PR-review layer (Slint-free) -----------
+# Vendored header-only JSON, then the review static lib. Kept free of Slint (and
+# of diffy_core) so it can be unit-tested by diffy-gui-logic-test and reused by a
+# future CLI. HTTP backends, secret store, providers etc. are added by later
+# tasks; see REVIEW-ROADMAP.md.
+add_subdirectory(${CMAKE_SOURCE_DIR}/subprojects/json
+                 ${CMAKE_BINARY_DIR}/subprojects/json EXCLUDE_FROM_ALL)
+add_library(diffy_review STATIC
+  src/review/review.cc)
+target_include_directories(diffy_review PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(diffy_review PUBLIC nlohmann_json::nlohmann_json)
+
 add_executable(diffy-gui
   src/main.cpp
   src/repo_model.cc
@@ -55,7 +67,7 @@ add_executable(diffy-gui
   src/text_layout.cc)
 
 target_include_directories(diffy-gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(diffy-gui PRIVATE diffy_core Slint::Slint ${DIFFY_LIBGIT2_TARGET})
+target_link_libraries(diffy-gui PRIVATE diffy_core diffy_review Slint::Slint ${DIFFY_LIBGIT2_TARGET})
 
 # Slint's winit/skia backend is built as a static Rust library; the macOS
 # frameworks and the ObjC runtime its objc2/winit/skia/accesskit crates call
@@ -103,10 +115,11 @@ if(DIFFY_BUILD_TESTS)
     src/repo_model.cc
     src/text_layout.cc
     tests/repo_model_tests.cc
-    tests/text_layout_tests.cc)
+    tests/text_layout_tests.cc
+    tests/review_tests.cc)
   target_include_directories(diffy-gui-logic-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/subprojects/doctest/doctest)
-  target_link_libraries(diffy-gui-logic-test PRIVATE ${DIFFY_LIBGIT2_TARGET})
+  target_link_libraries(diffy-gui-logic-test PRIVATE diffy_review ${DIFFY_LIBGIT2_TARGET})
   add_test(NAME gui-logic-tests COMMAND diffy-gui-logic-test)
 endif()
