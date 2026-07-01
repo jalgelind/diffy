@@ -138,6 +138,12 @@ export global Backend {
     in property <[PrEntry]> pull-requests;
     callback open-pr(string);    // pr id
     callback refresh-prs();
+    // PR detail mode: the right sidebar shows a back row + PR header + the PR's
+    // commits; the left shows the PR's changed files.
+    in property <bool> pr-open: false;
+    in property <string> pr-title;      // "#id  title"
+    in property <string> pr-subtitle;   // "src → dst · state"
+    callback close-pr();
     in-out property <int> tab-width: 4;
     in property <[string]> font-choices;   // curated monospace families (per-OS)
     in property <[string]> theme-names;     // theme .conf files found on disk
@@ -1319,9 +1325,37 @@ component CommitsPanel inherits Rectangle {
         padding: 8px;
         spacing: 6px;
 
+        // PR detail: a back row to the PR list, plus the PR header.
+        if Backend.pr-open : VerticalLayout {
+            spacing: 4px;
+            back-ta := TouchArea {
+                height: 20px;
+                clicked => { Backend.close-pr(); }
+                Text {
+                    text: "‹ Pull requests";
+                    color: back-ta.has-hover ? Backend.accent : Backend.gutter-fg;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+            }
+            Text {
+                text: Backend.pr-title;
+                color: Backend.fg;
+                font-size: 13px;
+                font-weight: 600;
+                overflow: elide;
+            }
+            Text {
+                text: Backend.pr-subtitle;
+                color: Backend.gutter-fg;
+                font-size: 10px;
+                overflow: elide;
+            }
+        }
+
         // Pull requests — shown when the repo's origin is a connected Bitbucket
         // remote (see main.cpp detection). Lists open PRs; clicking one opens it.
-        if Backend.has-bitbucket : HorizontalLayout {
+        if !Backend.pr-open && Backend.has-bitbucket : HorizontalLayout {
             SectionLabel { text: "PULL REQUESTS"; }
             Rectangle { horizontal-stretch: 1; }
             pr-refresh := TouchArea {
@@ -1335,7 +1369,7 @@ component CommitsPanel inherits Rectangle {
                 }
             }
         }
-        if Backend.has-bitbucket : ListView {
+        if !Backend.pr-open && Backend.has-bitbucket : ListView {
             vertical-stretch: 1;
             horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
             for pr in Backend.pull-requests : Rectangle {
@@ -1366,12 +1400,12 @@ component CommitsPanel inherits Rectangle {
                 }
             }
         }
-        if Backend.has-bitbucket && Backend.loading-prs : Text {
+        if !Backend.pr-open && Backend.has-bitbucket && Backend.loading-prs : Text {
             text: "Loading pull requests…";
             color: Backend.gutter-fg;
             font-size: 11px;
         }
-        if Backend.has-bitbucket && !Backend.loading-prs && Backend.pull-requests.length == 0 : Text {
+        if !Backend.pr-open && Backend.has-bitbucket && !Backend.loading-prs && Backend.pull-requests.length == 0 : Text {
             text: "No open pull requests";
             color: Backend.gutter-fg;
             font-size: 11px;
@@ -1379,7 +1413,7 @@ component CommitsPanel inherits Rectangle {
 
         // Working-tree entry: selecting it leaves any historical commit and shows
         // the uncommitted changes (and, once something is staged, the commit box).
-        Rectangle {
+        if !Backend.pr-open : Rectangle {
             height: 38px;
             border-radius: 5px;
             background: Backend.on-working-tree
@@ -1419,7 +1453,7 @@ component CommitsPanel inherits Rectangle {
                 }
             }
         }
-        SectionLabel { text: "RECENT COMMITS"; }
+        SectionLabel { text: Backend.pr-open ? "COMMITS" : "RECENT COMMITS"; }
         commits-list := ListView {
             vertical-stretch: 1;
             horizontal-scrollbar-policy: ScrollBarPolicy.always-off;

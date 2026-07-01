@@ -472,6 +472,12 @@ main(int argc, char** argv) {
         // Active Bitbucket credential (from a live connect or restored from the
         // vault at startup); drives detection/PR listing for bitbucket.org repos.
         std::optional<diffy::review::Credential> bitbucket_cred;
+        // PR detail mode: the open PR's id ("" = not in a PR), its ref SHAs (for
+        // sourcing file diffs), and the workspace/repo parsed from origin.
+        std::string current_pr;
+        diffy::review::PrRefs pr_refs;
+        std::string pr_ws;
+        std::string pr_repo;
     } state;
     constexpr int kCommitPage = 50;  // commits per lazy page
     state.settings = settings;
@@ -869,10 +875,56 @@ main(int argc, char** argv) {
         });
     };
 
-    // Open a file's diff. Honours the current mode: working-tree (HEAD vs disk)
-    // or a selected commit (commit vs its parent).
+    // Source a PR file's diff from the provider: base_sha content vs head_sha
+    // content, rendered by the normal pipeline. Async — the file_at calls hit the
+    // network. A missing side (404) => empty, which correctly renders adds/deletes.
+    auto open_pr_file = [&](const std::string& path) {
+        if (state.current_pr.empty() || !state.bitbucket_cred) {
+            return;
+        }
+        state.current_file = path;
+        backend.set_current_file(ss(path));
+        backend.set_diff_note(ss(""));
+        backend.set_status_text(ss("PR #" + state.current_pr + ": " + path + " …"));
+        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const std::string ws = state.pr_ws, repo = state.pr_repo;
+        const std::string base = state.pr_refs.base_sha, head = state.pr_refs.head_sha;
+        const std::string pr = state.current_pr;
+        const uint64_t gen = state.load_generation;
+        load_threads.emplace_back([&, path, ws, repo, cred, base, head, pr, gen]() {
+            diffy::review::BitbucketCloudClient client(*review_http, cred, ws, repo);
+            std::string oldt, newt;
+            if (auto o = client.file_at(base, path)) {
+                oldt = o.value();
+            }
+            if (auto n = client.file_at(head, path)) {
+                newt = n.value();
+            }
+            slint::invoke_from_event_loop([&, path, oldt, newt, pr, gen]() {
+                if (gen != state.load_generation || state.current_pr != pr) {
+                    return;
+                }
+                diffy::gui::BlobPair bp;
+                bp.ok = true;
+                bp.old_text = oldt;
+                bp.new_text = newt;
+                bp.old_name = path;
+                bp.new_name = path;
+                state.pair = bp;
+                backend.set_status_text(ss("PR #" + pr + ": " + path));
+                recompute();
+            });
+        });
+    };
+
+    // Open a file's diff. Honours the current mode: PR (provider-sourced),
+    // working-tree (HEAD vs disk), or a selected commit (commit vs its parent).
     auto open_file = [&](const std::string& path) {
         if (!state.repo) {
+            return;
+        }
+        if (!state.current_pr.empty()) {
+            open_pr_file(path);
             return;
         }
         state.current_file = path;
@@ -899,6 +951,89 @@ main(int argc, char** argv) {
         backend.set_diff_note(ss(""));
         backend.set_status_text(ss(ctx + path));
         recompute();
+    };
+
+    // Enter PR detail mode: fetch the PR's header, refs, files and commits, show
+    // them in the sidebars (files left, commits right), and open the first file.
+    auto open_pr = [&](const std::string& id) {
+        if (!state.repo || !state.bitbucket_cred) {
+            return;
+        }
+        auto parsed = diffy::review::parse_remote_url(state.repo->origin_url());
+        if (!parsed) {
+            return;
+        }
+        state.current_pr = id;
+        state.pr_ws = parsed->owner;
+        state.pr_repo = parsed->repo;
+        state.current_commit.clear();
+        state.base_ref.clear();
+        backend.set_on_working_tree(false);
+        backend.set_pr_open(true);
+        backend.set_pr_title(ss("#" + id + "  loading…"));
+        backend.set_pr_subtitle(ss(""));
+        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const std::string ws = parsed->owner, repo = parsed->repo;
+        const uint64_t gen = state.load_generation;
+        load_threads.emplace_back([&, id, ws, repo, cred, gen]() {
+            diffy::review::BitbucketCloudClient client(*review_http, cred, ws, repo);
+            auto pr = client.get(id);
+            auto refs = client.refs(id);
+            auto files = client.files(id);
+            auto commits = client.commits(id);
+
+            auto fc = std::make_shared<std::vector<diffy::gui::FileChange>>();
+            if (files) {
+                for (const auto& f : files.value()) {
+                    diffy::gui::FileChange c;
+                    c.path = f.path;
+                    c.status = f.status == "added"     ? "A"
+                               : f.status == "deleted" ? "D"
+                               : f.status == "renamed" ? "R"
+                                                       : "M";
+                    fc->push_back(std::move(c));
+                }
+            }
+            auto ci = std::make_shared<std::vector<diffy::gui::CommitInfo>>();
+            if (commits) {
+                for (const auto& c : commits.value()) {
+                    diffy::gui::CommitInfo x;
+                    x.oid = c.sha;
+                    x.short_oid = c.short_sha;
+                    x.summary = c.summary;
+                    x.author = c.author;
+                    ci->push_back(std::move(x));
+                }
+            }
+            auto refsp = std::make_shared<diffy::review::PrRefs>(
+                refs ? refs.value() : diffy::review::PrRefs{});
+            const std::string title = pr ? pr.value().title : ("PR #" + id);
+            const std::string sub =
+                pr ? (pr.value().src_branch + " → " + pr.value().dst_branch + "  ·  " +
+                      approval_str(pr.value().state))
+                   : std::string{};
+            const std::string err = files ? std::string{} : files.error().message;
+
+            slint::invoke_from_event_loop([&, id, fc, ci, refsp, title, sub, err, gen]() {
+                if (gen != state.load_generation || state.current_pr != id) {
+                    return;
+                }
+                state.pr_refs = *refsp;
+                backend.set_pr_title(ss("#" + id + "  " + title));
+                backend.set_pr_subtitle(ss(sub));
+                set_files(*fc);
+                set_commits(*ci, false);
+                if (!err.empty()) {
+                    backend.set_status_text(ss("Couldn't load PR files: " + err));
+                }
+                if (!fc->empty()) {
+                    open_file(fc->front().path);
+                } else {
+                    backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
+                    backend.set_current_file(ss(""));
+                }
+            });
+        });
     };
 
     // A repository opens in two stages so a large repo (lots of submodules /
@@ -1063,6 +1198,9 @@ main(int argc, char** argv) {
         const uint64_t gen = ++state.load_generation;
         backend.set_loading(true);
         backend.set_status_text(ss("Opening " + path + " …"));
+        // Leave any PR detail mode when (re)opening a repo.
+        state.current_pr.clear();
+        backend.set_pr_open(false);
         // Clear the current view so switching repos feels immediate.
         set_files({});
         set_commits({}, false);
@@ -1111,8 +1249,8 @@ main(int argc, char** argv) {
     // handler and keyboard activation. Leaves the keyboard focus on the file
     // list so the arrows then browse the commit's files.
     auto select_commit = [&](const std::string& oid) {
-        if (!state.repo) {
-            return;
+        if (!state.repo || !state.current_pr.empty()) {
+            return;  // in PR detail mode the commits list is read-only for now
         }
         state.current_commit = oid;
         backend.set_on_working_tree(false);
@@ -1374,11 +1512,15 @@ main(int argc, char** argv) {
     });
 
     backend.on_refresh_prs([&]() { refresh_prs(); });
-    backend.on_open_pr([&](slint::SharedString id) {
-        // Full PR detail view (files + commits + back) is a later task; for now
-        // surface the selection so the wiring is visible.
-        diffy::review::log_line(std::string("open_pr: ") + str(id));
-        backend.set_status_text(ss("Pull request #" + str(id)));
+    backend.on_open_pr([&](slint::SharedString id) { open_pr(str(id)); });
+    backend.on_close_pr([&]() {
+        // Leave PR detail mode and restore the repo view (working tree + local
+        // commits + the PR list) by reloading the repo.
+        state.current_pr.clear();
+        backend.set_pr_open(false);
+        if (!state.repo_path.empty()) {
+            load_repo(state.repo_path);
+        }
     });
 
     // Connect Bitbucket: verify the credentials live (whoami) off the UI thread,
