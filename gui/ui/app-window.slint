@@ -720,6 +720,32 @@ component OptionBar inherits Rectangle {
                                 clicked => { DiffOptions.context-lines += 1; DiffOptions.rediff(); }
                             }
                         }
+                        // Tab width (how far a tab is expanded in the diff).
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Text { text: "Tab width"; color: Backend.fg; vertical-alignment: center; horizontal-stretch: 1; }
+                            Button {
+                                text: "-";
+                                clicked => {
+                                    Backend.tab-width = max(1, Backend.tab-width - 1);
+                                    Backend.set-tab-width(Backend.tab-width);
+                                }
+                            }
+                            Text {
+                                text: "\{Backend.tab-width}";
+                                color: Backend.fg;
+                                width: 20px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            Button {
+                                text: "+";
+                                clicked => {
+                                    Backend.tab-width = min(16, Backend.tab-width + 1);
+                                    Backend.set-tab-width(Backend.tab-width);
+                                }
+                            }
+                        }
                         // Algorithm — radio-style rows (avoids a popup inside a popup).
                         VerticalLayout {
                             spacing: 4px;
@@ -1322,47 +1348,20 @@ component SettingsPanel inherits Rectangle {
                 }
             }
 
-            // Font size + tab width steppers.
+            // Font size stepper (tab width moved to the toolbar's diff-options popup).
             HorizontalLayout {
-                spacing: 24px;
-                HorizontalLayout {
-                    spacing: 8px;
-                    Text { text: "Size"; color: Backend.fg; vertical-alignment: center; }
-                    Button { text: "-"; clicked => { Backend.font-size = max(8, Backend.font-size - 1); } }
-                    Text {
-                        text: "\{Backend.font-size}";
-                        color: Backend.fg;
-                        vertical-alignment: center;
-                        horizontal-alignment: center;
-                        width: 24px;
-                    }
-                    Button { text: "+"; clicked => { Backend.font-size = min(32, Backend.font-size + 1); } }
+                spacing: 8px;
+                Text { text: "Size"; color: Backend.fg; vertical-alignment: center; }
+                Button { text: "-"; clicked => { Backend.font-size = max(8, Backend.font-size - 1); } }
+                Text {
+                    text: "\{Backend.font-size}";
+                    color: Backend.fg;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                    width: 24px;
                 }
-                HorizontalLayout {
-                    spacing: 8px;
-                    Text { text: "Tab"; color: Backend.fg; vertical-alignment: center; }
-                    Button {
-                        text: "-";
-                        clicked => {
-                            Backend.tab-width = max(1, Backend.tab-width - 1);
-                            Backend.set-tab-width(Backend.tab-width);
-                        }
-                    }
-                    Text {
-                        text: "\{Backend.tab-width}";
-                        color: Backend.fg;
-                        vertical-alignment: center;
-                        horizontal-alignment: center;
-                        width: 24px;
-                    }
-                    Button {
-                        text: "+";
-                        clicked => {
-                            Backend.tab-width = min(16, Backend.tab-width + 1);
-                            Backend.set-tab-width(Backend.tab-width);
-                        }
-                    }
-                }
+                Button { text: "+"; clicked => { Backend.font-size = min(32, Backend.font-size + 1); } }
+                Rectangle { horizontal-stretch: 1; }
             }
 
             // Theme (applied live).
