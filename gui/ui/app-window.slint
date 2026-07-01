@@ -216,10 +216,6 @@ component Button inherits Rectangle {
     background: !root.enabled ? Backend.bg
               : root.primary ? Backend.accent
               : (btn-ta.has-hover ? Backend.hover : Backend.bg);
-    btn-ta := TouchArea {
-        enabled <=> root.enabled;
-        clicked => { root.clicked(); }
-    }
     HorizontalLayout {
         padding-left: 10px;
         padding-right: 10px;
@@ -240,6 +236,13 @@ component Button inherits Rectangle {
             vertical-alignment: center;
             horizontal-alignment: center;
         }
+    }
+    // Full-button hit area, on top of the content so the whole button is clickable.
+    btn-ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        enabled <=> root.enabled;
+        clicked => { root.clicked(); }
     }
 }
 
@@ -662,17 +665,7 @@ component OptionBar inherits Rectangle {
         // Less-frequent diff settings (context, algorithm, base ref) in a pop-out.
         more-btn := Rectangle {
             width: 42px;
-            property <bool> menu-open;
-            more-ta := TouchArea {
-                clicked => {
-                    more-btn.menu-open = !more-btn.menu-open;
-                    if (more-btn.menu-open) {
-                        more-popup.show();
-                    } else {
-                        more-popup.close();
-                    }
-                }
-            }
+            more-ta := TouchArea { clicked => { more-popup.show(); } }
             VerticalLayout {
                 alignment: center;
                 spacing: 1px;
@@ -696,10 +689,10 @@ component OptionBar inherits Rectangle {
             more-popup := PopupWindow {
                 x: 0;
                 y: parent.height + 4px;
-                // No auto-close: re-diffing on a stepper click activates the main
-                // window, which would otherwise dismiss this (separate) popup window.
-                // The More button toggles it open/closed.
-                close-policy: PopupClosePolicy.no-auto-close;
+                // Stay open while adjusting settings; only a click outside closes it.
+                // (The steppers now have a correct hit area, so their clicks register
+                // as inside the popup rather than as an outside click.)
+                close-policy: PopupClosePolicy.close-on-click-outside;
                 Rectangle {
                     width: 230px;
                     background: Backend.panel-bg;
