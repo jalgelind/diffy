@@ -1,5 +1,7 @@
 #include "bitbucket_cloud.hpp"
 
+#include "../log.hpp"
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -127,6 +129,32 @@ retry_after(const HttpResponse& resp) {
     return std::nullopt;
 }
 
+// Pull a human-readable reason out of a Bitbucket error body
+// ({"type":"error","error":{"message":"…"}}), or fall back to a trimmed snippet,
+// so a failed connect shows *why* rather than a bare status code.
+std::string
+server_message(const std::string& body) {
+    if (body.empty()) {
+        return {};
+    }
+    json j = json::parse(body, nullptr, /*allow_exceptions=*/false);
+    if (!j.is_discarded()) {
+        const json& err = jchild(j, "error");
+        std::string m = jstr(err, "message");
+        if (m.empty()) {
+            m = jstr(err, "detail");
+        }
+        if (m.empty()) {
+            m = jstr(j, "error_description");  // OAuth-style bodies
+        }
+        if (!m.empty()) {
+            return m;
+        }
+    }
+    std::string snippet = body.substr(0, 200);
+    return snippet;
+}
+
 // Map a transport failure or non-2xx status onto the normalized Error taxonomy;
 // std::nullopt means the exchange succeeded (2xx).
 std::optional<Error>
@@ -153,6 +181,10 @@ http_error(const HttpResult& res) {
         kind = ErrorKind::Other;
     }
     Error e{kind, static_cast<int>(s), "HTTP " + std::to_string(s)};
+    const std::string sm = server_message(res.response.body);
+    if (!sm.empty()) {
+        e.message += ": " + sm;
+    }
     if (kind == ErrorKind::RateLimited) {
         e.retry_after_secs = retry_after(res.response);
     }
@@ -171,7 +203,12 @@ send(HttpClient& http, const Credential& cred, const std::string& method, const 
         rq.headers.push_back({"Content-Type", "application/json"});
         rq.body = body;
     }
-    return http.send(rq);
+    HttpResult res = http.send(rq);
+    // URL + status only — never the Authorization header/token.
+    log_line("[bitbucket] " + method + " " + url + " -> " +
+             (res.ok() ? ("HTTP " + std::to_string(res.response.status))
+                       : ("transport error: " + res.message)));
+    return res;
 }
 
 Result<json>
@@ -490,6 +527,9 @@ BitbucketCloudClient::file_at(const std::string& sha, const std::string& path) {
     rq.url = base_ + "/repositories/" + ws_ + "/" + repo_ + "/src/" + sha + "/" + path;
     add_auth(rq, cred_);
     const HttpResult res = http_.send(rq);
+    log_line("[bitbucket] GET " + rq.url + " -> " +
+             (res.ok() ? ("HTTP " + std::to_string(res.response.status))
+                       : ("transport error: " + res.message)));
     if (auto e = http_error(res)) {
         return Result<std::string>::err(*e);
     }

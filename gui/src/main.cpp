@@ -8,6 +8,7 @@
 #include "highlight/highlight_palette.hpp"
 #include "render/diff_pipeline.hpp"
 #include "repo_model.hpp"
+#include "review/log.hpp"
 #include "review/providers/bitbucket_cloud.hpp"
 #include "review/secret_store.hpp"
 
@@ -1274,36 +1275,82 @@ main(int argc, char** argv) {
         load_threads.emplace_back([&, w, rp, u, p]() {
             namespace rv = diffy::review;
             rv::Credential cred;
-            cred.method = rv::AuthMethod::BasicToken;
-            cred.principal = u;
-            cred.secret = p;
+            if (u.empty()) {
+                // No email → a Bitbucket Access token (scoped), sent as Bearer.
+                cred.method = rv::AuthMethod::Bearer;
+                cred.secret = p;
+            } else {
+                // Email present → an Atlassian API token / app password over Basic.
+                cred.method = rv::AuthMethod::BasicToken;
+                cred.principal = u;
+                cred.secret = p;
+            }
             rv::BitbucketCloudClient client(*review_http, cred, w, rp);
+            rv::log_line("connect bitbucket: ws='" + w + "' repo='" + rp +
+                         "' auth=" + (u.empty() ? "bearer(access-token)" : "basic(email)"));
 
             bool ok = false;
             std::string status;
-            auto who = client.whoami();
-            if (!who) {
-                status = who.error().kind == rv::ErrorKind::Auth
-                             ? "Sign-in failed — check the email and API token (and its scopes)."
-                             : ("Connection failed: " + who.error().message);
+            std::string account;
+            int pr_count = -1;
+
+            auto describe = [](const rv::Error& e, const std::string& action) {
+                std::string m = "Couldn't " + action;
+                if (e.http_status) {
+                    m += " (HTTP " + std::to_string(e.http_status) + ")";
+                }
+                if (e.kind == rv::ErrorKind::Auth && e.http_status == 403) {
+                    m += " — the token is valid but lacks the required scope";
+                } else if (e.kind == rv::ErrorKind::Auth) {
+                    m += " — credentials rejected";
+                }
+                if (!e.message.empty()) {
+                    m += ": " + e.message;
+                }
+                return m;
+            };
+
+            // Verify with the capability we actually need: with a repo, list its
+            // PRs (needs only the pull-request read scope the token was made for);
+            // without one, fall back to whoami() (which needs an account scope some
+            // tokens omit — a common cause of a spurious "sign-in failed").
+            if (!rp.empty()) {
+                auto prs = client.list_open();
+                if (prs) {
+                    ok = true;
+                    pr_count = static_cast<int>(prs.value().items.size());
+                } else {
+                    status = describe(prs.error(), "list pull requests");
+                }
             } else {
-                ok = true;
-                const std::string account = who.value().display_name.empty()
-                                                ? who.value().username
-                                                : who.value().display_name;
-                rv::SecretStore::set(
-                    rv::build_key("bitbucket-cloud", "https://api.bitbucket.org/2.0", u), p);
-                status = "Connected as " + account;
-                if (!rp.empty()) {
-                    auto prs = client.list_open();
-                    if (prs) {
-                        status += "  ·  " + std::to_string(prs.value().items.size()) +
-                                  " open PR(s) in " + w + "/" + rp;
-                    } else {
-                        status += "  ·  couldn't list PRs (" + prs.error().message + ")";
-                    }
+                auto who = client.whoami();
+                if (who) {
+                    ok = true;
+                    account = who.value().display_name.empty() ? who.value().username
+                                                               : who.value().display_name;
+                } else {
+                    status = describe(who.error(), "sign in");
                 }
             }
+
+            if (ok) {
+                if (account.empty()) {
+                    if (auto who = client.whoami()) {  // best-effort display name
+                        account = who.value().display_name.empty() ? who.value().username
+                                                                   : who.value().display_name;
+                    }
+                }
+                rv::SecretStore::set(rv::build_key("bitbucket-cloud",
+                                                   "https://api.bitbucket.org/2.0",
+                                                   u.empty() ? w : u),
+                                     p);
+                status = account.empty() ? "Connected" : ("Connected as " + account);
+                if (pr_count >= 0) {
+                    status += "  ·  " + std::to_string(pr_count) + " open PR(s) in " + w + "/" + rp;
+                }
+            }
+            rv::log_line(std::string("connect result: ") + (ok ? "OK — " : "FAIL — ") + status);
+
             slint::invoke_from_event_loop([&, ok, status]() {
                 backend.set_bitbucket_connecting(false);
                 backend.set_bitbucket_connected(ok);

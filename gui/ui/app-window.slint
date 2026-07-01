@@ -1534,10 +1534,11 @@ component BitbucketPanel inherits Rectangle {
 
             Text { text: "Connect Bitbucket"; color: Backend.fg; font-size: 17px; font-weight: 600; }
             Text {
-                text: "Create a scoped API token at id.atlassian.com → Security → API tokens with the "
-                    + "Bitbucket Pull requests (read/write) scopes, then sign in with your Atlassian "
-                    + "account email. (App passwords are being deprecated.) The token is stored in the "
-                    + "OS credential vault, never in config.";
+                text: "Simplest: create a Bitbucket access token (Workspace or Repository settings → "
+                    + "Access tokens) with the Pull requests: Read scope and paste it below, leaving "
+                    + "Email blank. Alternatively use an Atlassian API token (id.atlassian.com) together "
+                    + "with your account email. The token is stored in the OS credential vault, never "
+                    + "in config.";
                 color: Backend.gutter-fg;
                 font-size: 11px;
                 wrap: word-wrap;
@@ -1555,13 +1556,13 @@ component BitbucketPanel inherits Rectangle {
             }
             VerticalLayout {
                 spacing: 4px;
-                Text { text: "ATLASSIAN EMAIL"; color: Backend.gutter-fg; font-size: 11px; }
-                bb-user := LineEdit { placeholder-text: "you@example.com"; }
+                Text { text: "ATLASSIAN EMAIL  (leave blank for a Bitbucket access token)"; color: Backend.gutter-fg; font-size: 11px; }
+                bb-user := LineEdit { placeholder-text: "you@example.com — optional"; }
             }
             VerticalLayout {
                 spacing: 4px;
-                Text { text: "API TOKEN"; color: Backend.gutter-fg; font-size: 11px; }
-                bb-pass := LineEdit { placeholder-text: "scoped API token"; password: true; }
+                Text { text: "ACCESS / API TOKEN"; color: Backend.gutter-fg; font-size: 11px; }
+                bb-pass := LineEdit { placeholder-text: "paste token"; password: true; }
             }
 
             if Backend.bitbucket-status != "" : Text {
@@ -1577,8 +1578,7 @@ component BitbucketPanel inherits Rectangle {
                 Button { text: "Close"; clicked => { Backend.show-bitbucket = false; } }
                 Button {
                     text: Backend.bitbucket-connecting ? "Connecting…" : "Connect";
-                    enabled: !Backend.bitbucket-connecting && bb-ws.text != "" && bb-user.text != ""
-                             && bb-pass.text != "";
+                    enabled: !Backend.bitbucket-connecting && bb-ws.text != "" && bb-pass.text != "";
                     clicked => {
                         Backend.connect-bitbucket(bb-ws.text, bb-repo.text, bb-user.text, bb-pass.text);
                     }

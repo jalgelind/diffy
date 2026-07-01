@@ -62,6 +62,7 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/subprojects/json
 # #if guards (MSVC can't process a .mm at all).
 set(DIFFY_REVIEW_SOURCES
   src/review/review.cc
+  src/review/log.cc
   src/review/secret_store.cc
   src/review/link_header.cc
   src/review/registry.cc
