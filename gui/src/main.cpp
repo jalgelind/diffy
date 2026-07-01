@@ -24,6 +24,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #ifdef _WIN32
@@ -478,6 +479,19 @@ main(int argc, char** argv) {
         diffy::review::PrRefs pr_refs;
         std::string pr_ws;
         std::string pr_repo;
+        // Caches so lists show instantly from the last result and refresh in the
+        // background (swap-in rather than clear+fetch+show). Keys: PR list by
+        // "ws/repo"; PR detail + file blobs by "ws/repo#id" (+ ":path").
+        std::unordered_map<std::string, std::vector<diffy::review::PullRequest>> pr_list_cache;
+        struct PrDetail {
+            diffy::review::PrRefs refs;
+            std::vector<diffy::gui::FileChange> files;
+            std::vector<diffy::gui::CommitInfo> commits;
+            std::string title;
+            std::string subtitle;
+        };
+        std::unordered_map<std::string, PrDetail> pr_detail_cache;
+        std::unordered_map<std::string, std::pair<std::string, std::string>> pr_file_cache;
     } state;
     constexpr int kCommitPage = 50;  // commits per lazy page
     state.settings = settings;
@@ -878,6 +892,20 @@ main(int argc, char** argv) {
     // Source a PR file's diff from the provider: base_sha content vs head_sha
     // content, rendered by the normal pipeline. Async — the file_at calls hit the
     // network. A missing side (404) => empty, which correctly renders adds/deletes.
+    // Render a PR file's diff from the two blob texts (cache or fetched).
+    auto render_pr_blobs = [&](const std::string& pr, const std::string& path,
+                               const std::string& oldt, const std::string& newt) {
+        diffy::gui::BlobPair bp;
+        bp.ok = true;
+        bp.old_text = oldt;
+        bp.new_text = newt;
+        bp.old_name = path;
+        bp.new_name = path;
+        state.pair = bp;
+        backend.set_status_text(ss("PR #" + pr + ": " + path));
+        recompute();
+    };
+
     auto open_pr_file = [&](const std::string& path) {
         if (state.current_pr.empty() || !state.bitbucket_cred) {
             return;
@@ -885,13 +913,20 @@ main(int argc, char** argv) {
         state.current_file = path;
         backend.set_current_file(ss(path));
         backend.set_diff_note(ss(""));
-        backend.set_status_text(ss("PR #" + state.current_pr + ": " + path + " …"));
+        const std::string pr = state.current_pr;
+        const std::string ck = state.pr_ws + "/" + state.pr_repo + "#" + pr + ":" + path;
+        // Cached blobs render instantly (content doesn't change within a session).
+        auto cit = state.pr_file_cache.find(ck);
+        if (cit != state.pr_file_cache.end()) {
+            render_pr_blobs(pr, path, cit->second.first, cit->second.second);
+            return;
+        }
+        backend.set_status_text(ss("PR #" + pr + ": " + path + " …"));
         const diffy::review::Credential cred = *state.bitbucket_cred;
         const std::string ws = state.pr_ws, repo = state.pr_repo;
         const std::string base = state.pr_refs.base_sha, head = state.pr_refs.head_sha;
-        const std::string pr = state.current_pr;
         const uint64_t gen = state.load_generation;
-        load_threads.emplace_back([&, path, ws, repo, cred, base, head, pr, gen]() {
+        load_threads.emplace_back([&, path, ws, repo, cred, base, head, pr, ck, gen]() {
             diffy::review::BitbucketCloudClient client(*review_http, cred, ws, repo);
             std::string oldt, newt;
             if (auto o = client.file_at(base, path)) {
@@ -900,19 +935,12 @@ main(int argc, char** argv) {
             if (auto n = client.file_at(head, path)) {
                 newt = n.value();
             }
-            slint::invoke_from_event_loop([&, path, oldt, newt, pr, gen]() {
+            slint::invoke_from_event_loop([&, path, oldt, newt, pr, ck, gen]() {
                 if (gen != state.load_generation || state.current_pr != pr) {
                     return;
                 }
-                diffy::gui::BlobPair bp;
-                bp.ok = true;
-                bp.old_text = oldt;
-                bp.new_text = newt;
-                bp.old_name = path;
-                bp.new_name = path;
-                state.pair = bp;
-                backend.set_status_text(ss("PR #" + pr + ": " + path));
-                recompute();
+                state.pr_file_cache[ck] = {oldt, newt};
+                render_pr_blobs(pr, path, oldt, newt);
             });
         });
     };
@@ -953,8 +981,27 @@ main(int argc, char** argv) {
         recompute();
     };
 
-    // Enter PR detail mode: fetch the PR's header, refs, files and commits, show
-    // them in the sidebars (files left, commits right), and open the first file.
+    // Apply a fetched-or-cached PR detail to the sidebars. `select_first` opens the
+    // first file — only on the initial display, so a background swap doesn't yank
+    // the user off the file they're reading.
+    auto apply_pr_detail = [&](const std::string& id, const State::PrDetail& d, bool select_first) {
+        state.pr_refs = d.refs;
+        backend.set_pr_title(ss("#" + id + "  " + d.title));
+        backend.set_pr_subtitle(ss(d.subtitle));
+        set_files(d.files);
+        set_commits(d.commits, false);
+        if (select_first) {
+            if (!d.files.empty()) {
+                open_file(d.files.front().path);
+            } else {
+                backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
+                backend.set_current_file(ss(""));
+            }
+        }
+    };
+
+    // Enter PR detail mode: show the cached detail instantly (if any), then fetch
+    // in the background and swap in the fresh result — no clear+fetch+show flicker.
     auto open_pr = [&](const std::string& id) {
         if (!state.repo || !state.bitbucket_cred) {
             return;
@@ -970,19 +1017,32 @@ main(int argc, char** argv) {
         state.base_ref.clear();
         backend.set_on_working_tree(false);
         backend.set_pr_open(true);
-        backend.set_pr_title(ss("#" + id + "  loading…"));
-        backend.set_pr_subtitle(ss(""));
+
+        const std::string key = parsed->owner + "/" + parsed->repo + "#" + id;
+        auto cit = state.pr_detail_cache.find(key);
+        const bool had_cache = cit != state.pr_detail_cache.end();
+        if (had_cache) {
+            apply_pr_detail(id, cit->second, /*select_first=*/true);
+        } else {
+            backend.set_pr_title(ss("#" + id + "  loading…"));
+            backend.set_pr_subtitle(ss(""));
+            set_files({});  // no cache yet — don't leave the working-tree files showing
+            set_commits({}, false);
+        }
+
         const diffy::review::Credential cred = *state.bitbucket_cred;
         const std::string ws = parsed->owner, repo = parsed->repo;
+        const bool select_first = !had_cache;
         const uint64_t gen = state.load_generation;
-        load_threads.emplace_back([&, id, ws, repo, cred, gen]() {
+        load_threads.emplace_back([&, id, ws, repo, cred, key, select_first, gen]() {
             diffy::review::BitbucketCloudClient client(*review_http, cred, ws, repo);
             auto pr = client.get(id);
             auto refs = client.refs(id);
             auto files = client.files(id);
             auto commits = client.commits(id);
 
-            auto fc = std::make_shared<std::vector<diffy::gui::FileChange>>();
+            State::PrDetail d;
+            d.refs = refs ? refs.value() : diffy::review::PrRefs{};
             if (files) {
                 for (const auto& f : files.value()) {
                     diffy::gui::FileChange c;
@@ -991,10 +1051,9 @@ main(int argc, char** argv) {
                                : f.status == "deleted" ? "D"
                                : f.status == "renamed" ? "R"
                                                        : "M";
-                    fc->push_back(std::move(c));
+                    d.files.push_back(std::move(c));
                 }
             }
-            auto ci = std::make_shared<std::vector<diffy::gui::CommitInfo>>();
             if (commits) {
                 for (const auto& c : commits.value()) {
                     diffy::gui::CommitInfo x;
@@ -1002,35 +1061,24 @@ main(int argc, char** argv) {
                     x.short_oid = c.short_sha;
                     x.summary = c.summary;
                     x.author = c.author;
-                    ci->push_back(std::move(x));
+                    d.commits.push_back(std::move(x));
                 }
             }
-            auto refsp = std::make_shared<diffy::review::PrRefs>(
-                refs ? refs.value() : diffy::review::PrRefs{});
-            const std::string title = pr ? pr.value().title : ("PR #" + id);
-            const std::string sub =
-                pr ? (pr.value().src_branch + " → " + pr.value().dst_branch + "  ·  " +
-                      approval_str(pr.value().state))
-                   : std::string{};
+            d.title = pr ? pr.value().title : ("PR #" + id);
+            d.subtitle = pr ? (pr.value().src_branch + " → " + pr.value().dst_branch + "  ·  " +
+                               approval_str(pr.value().state))
+                            : std::string{};
             const std::string err = files ? std::string{} : files.error().message;
 
-            slint::invoke_from_event_loop([&, id, fc, ci, refsp, title, sub, err, gen]() {
+            slint::invoke_from_event_loop([&, id, d, key, select_first, err, gen]() {
                 if (gen != state.load_generation || state.current_pr != id) {
                     return;
                 }
-                state.pr_refs = *refsp;
-                backend.set_pr_title(ss("#" + id + "  " + title));
-                backend.set_pr_subtitle(ss(sub));
-                set_files(*fc);
-                set_commits(*ci, false);
-                if (!err.empty()) {
-                    backend.set_status_text(ss("Couldn't load PR files: " + err));
-                }
-                if (!fc->empty()) {
-                    open_file(fc->front().path);
+                if (err.empty()) {
+                    state.pr_detail_cache[key] = d;  // cache + swap in the fresh result
+                    apply_pr_detail(id, d, select_first);
                 } else {
-                    backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
-                    backend.set_current_file(ss(""));
+                    backend.set_status_text(ss("Couldn't load PR: " + err));
                 }
             });
         });
@@ -1079,6 +1127,24 @@ main(int argc, char** argv) {
     // Detect whether the open repo's origin is a connected Bitbucket remote and,
     // if so, list its open PRs into the right sidebar. Runs the network call off
     // the UI thread; a load_generation check drops results if the repo switched.
+    // Build the PrEntry model from neutral PRs and push it to the sidebar.
+    auto show_prs = [&](const std::vector<diffy::review::PullRequest>& prs) {
+        auto model = std::make_shared<slint::VectorModel<PrEntry>>();
+        for (const auto& pr : prs) {
+            PrEntry e;
+            e.id = ss(pr.id);
+            e.title = ss(pr.title);
+            e.author = ss(pr.author);
+            e.source = ss(pr.src_branch);
+            e.dest = ss(pr.dst_branch);
+            e.state = ss(approval_str(pr.state));
+            e.comments = pr.comment_count;
+            e.updated = ss(pr.updated);
+            model->push_back(e);
+        }
+        backend.set_pull_requests(model);
+    };
+
     auto refresh_prs = [&]() {
         if (!state.repo || !state.bitbucket_cred) {
             backend.set_has_bitbucket(false);
@@ -1090,44 +1156,40 @@ main(int argc, char** argv) {
             return;
         }
         backend.set_has_bitbucket(true);
-        backend.set_loading_prs(true);
         const std::string ws = parsed->owner;
         const std::string repo = parsed->repo;
+        const std::string key = ws + "/" + repo;
+        // Show the last result instantly; only clear when nothing is cached (so a
+        // repo switch doesn't leave the previous repo's PRs showing).
+        auto it = state.pr_list_cache.find(key);
+        if (it != state.pr_list_cache.end()) {
+            show_prs(it->second);
+        } else {
+            backend.set_pull_requests(std::make_shared<slint::VectorModel<PrEntry>>());
+        }
+        backend.set_loading_prs(true);
         const diffy::review::Credential cred = *state.bitbucket_cred;
         const uint64_t gen = state.load_generation;
-        load_threads.emplace_back([&, ws, repo, cred, gen]() {
+        load_threads.emplace_back([&, ws, repo, key, cred, gen]() {
             diffy::review::BitbucketCloudClient client(*review_http, cred, ws, repo);
             auto prs = client.list_open();
-            auto rows = std::make_shared<std::vector<PrEntry>>();
+            auto items = std::make_shared<std::vector<diffy::review::PullRequest>>();
             std::string err;
             if (prs) {
-                for (const auto& pr : prs.value().items) {
-                    PrEntry e;
-                    e.id = ss(pr.id);
-                    e.title = ss(pr.title);
-                    e.author = ss(pr.author);
-                    e.source = ss(pr.src_branch);
-                    e.dest = ss(pr.dst_branch);
-                    e.state = ss(approval_str(pr.state));
-                    e.comments = pr.comment_count;
-                    e.updated = ss(pr.updated);
-                    rows->push_back(std::move(e));
-                }
+                *items = std::move(prs.value().items);
             } else {
                 err = prs.error().message;
-                diffy::review::log_line("list_open(" + ws + "/" + repo + ") failed: " + err);
+                diffy::review::log_line("list_open(" + key + ") failed: " + err);
             }
-            slint::invoke_from_event_loop([&, rows, gen, err]() {
+            slint::invoke_from_event_loop([&, items, key, gen, err]() {
                 if (gen != state.load_generation) {
                     return;  // repo switched while listing
                 }
-                auto model = std::make_shared<slint::VectorModel<PrEntry>>();
-                for (auto& e : *rows) {
-                    model->push_back(e);
-                }
-                backend.set_pull_requests(model);
                 backend.set_loading_prs(false);
-                if (!err.empty()) {
+                if (err.empty()) {
+                    state.pr_list_cache[key] = *items;  // cache + swap in the fresh result
+                    show_prs(*items);
+                } else {
                     backend.set_status_text(ss("Couldn't load PRs: " + err));
                 }
             });
@@ -1189,8 +1251,8 @@ main(int argc, char** argv) {
             backend.set_current_file(ss(""));
         }
 
-        // Detect a hosted-review remote and list its PRs into the sidebar.
-        backend.set_pull_requests(std::make_shared<slint::VectorModel<PrEntry>>());
+        // Detect a hosted-review remote and list its PRs into the sidebar
+        // (cache-first + background swap; see refresh_prs).
         refresh_prs();
     };
 
@@ -1393,8 +1455,8 @@ main(int argc, char** argv) {
     };
     auto soft_refresh = [&]() {
         if (state.repo_path.empty() || state.soft_refreshing || backend.get_loading() ||
-            !state.current_commit.empty()) {
-            return;  // busy, mid-load, or browsing a commit — skip this tick
+            !state.current_commit.empty() || !state.current_pr.empty()) {
+            return;  // busy, mid-load, browsing a commit, or in PR mode — skip
         }
         state.soft_refreshing = true;
         const uint64_t gen = state.load_generation;
