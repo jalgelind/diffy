@@ -181,6 +181,18 @@ Repo::head_branch() const {
     return out;
 }
 
+std::string
+Repo::origin_url() const {
+    git_remote* remote = nullptr;
+    if (git_remote_lookup(&remote, repo_, "origin") != 0) {
+        return "";
+    }
+    const char* url = git_remote_url(remote);
+    std::string out = url ? url : "";
+    git_remote_free(remote);
+    return out;
+}
+
 std::vector<FileChange>
 Repo::status() const {
     std::vector<FileChange> out;

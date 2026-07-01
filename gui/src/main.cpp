@@ -167,6 +167,20 @@ join_path(const std::string& base, const std::string& rel) {
     return out;
 }
 
+// Short, user-facing label for a PR's review state (shown in the sidebar).
+const char*
+approval_str(diffy::review::ApprovalState s) {
+    using A = diffy::review::ApprovalState;
+    switch (s) {
+        case A::Approved: return "approved";
+        case A::ChangesRequested: return "changes requested";
+        case A::Draft: return "draft";
+        case A::Merged: return "merged";
+        case A::Declined: return "declined";
+        default: return "open";
+    }
+}
+
 }  // namespace
 
 namespace {
@@ -927,6 +941,64 @@ main(int argc, char** argv) {
         backend.set_status_text(ss("Not a git repository: " + path));
     };
 
+    // Detect whether the open repo's origin is a connected Bitbucket remote and,
+    // if so, list its open PRs into the right sidebar. Runs the network call off
+    // the UI thread; a load_generation check drops results if the repo switched.
+    auto refresh_prs = [&]() {
+        if (!state.repo || !state.bitbucket_cred) {
+            backend.set_has_bitbucket(false);
+            return;
+        }
+        auto parsed = diffy::review::parse_remote_url(state.repo->origin_url());
+        if (!parsed || parsed->host.find("bitbucket.org") == std::string::npos) {
+            backend.set_has_bitbucket(false);
+            return;
+        }
+        backend.set_has_bitbucket(true);
+        backend.set_loading_prs(true);
+        const std::string ws = parsed->owner;
+        const std::string repo = parsed->repo;
+        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const uint64_t gen = state.load_generation;
+        load_threads.emplace_back([&, ws, repo, cred, gen]() {
+            diffy::review::BitbucketCloudClient client(*review_http, cred, ws, repo);
+            auto prs = client.list_open();
+            auto rows = std::make_shared<std::vector<PrEntry>>();
+            std::string err;
+            if (prs) {
+                for (const auto& pr : prs.value().items) {
+                    PrEntry e;
+                    e.id = ss(pr.id);
+                    e.title = ss(pr.title);
+                    e.author = ss(pr.author);
+                    e.source = ss(pr.src_branch);
+                    e.dest = ss(pr.dst_branch);
+                    e.state = ss(approval_str(pr.state));
+                    e.comments = pr.comment_count;
+                    e.updated = ss(pr.updated);
+                    rows->push_back(std::move(e));
+                }
+            } else {
+                err = prs.error().message;
+                diffy::review::log_line("list_open(" + ws + "/" + repo + ") failed: " + err);
+            }
+            slint::invoke_from_event_loop([&, rows, gen, err]() {
+                if (gen != state.load_generation) {
+                    return;  // repo switched while listing
+                }
+                auto model = std::make_shared<slint::VectorModel<PrEntry>>();
+                for (auto& e : *rows) {
+                    model->push_back(e);
+                }
+                backend.set_pull_requests(model);
+                backend.set_loading_prs(false);
+                if (!err.empty()) {
+                    backend.set_status_text(ss("Couldn't load PRs: " + err));
+                }
+            });
+        });
+    };
+
     auto apply_files = [&](std::shared_ptr<LoadFiles> f, uint64_t gen) {
         if (gen != state.load_generation) {
             return;
@@ -981,6 +1053,10 @@ main(int argc, char** argv) {
             backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
             backend.set_current_file(ss(""));
         }
+
+        // Detect a hosted-review remote and list its PRs into the sidebar.
+        backend.set_pull_requests(std::make_shared<slint::VectorModel<PrEntry>>());
+        refresh_prs();
     };
 
     auto load_repo = [&](const std::string& path) {
@@ -1297,6 +1373,14 @@ main(int argc, char** argv) {
         ui->window().dispatch_key_release_event(t);
     });
 
+    backend.on_refresh_prs([&]() { refresh_prs(); });
+    backend.on_open_pr([&](slint::SharedString id) {
+        // Full PR detail view (files + commits + back) is a later task; for now
+        // surface the selection so the wiring is visible.
+        diffy::review::log_line(std::string("open_pr: ") + str(id));
+        backend.set_status_text(ss("Pull request #" + str(id)));
+    });
+
     // Connect Bitbucket: verify the credentials live (whoami) off the UI thread,
     // store the token in the OS credential vault on success, and — when a
     // workspace+repo are supplied — fetch an open-PR count so the connection can
@@ -1406,6 +1490,8 @@ main(int argc, char** argv) {
                         state.settings.bitbucket_account = u;
                         gui_settings_save(state.settings);
                     }
+                    // If the open repo is a Bitbucket remote, populate the sidebar now.
+                    refresh_prs();
                 }
             });
         });

@@ -64,6 +64,10 @@ class Repo {
     workdir() const;
     std::string
     head_branch() const;
+    // URL of the "origin" remote (empty if there is none). Used to detect which
+    // hosted-review backend, if any, owns this repository.
+    std::string
+    origin_url() const;
 
     // Working-tree + index changes (porcelain-style status).
     std::vector<FileChange>

@@ -46,6 +46,19 @@ export struct CommitEntry {
     summary: string,
 }
 
+// One open pull request shown in the right sidebar (from a hosted-review
+// backend). `state` is a short glyph/word for the approval state.
+export struct PrEntry {
+    id: string,
+    title: string,
+    author: string,
+    source: string,
+    dest: string,
+    state: string,
+    comments: int,
+    updated: string,
+}
+
 // ---- option-bar state, shared with C++ -------------------------------------
 
 export global DiffOptions {
@@ -117,6 +130,14 @@ export global Backend {
     // event — a workaround for the upstream Slint/winit stuck-modifier bug that
     // drops AltGr characters like "@" (Slint #6263). See main.cpp.
     callback type-text(string);
+
+    // Pull requests for the current repo (populated when its origin is a Bitbucket
+    // remote and an account is connected). See main.cpp detection.
+    in property <bool> has-bitbucket: false;
+    in property <bool> loading-prs: false;
+    in property <[PrEntry]> pull-requests;
+    callback open-pr(string);    // pr id
+    callback refresh-prs();
     in-out property <int> tab-width: 4;
     in property <[string]> font-choices;   // curated monospace families (per-OS)
     in property <[string]> theme-names;     // theme .conf files found on disk
@@ -1297,6 +1318,65 @@ component CommitsPanel inherits Rectangle {
     VerticalLayout {
         padding: 8px;
         spacing: 6px;
+
+        // Pull requests — shown when the repo's origin is a connected Bitbucket
+        // remote (see main.cpp detection). Lists open PRs; clicking one opens it.
+        if Backend.has-bitbucket : HorizontalLayout {
+            SectionLabel { text: "PULL REQUESTS"; }
+            Rectangle { horizontal-stretch: 1; }
+            pr-refresh := TouchArea {
+                width: 40px;
+                clicked => { Backend.refresh-prs(); }
+                Text {
+                    text: "↻";
+                    color: pr-refresh.has-hover ? Backend.accent : Backend.gutter-fg;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        if Backend.has-bitbucket : ListView {
+            vertical-stretch: 1;
+            horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+            for pr in Backend.pull-requests : Rectangle {
+                height: 52px;
+                background: pr-ta.has-hover ? Backend.hover : transparent;
+                pr-ta := TouchArea { clicked => { Backend.open-pr(pr.id); } }
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    padding-top: 5px;
+                    padding-bottom: 5px;
+                    spacing: 6px;
+                    VerticalLayout {
+                        Text {
+                            text: pr.title;
+                            color: Backend.fg;
+                            font-size: 12px;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: "#" + pr.id + "  " + pr.source + " → " + pr.dest + "  ·  " + pr.state
+                                  + (pr.comments > 0 ? "  ·  " + pr.comments + " 💬" : "");
+                            color: Backend.gutter-fg;
+                            font-size: 10px;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
+        }
+        if Backend.has-bitbucket && Backend.loading-prs : Text {
+            text: "Loading pull requests…";
+            color: Backend.gutter-fg;
+            font-size: 11px;
+        }
+        if Backend.has-bitbucket && !Backend.loading-prs && Backend.pull-requests.length == 0 : Text {
+            text: "No open pull requests";
+            color: Backend.gutter-fg;
+            font-size: 11px;
+        }
+
         // Working-tree entry: selecting it leaves any historical commit and shows
         // the uncommitted changes (and, once something is staged, the commit box).
         Rectangle {
