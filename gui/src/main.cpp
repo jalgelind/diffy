@@ -1263,6 +1263,20 @@ main(int argc, char** argv) {
         }
     });
 
+    // Inject text into the focused field via a synthetic, modifier-free key event.
+    // Works around the upstream Slint/winit stuck-modifier bug (Slint #6263) that
+    // drops AltGr-composed characters like "@" on Nordic layouts: the synthetic
+    // event carries no Ctrl/Alt, so the text is inserted at the cursor regardless
+    // of the corrupted physical-modifier state.
+    backend.on_type_text([&](slint::SharedString t) {
+        // Insert `t` at the focused field's cursor via a synthetic, modifier-free
+        // key event (the .slint re-focuses the field first). Logged so we can see
+        // the handler fire and confirm the dispatch path.
+        diffy::review::log_line(std::string("type_text: dispatching '") + str(t) + "'");
+        ui->window().dispatch_key_press_event(t);
+        ui->window().dispatch_key_release_event(t);
+    });
+
     // Connect Bitbucket: verify the credentials live (whoami) off the UI thread,
     // store the token in the OS credential vault on success, and — when a
     // workspace+repo are supplied — fetch an open-PR count so the connection can

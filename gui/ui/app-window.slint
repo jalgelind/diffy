@@ -113,6 +113,10 @@ export global Backend {
     in property <bool> bitbucket-connected: false;
     in property <string> bitbucket-status: "";
     callback connect-bitbucket(string, string, string, string);  // workspace, repo, username, app-password
+    // Inject text into the focused field via a synthetic (modifier-free) key
+    // event — a workaround for the upstream Slint/winit stuck-modifier bug that
+    // drops AltGr characters like "@" (Slint #6263). See main.cpp.
+    callback type-text(string);
     in-out property <int> tab-width: 4;
     in property <[string]> font-choices;   // curated monospace families (per-OS)
     in property <[string]> theme-names;     // theme .conf files found on disk
@@ -1557,7 +1561,22 @@ component BitbucketPanel inherits Rectangle {
             VerticalLayout {
                 spacing: 4px;
                 Text { text: "ATLASSIAN EMAIL  (leave blank for a Bitbucket access token)"; color: Backend.gutter-fg; font-size: 11px; }
-                bb-user := LineEdit { placeholder-text: "you@example.com — optional"; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    bb-user := LineEdit { placeholder-text: "you@example.com — optional"; horizontal-stretch: 1; }
+                    // Inserts "@" at the cursor for keyboard layouts where AltGr is
+                    // dropped (Slint #6263). Re-focus the field first, then dispatch
+                    // a synthetic key event: dispatch targets the focused item, and
+                    // clicking the button had moved focus away (which is why nothing
+                    // happened before).
+                    Button {
+                        text: "@";
+                        clicked => {
+                            bb-user.focus();
+                            Backend.type-text("@");
+                        }
+                    }
+                }
             }
             VerticalLayout {
                 spacing: 4px;
