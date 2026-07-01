@@ -45,7 +45,11 @@ gui/src/review/
   review_provider.hpp  the interface
   auth.hpp             AuthDescriptor, Credential, OAuth device-flow hook
   registry.{hpp,cc}    remote URL -> provider plugin (self-hosted overrides)
-  http_client.{hpp,cc} libcurl wrapper; hides pagination styles + backoff
+  http_client.hpp      HttpClient interface (request -> {status,headers,body})
+  http_win.cpp         WinHTTP backend      (#if _WIN32)
+  http_mac.mm          NSURLSession backend (#if __APPLE__, Obj-C++)
+  http_curl.cc         libcurl backend      (Linux / fallback)
+  pager.{hpp,cc}       pagination + backoff, backend-agnostic (over HttpClient)
   secret_store.{hpp,cc} interface + per-OS impl (Win/Mac)
   conformance.hpp      shared test suite every provider must pass
   providers/
@@ -270,13 +274,21 @@ on the left opens the aggregate diff; selecting a commit narrows to `PrCommit`.
 
 | Concern      | Windows                       | macOS                                   | CMake                                    |
 |--------------|-------------------------------|-----------------------------------------|------------------------------------------|
-| HTTP         | vcpkg libcurl (Schannel)      | vcpkg/brew libcurl (SecureTransport)    | `find_package(CURL)` → `CURL::libcurl`   |
+| HTTP         | WinHTTP (`winhttp`)           | NSURLSession (`Foundation`; `.mm`)      | per-OS sources + `target_link_libraries` |
 | JSON         | submodule `subprojects/json`  | same                                    | `nlohmann_json::nlohmann_json`           |
 | Secret store | `Advapi32` (CredRead/Write)   | `Security.framework` (Keychain; already linked) | per-OS `target_link_libraries`   |
 
-TLS handled by libcurl's platform backend — no OpenSSL to ship. Credential code
-sits behind `SecretStore` with `#if defined(_WIN32)/__APPLE__`, mirroring the
-existing Win32-helpers-in-`main.cpp` / APPLE-frameworks-in-CMake split.
+**HTTP is OS-native, not a third-party library.** For HTTPS-only traffic to a few
+API hosts, the costly cross-platform concern is TLS trust + proxy, not the HTTP
+verbs — and header-only clients (cpp-httplib, mongoose, Beast) all require
+bundling OpenSSL/mbedTLS *and* a CA-cert bundle to do TLS, which is exactly the
+weight we avoid. WinHTTP + NSURLSession reuse the OS TLS stack, trust store, and
+system proxy for **zero dependency** and the smallest binary, behind a tiny
+`HttpClient` interface (`request(method,url,headers,body) -> {status,headers,body}`).
+libcurl (built against Schannel/SecureTransport, no OpenSSL) is the documented
+fallback and the **Linux** backend, dropped in behind the same interface. This
+mirrors the existing per-OS split (Win32 helpers in `main.cpp`, APPLE frameworks
+in CMake) — and `SecretStore` is per-OS for the same reason.
 
 ---
 
@@ -291,9 +303,11 @@ existing Win32-helpers-in-`main.cpp` / APPLE-frameworks-in-CMake split.
   test that the seam holds. *Exit:* both pass identical conformance assertions.
 - **P1 — Read-only browse.** Detection in `apply_files`; Connect card; right-sidebar
   router; `PrList` grouping; `PrDetail` (PR header + commits + back); left-panel PR
-  files; file open via local-first sourcing (fetch refs → `diff_oids`, three-dot).
+  files; file open via local-first sourcing (fetch refs → `diff_oids`, three-dot);
+  **`PrCommit`** — selecting a PR commit narrows the diff to that commit
+  (`parent..commit`), analogous to local commit browsing.
   *Exit:* pick a hosted repo → open PRs → open one → browse every file with full
-  diffy rendering, entirely read-only.
+  diffy rendering (aggregate or per-commit), entirely read-only.
 - **P2 — Read comments.** Fetch + render inline/general threads anchored to rows,
   plus the collapsed "Outdated" section.
 - **P3 — Write comments.** Compose from the gutter; reply; edit/delete; batched
@@ -322,10 +336,12 @@ existing Win32-helpers-in-`main.cpp` / APPLE-frameworks-in-CMake split.
   `DiffContext`.
 - **Bitbucket Cloud first, GitHub second** as the abstraction proof.
 - UI/navigation bind to the **neutral model + `Capabilities`** only.
+- **HTTP is OS-native** (WinHTTP + NSURLSession) behind an `HttpClient` interface;
+  no third-party HTTP/TLS dependency. libcurl is the Linux/fallback backend.
+- **`PrCommit`** (per-commit narrowing inside a PR) ships in **P1**.
 
 ## 13. Open questions
 
-- Second proof-of-concept backend: **GitHub** (recommended) vs GitLab / Bitbucket
-  Server — confirm before P0.5.
-- curl delivery on macOS: all-vcpkg (recommended, reproducible) vs Homebrew.
-- Whether `PrCommit` (per-commit narrowing inside a PR) ships in P1 or is deferred.
+- Residual only: the macOS HTTP backend is Obj-C++ (`.mm`) — confirm the build
+  already compiles `.mm` for the GUI target (Slint's Apple path suggests yes;
+  verify when P0 scaffolding lands). No design questions outstanding.
