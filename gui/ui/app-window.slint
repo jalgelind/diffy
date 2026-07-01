@@ -104,6 +104,15 @@ export global Backend {
     in-out property <int> font-size: 13;
     // Settings panel state + values it edits.
     in-out property <bool> show-settings: false;
+    // Bitbucket "Connect" dialog (P1 Connect card). Credentials are verified live
+    // (whoami) off the UI thread; with a workspace+repo an open-PR count is also
+    // fetched so the connection can be tested end-to-end. The token is stored in
+    // the OS credential vault, never in config.
+    in-out property <bool> show-bitbucket: false;
+    in property <bool> bitbucket-connecting: false;
+    in property <bool> bitbucket-connected: false;
+    in property <string> bitbucket-status: "";
+    callback connect-bitbucket(string, string, string, string);  // workspace, repo, username, app-password
     in-out property <int> tab-width: 4;
     in property <[string]> font-choices;   // curated monospace families (per-OS)
     in property <[string]> theme-names;     // theme .conf files found on disk
@@ -288,6 +297,7 @@ component LineEdit inherits Rectangle {
     in property <string> placeholder-text;
     in-out property <string> text <=> ti.text;
     in property <bool> enabled <=> ti.enabled;
+    in property <bool> password: false;  // mask input (App passwords / tokens)
     out property <bool> has-focus <=> ti.has-focus;
     callback edited(string);
     callback accepted();
@@ -317,6 +327,7 @@ component LineEdit inherits Rectangle {
         color: Backend.fg;
         font-size: 13px;
         single-line: true;
+        input-type: root.password ? InputType.password : InputType.text;
         vertical-alignment: center;
         edited => { root.edited(self.text); }
         accepted => { root.accepted(); }
@@ -1478,9 +1489,99 @@ component SettingsPanel inherits Rectangle {
                 }
             }
 
+            // Pull-request review: open the Bitbucket connect dialog.
+            VerticalLayout {
+                spacing: 6px;
+                Text { text: "PULL REQUESTS"; color: Backend.gutter-fg; font-size: 11px; }
+                Button {
+                    text: Backend.bitbucket-connected ? "Bitbucket — connected ✓" : "Connect Bitbucket…";
+                    clicked => {
+                        Backend.show-settings = false;
+                        Backend.show-bitbucket = true;
+                    }
+                }
+            }
+
             HorizontalLayout {
                 alignment: end;
                 Button { text: "Done"; clicked => { Backend.show-settings = false; } }
+            }
+        }
+    }
+}
+
+// ---- Bitbucket connect dialog ----------------------------------------------
+
+component BitbucketPanel inherits Rectangle {
+    background: #00000099;
+    visible: Backend.show-bitbucket;
+    backdrop-ta := TouchArea { clicked => { Backend.show-bitbucket = false; } }
+
+    Rectangle {
+        width: 460px;
+        height: card.preferred-height;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        background: Backend.panel-bg;
+        border-radius: 10px;
+        border-width: 1px;
+        border-color: Backend.divider;
+        TouchArea {}  // swallow clicks so they don't dismiss via the backdrop
+
+        card := VerticalLayout {
+            padding: 22px;
+            spacing: 14px;
+
+            Text { text: "Connect Bitbucket"; color: Backend.fg; font-size: 17px; font-weight: 600; }
+            Text {
+                text: "Create an App password (Bitbucket → Personal settings → App passwords) with "
+                    + "Pull requests: Read, then connect with your Bitbucket username. The token is "
+                    + "stored in the OS credential vault, never in config.";
+                color: Backend.gutter-fg;
+                font-size: 11px;
+                wrap: word-wrap;
+            }
+
+            VerticalLayout {
+                spacing: 4px;
+                Text { text: "WORKSPACE"; color: Backend.gutter-fg; font-size: 11px; }
+                bb-ws := LineEdit { placeholder-text: "e.g. myteam"; }
+            }
+            VerticalLayout {
+                spacing: 4px;
+                Text { text: "REPOSITORY  (optional — tests an open-PR count)"; color: Backend.gutter-fg; font-size: 11px; }
+                bb-repo := LineEdit { placeholder-text: "e.g. my-repo"; }
+            }
+            VerticalLayout {
+                spacing: 4px;
+                Text { text: "USERNAME"; color: Backend.gutter-fg; font-size: 11px; }
+                bb-user := LineEdit { placeholder-text: "Bitbucket username"; }
+            }
+            VerticalLayout {
+                spacing: 4px;
+                Text { text: "APP PASSWORD"; color: Backend.gutter-fg; font-size: 11px; }
+                bb-pass := LineEdit { placeholder-text: "app password"; password: true; }
+            }
+
+            if Backend.bitbucket-status != "" : Text {
+                text: Backend.bitbucket-status;
+                color: Backend.bitbucket-connected ? Backend.accent : Backend.fg;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                Button { text: "Close"; clicked => { Backend.show-bitbucket = false; } }
+                Button {
+                    text: Backend.bitbucket-connecting ? "Connecting…" : "Connect";
+                    enabled: !Backend.bitbucket-connecting && bb-ws.text != "" && bb-user.text != ""
+                             && bb-pass.text != "";
+                    clicked => {
+                        Backend.connect-bitbucket(bb-ws.text, bb-repo.text, bb-user.text, bb-pass.text);
+                    }
+                }
             }
         }
     }
@@ -1509,6 +1610,10 @@ export component AppWindow inherits Window {
         key-pressed(event) => {
             if (event.text == Key.Escape && Backend.show-settings) {
                 Backend.show-settings = false;
+                return accept;
+            }
+            if (event.text == Key.Escape && Backend.show-bitbucket) {
+                Backend.show-bitbucket = false;
                 return accept;
             }
             if (event.text == Key.Escape && Backend.show-find) {
@@ -1825,6 +1930,7 @@ export component AppWindow inherits Window {
 
     // Settings overlay sits above everything.
     SettingsPanel {}
+    BitbucketPanel {}
 
     // Discard confirmation (destructive — always confirm first).
     if Backend.confirm-discard != "" : Rectangle {

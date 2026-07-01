@@ -8,6 +8,8 @@
 #include "highlight/highlight_palette.hpp"
 #include "render/diff_pipeline.hpp"
 #include "repo_model.hpp"
+#include "review/providers/bitbucket_cloud.hpp"
+#include "review/secret_store.hpp"
 
 #include <slint.h>
 
@@ -459,6 +461,11 @@ main(int argc, char** argv) {
 
     // Outstanding background repo-load threads, joined before libgit2 shuts down.
     std::vector<std::thread> load_threads;
+
+    // One HTTP client for the review layer (WinHTTP/NSURLSession/curl under the
+    // hood). Lives for the whole run; connect/verify calls use it from worker
+    // threads (joined before it is destroyed). See REVIEW-ROADMAP.md.
+    auto review_http = diffy::review::make_http_client();
 
     // --- typography + initial option-bar state from [gui] -------------------
     // Map a generic/empty (or legacy macOS-only "Menlo") family to a concrete
@@ -1253,6 +1260,56 @@ main(int argc, char** argv) {
         if (i >= 0 && i < static_cast<int>(state.repos.size())) {
             load_repo(state.repos[i].path);
         }
+    });
+
+    // Connect Bitbucket: verify the credentials live (whoami) off the UI thread,
+    // store the token in the OS credential vault on success, and — when a
+    // workspace+repo are supplied — fetch an open-PR count so the connection can
+    // be tested end-to-end. (Surfacing PRs in the sidebar is the rest of P1.)
+    backend.on_connect_bitbucket([&](slint::SharedString ws, slint::SharedString repo,
+                                     slint::SharedString user, slint::SharedString pass) {
+        backend.set_bitbucket_connecting(true);
+        backend.set_bitbucket_status(ss("Connecting…"));
+        const std::string w = str(ws), rp = str(repo), u = str(user), p = str(pass);
+        load_threads.emplace_back([&, w, rp, u, p]() {
+            namespace rv = diffy::review;
+            rv::Credential cred;
+            cred.method = rv::AuthMethod::BasicToken;
+            cred.principal = u;
+            cred.secret = p;
+            rv::BitbucketCloudClient client(*review_http, cred, w, rp);
+
+            bool ok = false;
+            std::string status;
+            auto who = client.whoami();
+            if (!who) {
+                status = who.error().kind == rv::ErrorKind::Auth
+                             ? "Sign-in failed — check the username and App password."
+                             : ("Connection failed: " + who.error().message);
+            } else {
+                ok = true;
+                const std::string account = who.value().display_name.empty()
+                                                ? who.value().username
+                                                : who.value().display_name;
+                rv::SecretStore::set(
+                    rv::build_key("bitbucket-cloud", "https://api.bitbucket.org/2.0", u), p);
+                status = "Connected as " + account;
+                if (!rp.empty()) {
+                    auto prs = client.list_open();
+                    if (prs) {
+                        status += "  ·  " + std::to_string(prs.value().items.size()) +
+                                  " open PR(s) in " + w + "/" + rp;
+                    } else {
+                        status += "  ·  couldn't list PRs (" + prs.error().message + ")";
+                    }
+                }
+            }
+            slint::invoke_from_event_loop([&, ok, status]() {
+                backend.set_bitbucket_connecting(false);
+                backend.set_bitbucket_connected(ok);
+                backend.set_bitbucket_status(ss(status));
+            });
+        });
     });
     backend.on_select_file([&](slint::SharedString p) { open_file(str(p)); });
     backend.on_filter_files([&](slint::SharedString p) {
