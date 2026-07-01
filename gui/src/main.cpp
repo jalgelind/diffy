@@ -743,6 +743,7 @@ main(int argc, char** argv) {
             }
         }
         backend.set_file_sel_index(idx);
+        backend.set_changes_count(static_cast<int>(state.shown_files.size()));
     };
 
     auto set_files = [&](const std::vector<diffy::gui::FileChange>& changes) {
@@ -894,6 +895,7 @@ main(int argc, char** argv) {
         }
         state.repo = std::move(f->repo);
         state.current_commit.clear();  // opening a repo starts in working-tree mode
+        backend.set_on_working_tree(true);
         backend.set_loading(false);
         // Staged count (enables Commit) + local branches (for the checkout combo).
         int staged = 0;
@@ -999,6 +1001,7 @@ main(int argc, char** argv) {
             return;
         }
         state.current_commit = oid;
+        backend.set_on_working_tree(false);
         int idx = -1;
         for (size_t i = 0; i < state.shown_commits.size(); ++i) {
             if (state.shown_commits[i] == oid) {
@@ -1013,6 +1016,35 @@ main(int argc, char** argv) {
                                    std::to_string(changes.size()) + " file(s) — pick the repo to return"));
         if (!changes.empty()) {
             open_file(changes.front().path);
+        } else {
+            backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
+            backend.set_current_file(ss(""));
+        }
+        state.nav_pane = 0;
+    };
+
+    // Leave a historical commit and return to the working-tree (uncommitted) view.
+    // Re-scans status so the changes list and staged count are current, then opens
+    // the first changed file. Cheap enough to run on the UI thread.
+    auto select_working_tree = [&]() {
+        if (!state.repo) {
+            return;
+        }
+        state.current_commit.clear();
+        backend.set_on_working_tree(true);
+        backend.set_commit_sel_index(-1);
+        auto files = state.repo->status();
+        int staged = 0;
+        for (const auto& fc : files) {
+            if (fc.staged) {
+                ++staged;
+            }
+        }
+        backend.set_staged_count(staged);
+        set_files(files);
+        backend.set_status_text(ss(std::to_string(files.size()) + " changed file(s)"));
+        if (!files.empty()) {
+            open_file(files.front().path);
         } else {
             backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
             backend.set_current_file(ss(""));
@@ -1221,6 +1253,7 @@ main(int argc, char** argv) {
         render_files();
     });
     backend.on_select_commit([&](slint::SharedString oid) { select_commit(str(oid)); });
+    backend.on_select_working_tree([&]() { select_working_tree(); });
     backend.on_navigate([&](slint::SharedString d) { navigate(str(d)); });
     backend.on_refresh([&]() { refresh(); });
     backend.on_auto_refresh([&]() { soft_refresh(); });

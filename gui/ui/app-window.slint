@@ -82,6 +82,8 @@ export global Backend {
 
     in property <[string]> branch-names;   // local branches for the checkout combo
     in property <int> staged-count: 0;     // staged files (enables Commit)
+    in property <int> changes-count: 0;    // total working-tree changes (shown on the WT entry)
+    in property <bool> on-working-tree: true;  // false while browsing a historical commit
     in-out property <bool> group-by-folder: false;  // changes-list grouping mode
     in-out property <string> confirm-discard: "";  // path pending a discard confirm
     in property <string> current-file: "";
@@ -138,6 +140,7 @@ export global Backend {
     callback unstage-file(string);
     callback discard-file(string);  // destructive — confirm in the UI first
     callback commit(string, bool);  // message, amend
+    callback select-working-tree();  // return to the uncommitted-changes view
     callback checkout-branch(string);
     callback auto-refresh();        // periodic background status re-scan
     callback regroup-files();       // re-render the changes list after a grouping change
@@ -285,6 +288,7 @@ component LineEdit inherits Rectangle {
     in property <string> placeholder-text;
     in-out property <string> text <=> ti.text;
     in property <bool> enabled <=> ti.enabled;
+    out property <bool> has-focus <=> ti.has-focus;
     callback edited(string);
     callback accepted();
     // Makes the component focusable and forwards self.focus() to the TextInput.
@@ -316,6 +320,46 @@ component LineEdit inherits Rectangle {
         vertical-alignment: center;
         edited => { root.edited(self.text); }
         accepted => { root.accepted(); }
+    }
+}
+
+// Theme-aware multi-line text field (a word-wrapping TextInput inside a bordered
+// box that scrolls once the text outgrows it). Used for the commit body.
+component TextArea inherits Rectangle {
+    in property <string> placeholder-text;
+    in-out property <string> text <=> ti.text;
+    out property <bool> has-focus <=> ti.has-focus;
+    forward-focus: ti;
+    min-width: 40px;
+    border-radius: 5px;
+    border-width: 1px;
+    border-color: ti.has-focus ? Backend.accent : Backend.divider;
+    background: Backend.bg;
+    clip: true;
+    Text {
+        x: 8px;
+        y: 6px;
+        width: parent.width - 16px;
+        visible: ti.text == "";
+        text: root.placeholder-text;
+        color: Backend.gutter-fg;
+        font-size: 13px;
+        wrap: word-wrap;
+    }
+    // A Flickable lets the caret follow long bodies past the visible height.
+    Flickable {
+        x: 8px;
+        y: 6px;
+        width: parent.width - 16px;
+        height: parent.height - 12px;
+        viewport-height: max(self.height, ti.preferred-height);
+        ti := TextInput {
+            width: parent.width;
+            color: Backend.fg;
+            font-size: 13px;
+            single-line: false;
+            wrap: word-wrap;
+        }
     }
 }
 
@@ -1162,10 +1206,24 @@ component FilesPanel inherits Rectangle {
 
         // Commit bar — only while something is staged (nothing to commit otherwise),
         // which also hands its space back to the list when idle.
-        if Backend.staged-count > 0 : VerticalLayout {
+        if Backend.on-working-tree && Backend.staged-count > 0 : VerticalLayout {
             spacing: 6px;
-            commit-msg := LineEdit {
-                placeholder-text: "Commit message";
+            // The body editor stays hidden for quick one-line commits and unfolds
+            // once you engage the subject (focus it or type), matching git's
+            // subject / blank line / body convention.
+            property <bool> expanded: commit-subject.has-focus || commit-body.has-focus
+                || commit-subject.text != "" || commit-body.text != "";
+            commit-subject := LineEdit {
+                placeholder-text: "Summary";
+                // Enter in the summary drops into the body rather than committing,
+                // so multi-line messages are easy to write.
+                accepted => { commit-body.focus(); }
+            }
+            commit-body := TextArea {
+                placeholder-text: "Description (optional)";
+                visible: parent.expanded;
+                height: parent.expanded ? 76px : 0px;
+                animate height { duration: 120ms; easing: ease-out; }
             }
             HorizontalLayout {
                 spacing: 6px;
@@ -1173,10 +1231,15 @@ component FilesPanel inherits Rectangle {
                 Rectangle { horizontal-stretch: 1; }
                 Button {
                     text: "Commit (\{Backend.staged-count})";
-                    enabled: commit-msg.text != "";
+                    enabled: commit-subject.text != "";
                     clicked => {
-                        Backend.commit(commit-msg.text, amend-cb.checked);
-                        commit-msg.text = "";
+                        // git treats line 1 as the subject and the rest (after a
+                        // blank line) as the body.
+                        Backend.commit(commit-body.text != ""
+                            ? commit-subject.text + "\n\n" + commit-body.text
+                            : commit-subject.text, amend-cb.checked);
+                        commit-subject.text = "";
+                        commit-body.text = "";
                     }
                 }
             }
@@ -1219,6 +1282,48 @@ component CommitsPanel inherits Rectangle {
     VerticalLayout {
         padding: 8px;
         spacing: 6px;
+        // Working-tree entry: selecting it leaves any historical commit and shows
+        // the uncommitted changes (and, once something is staged, the commit box).
+        Rectangle {
+            height: 38px;
+            border-radius: 5px;
+            background: Backend.on-working-tree
+                        ? Backend.selection
+                        : (wtouch.has-hover ? Backend.hover : transparent);
+            wtouch := TouchArea { clicked => { Backend.select-working-tree(); } }
+            HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 6px;
+                spacing: 6px;
+                Rectangle {
+                    width: 14px;
+                    // A filled dot marks the live working tree (vs a commit's node).
+                    Rectangle {
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 4px;
+                        background: Backend.changes-count > 0 ? Backend.accent : Backend.gutter-fg;
+                    }
+                }
+                VerticalLayout {
+                    padding-top: 4px;
+                    padding-bottom: 4px;
+                    Text {
+                        text: "Uncommitted changes";
+                        color: Backend.fg;
+                        overflow: elide;
+                        font-size: 12px;
+                    }
+                    Text {
+                        text: Backend.changes-count > 0
+                              ? "\{Backend.changes-count} changed file(s)"
+                              : "working tree clean";
+                        color: Backend.gutter-fg;
+                        font-size: 10px;
+                    }
+                }
+            }
+        }
         SectionLabel { text: "RECENT COMMITS"; }
         commits-list := ListView {
             vertical-stretch: 1;
