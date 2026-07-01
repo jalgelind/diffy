@@ -1284,7 +1284,7 @@ main(int argc, char** argv) {
             auto who = client.whoami();
             if (!who) {
                 status = who.error().kind == rv::ErrorKind::Auth
-                             ? "Sign-in failed — check the username and App password."
+                             ? "Sign-in failed — check the email and API token (and its scopes)."
                              : ("Connection failed: " + who.error().message);
             } else {
                 ok = true;

@@ -569,10 +569,11 @@ bitbucket_cloud_plugin() {
         return std::make_unique<BitbucketCloudClient>(http, cred, u.owner, u.repo, base);
     };
     p.auth.methods = {AuthMethod::BasicToken};
-    p.auth.scopes = {"pullrequest", "pullrequest:write"};
+    p.auth.scopes = {"read:pullrequest:bitbucket", "write:pullrequest:bitbucket"};
     p.auth.help_text =
-        "Create an App Password (Bitbucket → Personal settings → App passwords) with "
-        "Pull requests: Read + Write, and sign in with your Bitbucket username.";
+        "Create a scoped API token (id.atlassian.com → Security → API tokens) with the "
+        "Bitbucket Pull requests read/write scopes, and sign in with your Atlassian account "
+        "email. App passwords are deprecated; Basic auth still carries the token.";
     return p;
 }
 

@@ -23,8 +23,10 @@
 namespace diffy::review {
 
 // How a credential authenticates against a backend.
-//   BasicToken  — username + App-Password/API-token sent via HTTP Basic
-//                 (Bitbucket Cloud). principal = username, secret = the token.
+//   BasicToken  — principal + secret sent via HTTP Basic. Bitbucket Cloud: a
+//                 scoped API token with the Atlassian account email as principal
+//                 (the preferred method; App passwords with a username are
+//                 deprecated but use the same Basic mechanism).
 //   Bearer      — a PAT or OAuth access token sent as `Authorization: Bearer …`
 //                 (GitHub/GitLab). principal is usually empty; secret = the token.
 //   OAuthDevice — obtained through the OAuth device flow; the resulting access

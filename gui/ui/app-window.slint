@@ -1534,9 +1534,10 @@ component BitbucketPanel inherits Rectangle {
 
             Text { text: "Connect Bitbucket"; color: Backend.fg; font-size: 17px; font-weight: 600; }
             Text {
-                text: "Create an App password (Bitbucket → Personal settings → App passwords) with "
-                    + "Pull requests: Read, then connect with your Bitbucket username. The token is "
-                    + "stored in the OS credential vault, never in config.";
+                text: "Create a scoped API token at id.atlassian.com → Security → API tokens with the "
+                    + "Bitbucket Pull requests (read/write) scopes, then sign in with your Atlassian "
+                    + "account email. (App passwords are being deprecated.) The token is stored in the "
+                    + "OS credential vault, never in config.";
                 color: Backend.gutter-fg;
                 font-size: 11px;
                 wrap: word-wrap;
@@ -1554,13 +1555,13 @@ component BitbucketPanel inherits Rectangle {
             }
             VerticalLayout {
                 spacing: 4px;
-                Text { text: "USERNAME"; color: Backend.gutter-fg; font-size: 11px; }
-                bb-user := LineEdit { placeholder-text: "Bitbucket username"; }
+                Text { text: "ATLASSIAN EMAIL"; color: Backend.gutter-fg; font-size: 11px; }
+                bb-user := LineEdit { placeholder-text: "you@example.com"; }
             }
             VerticalLayout {
                 spacing: 4px;
-                Text { text: "APP PASSWORD"; color: Backend.gutter-fg; font-size: 11px; }
-                bb-pass := LineEdit { placeholder-text: "app password"; password: true; }
+                Text { text: "API TOKEN"; color: Backend.gutter-fg; font-size: 11px; }
+                bb-pass := LineEdit { placeholder-text: "scoped API token"; password: true; }
             }
 
             if Backend.bitbucket-status != "" : Text {
