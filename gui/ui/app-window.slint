@@ -339,6 +339,11 @@ component DiffCellView inherits Rectangle {
         alignment: start;
         for line in lines : HorizontalLayout {
             alignment: start;
+            // No inter-span gap: spans must butt together so the rendered text width
+            // is exact. (The style's default layout-spacing would insert a gap
+            // between every span, and re-tokenising on WS-toggle changes the span
+            // count — making the spacing between words visibly shift.)
+            spacing: 0px;
             padding-left: 6px;
             min-height: line-h;
             for span in line.spans : Text {
