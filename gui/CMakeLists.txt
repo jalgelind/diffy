@@ -63,7 +63,8 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/subprojects/json
 set(DIFFY_REVIEW_SOURCES
   src/review/review.cc
   src/review/secret_store.cc
-  src/review/link_header.cc)
+  src/review/link_header.cc
+  src/review/registry.cc)
 if(WIN32)
   list(APPEND DIFFY_REVIEW_SOURCES src/review/http_win.cpp src/review/secret_store_win.cpp)
 elseif(APPLE)
@@ -144,9 +145,12 @@ if(DIFFY_BUILD_TESTS)
   add_executable(diffy-gui-logic-test
     src/repo_model.cc
     src/text_layout.cc
+    src/review/conformance.cc  # test-only harness (not shipped in diffy_review)
     tests/repo_model_tests.cc
     tests/text_layout_tests.cc
-    tests/review_tests.cc)
+    tests/review_tests.cc
+    tests/registry_tests.cc
+    tests/conformance_tests.cc)
   target_include_directories(diffy-gui-logic-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/subprojects/doctest/doctest)
