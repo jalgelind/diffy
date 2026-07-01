@@ -138,7 +138,18 @@ make_lines(const GuiTheme& t, const diffy::DiffCell& cell, int tab_width, bool w
         if (piece.empty()) {
             continue;
         }
-        runs.push_back(DisplayRun{std::move(piece), pack(span_fg(t, s)), is_bold(s.style)});
+        slint::Color color = span_fg(t, s);
+        bool bold = is_bold(s.style);
+        // Whitespace-only spans render with the plain text style regardless of the
+        // ignore-whitespace setting. Otherwise toggling WS restyles the spaces
+        // (colour/bold as a changed token), which shifts how spans split and makes
+        // the gaps between words appear to resize. (expand_for_display has already
+        // turned tabs/controls into spaces.)
+        if (piece.find_first_not_of(' ') == std::string::npos) {
+            color = t.fg;
+            bold = false;
+        }
+        runs.push_back(DisplayRun{std::move(piece), pack(color), bold});
     }
     out_width = col;
 
