@@ -75,14 +75,24 @@ copy_to_clipboard(const std::string& utf8) {
     CloseClipboard();
 }
 
+// libgit2 workdir paths (and our repo-relative paths) use forward slashes;
+// Explorer's shell — especially the `/select,` switch — only parses backslashes,
+// so an un-normalized path makes it give up and open the default folder.
+std::wstring
+to_windows_path(const std::string& s) {
+    std::wstring w = to_wide(s);
+    std::replace(w.begin(), w.end(), L'/', L'\\');
+    return w;
+}
+
 void
 shell_open(const std::string& abs_path) {
-    ShellExecuteW(nullptr, L"open", to_wide(abs_path).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    ShellExecuteW(nullptr, L"open", to_windows_path(abs_path).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 void
 shell_reveal(const std::string& abs_path) {
-    const std::wstring arg = L"/select,\"" + to_wide(abs_path) + L"\"";
+    const std::wstring arg = L"/select,\"" + to_windows_path(abs_path) + L"\"";
     ShellExecuteW(nullptr, L"open", L"explorer.exe", arg.c_str(), nullptr, SW_SHOWNORMAL);
 }
 #else
