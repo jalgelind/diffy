@@ -80,15 +80,18 @@ struct PullRequest {
 
 struct DiffContext { std::string base_sha, head_sha, start_sha; }; // provider-populated
 
-struct LineAnchor {                 // the make-or-break abstraction (see §4)
+struct TextPos { int line; std::optional<int> col; };  // 1-based; col in the LOGICAL file line
+
+struct RangeAnchor {                // the make-or-break abstraction (see §4)
   std::string new_path;
   std::optional<std::string> old_path;   // renames
-  Side side; int line;                    // what the UI produces from a clicked row
+  Side side;                              // a comment always anchors to ONE side
+  TextPos start, end;                     // start==end & no col => whole-line anchor
   DiffContext ctx;                        // SHAs; opaque to the UI
 };
 
 struct Comment { std::string id, parent_id, author, body_md, created; };
-struct ReviewThread { std::string id; LineAnchor anchor; bool outdated, resolved;
+struct ReviewThread { std::string id; RangeAnchor anchor; bool outdated, resolved;
                       std::vector<Comment> comments; };
 
 struct PrRefs { std::string head_ref, base_ref, head_sha, base_sha; };
@@ -100,20 +103,33 @@ Reused from `repo_model`: `FileChange` (diffstat) and `CommitInfo` (PR commits).
 
 ## 4. The anchoring abstraction (why the seam holds)
 
-The UI only ever builds `{new_path, side, line}` from the row a user clicks
-(`new_lineno` → `New`, `old_lineno` → `Old`). Each provider merges in the
-`DiffContext` it captured when loading the PR. Because we anchor by **absolute
-line + side** (not a diff "position"), it survives our local re-diff choosing
-different hunk boundaries than the server, and it is the one shape all backends
-can consume:
+The UI builds a `RangeAnchor` from the user's **text selection** (see §8a): the
+selection's start/end map to `{side, start.line/col, end.line/col}` — a whole-line
+click collapses to `start==end` with no col. Each provider merges in the
+`DiffContext` it captured when loading the PR, then **clamps the range to its own
+granularity** (§5): character-precise, line-range, or single-line. Because we
+anchor by **absolute line + side** (not a diff "position"), it survives our local
+re-diff choosing different hunk boundaries than the server, and it is the one shape
+all backends can consume:
 
-| Backend            | Inline-comment API shape                                             | Pulled from anchor        |
-|--------------------|---------------------------------------------------------------------|---------------------------|
-| Bitbucket Cloud    | `inline:{path, to \| from}`                                         | path + side/line          |
-| Bitbucket Server   | `anchor:{path, line, lineType, fileType}`                           | path + side/line          |
-| GitHub             | `{path, line, side, start_line?, commit_id}`                        | + `ctx.head_sha`          |
-| GitLab             | `position:{base_sha,start_sha,head_sha, old_path,new_path, old_line/new_line}` | + all three SHAs |
-| Azure DevOps       | `threadContext:{filePath, right/leftFileStart..End}`                | path + side/line → range  |
+| Backend            | Inline-comment API shape                                            | Granularity it keeps          |
+|--------------------|---------------------------------------------------------------------|-------------------------------|
+| Bitbucket Cloud    | `inline:{path, to \| from}`                                         | single line (drops end + col) |
+| GitHub             | `{path, line, side, start_line?, commit_id}` (+ `ctx.head_sha`)     | line range (drops col)        |
+| GitLab             | `position:{…sha…, old/new_path, old/new_line, line_range?}`         | line range (drops col)        |
+| Bitbucket Server   | `anchor:{path, line, lineType, fileType}` + text-selection offsets  | char range                    |
+| Azure DevOps       | `threadContext:{filePath, right/leftFileStart..End:{line,offset}}`  | char range                    |
+
+**Visual→logical mapping.** Since word-wrap splits a logical line into several
+rows, each row carries its logical file line *and its wrap start column*; a
+selection's visual `(row,col)` is translated back to logical `(file line, col)`
+before it enters the anchor. Line-range backends need only the file line (already
+in the row model); the wrap offset matters only for the char-range providers.
+
+**One side only.** A comment anchors to a single side, so selection for commenting
+is constrained to one cell (the old *or* new column in side-by-side; the row's own
+side in unified). Cross-divider selections are allowed for *copy* but snap to the
+dominant side when turned into a comment.
 
 **Content sourcing** is likewise generic — only the ref naming differs:
 
@@ -135,9 +151,11 @@ fetched.
 ## 5. Capabilities (gate, don't branch)
 
 ```cpp
+enum class CommentGranularity { Line, LineRange, CharRange };
+
 struct Capabilities {
   std::string item_noun = "pull request";  // GitLab: "merge request"
-  bool multi_line_comments;    // GH start_line, GL, BBS ranges; BB Cloud: false
+  CommentGranularity granularity;  // BB Cloud=Line, GH/GL=LineRange, BBS/ADO=CharRange
   bool pending_review_batch;   // GH batched review; else comments post immediately
   bool request_changes_state;  // GH/GL/ADO yes; BB Cloud: no explicit state
   bool suggestions;            // GH/GL suggested-change blocks
@@ -149,7 +167,10 @@ struct Capabilities {
 
 The PR-detail toolbar, comment composer, and labels render **from these flags**:
 "Request changes" hides on Bitbucket Cloud, "Suggest change" appears only where
-`suggestions`, the noun flips to "Merge request" on GitLab. One UI, N backends.
+`suggestions`, the noun flips to "Merge request" on GitLab. The selection→comment
+affordance respects `granularity` too — a multi-line drag offers a range comment
+where `LineRange`/`CharRange`, and otherwise snaps to a single line. One UI, N
+backends.
 
 ---
 
@@ -268,6 +289,39 @@ on the left opens the aggregate diff; selecting a commit narrows to `PrCommit`.
 `nav-mode` over three sub-views (`PrListView`, `PrDetailView`, existing
 `HistoryView`).
 
+### 8a. Text selection in the diff (range comments + copy)
+
+The diff rows are custom (per-visual-line `HorizontalLayout`s of coloured `Text`
+spans), and Slint `Text` isn't selectable — so selection is implemented over the
+row model rather than by a text widget. It's tractable because the view is
+**monospace with uniform row height** and we already measure the glyph advance
+(the calibration `Text`'s `preferred-width` that feeds `set-wrap-metrics`):
+
+- **Hit-testing.** A pointer drag over the diff maps `(x,y)` → `(row index, col)`
+  with `row = floor(y / rowH)` and `col = round((x − pad) / advance)` — exact for
+  monospace. Selection is stored in **logical model coordinates**
+  `{startRow,startCol,endRow,endCol}` (not pixels), so it survives ListView
+  virtualization and scrolling; each visible row draws its slice of the highlight
+  behind the spans.
+- **Two payoffs.** (1) **Copy** — reconstruct the selected text from the row
+  model's spans (a diff viewer wants this regardless of review); reuse the
+  existing Win32/`.mm` clipboard helper. (2) **Comment** — an active selection
+  raises a "Comment" affordance (gutter button / floating action) that opens the
+  composer with the range pre-anchored.
+- **Anchor construction.** Rows carry their `side` + logical `old_lineno/new_lineno`
+  + wrap start column, so a selection becomes a `RangeAnchor` (§4): visual
+  `(row,col)` → logical `(file line, col)`, side from the cell, cols dropped by
+  providers that are line-only.
+- **Constraints.** Selection for commenting stays within one side/cell; a cross-side
+  selection is fine for copy but snaps to the dominant side for a comment. The
+  composer only offers a *range* when `granularity != Line`.
+
+**Backend/Slint additions for selection:** a `DiffSelection`
+`{start-row,start-col,end-row,end-col,active}` bound to the diff view; callbacks
+`copy-selection()` and `comment-selection()` (the latter builds the `RangeAnchor`
+in C++ from the row model and opens the composer). No change to the row data model
+beyond the wrap-start-column already needed for char-range mapping.
+
 ---
 
 ## 9. Dependencies (Mac + Windows)
@@ -305,13 +359,18 @@ in CMake) — and `SecretStore` is per-OS for the same reason.
   router; `PrList` grouping; `PrDetail` (PR header + commits + back); left-panel PR
   files; file open via local-first sourcing (fetch refs → `diff_oids`, three-dot);
   **`PrCommit`** — selecting a PR commit narrows the diff to that commit
-  (`parent..commit`), analogous to local commit browsing.
+  (`parent..commit`), analogous to local commit browsing. Also lands the
+  **text-selection subsystem (§8a) with copy** — independently useful and the
+  prerequisite for range comments.
   *Exit:* pick a hosted repo → open PRs → open one → browse every file with full
-  diffy rendering (aggregate or per-commit), entirely read-only.
+  diffy rendering (aggregate or per-commit), select + copy text, entirely
+  read-only.
 - **P2 — Read comments.** Fetch + render inline/general threads anchored to rows,
   plus the collapsed "Outdated" section.
-- **P3 — Write comments.** Compose from the gutter; reply; edit/delete; batched
-  review submit where `pending_review_batch`.
+- **P3 — Write comments.** Compose from a whole-line gutter click *or* from a
+  **text-range selection** (§8a) — the composer anchors the `RangeAnchor` and each
+  provider clamps to its `granularity`; reply; edit/delete; batched review submit
+  where `pending_review_batch`.
 - **P4 — Approvals / merge.** Approve / unapprove / request-changes (per
   `Capabilities`); optional merge with confirm + strategy pick.
 - **P5 — More backends.** GitLab, Bitbucket Server/DC, Azure DevOps — implement +
@@ -332,8 +391,11 @@ in CMake) — and `SecretStore` is per-OS for the same reason.
 
 - Diff content is a **local re-diff of fetched commits**, never the server patch.
 - Aggregate PR diff defaults to **`merge-base(base,head)..head`** (three-dot).
-- Comment anchoring is by **absolute line + side**, provider-translated via
-  `DiffContext`.
+- Comment anchoring is a **range** (`{side, start, end}`, cols optional) built from
+  a **text selection**, provider-translated via `DiffContext` and clamped to each
+  backend's `granularity` (line / line-range / char-range).
+- **Text selection** in the diff is implemented over the row model using the
+  monospace advance + uniform row height (also powers copy); ships in P1.
 - **Bitbucket Cloud first, GitHub second** as the abstraction proof.
 - UI/navigation bind to the **neutral model + `Capabilities`** only.
 - **HTTP is OS-native** (WinHTTP + NSURLSession) behind an `HttpClient` interface;
