@@ -55,10 +55,40 @@ endif()
 # tasks; see REVIEW-ROADMAP.md.
 add_subdirectory(${CMAKE_SOURCE_DIR}/subprojects/json
                  ${CMAKE_BINARY_DIR}/subprojects/json EXCLUDE_FROM_ALL)
-add_library(diffy_review STATIC
-  src/review/review.cc)
+
+# Platform-neutral review sources + the OS backend for HTTP and secret storage.
+# The mac backends are Objective-C++ (.mm), which only Apple's toolchain can
+# compile — so select sources per-platform rather than listing all and relying on
+# #if guards (MSVC can't process a .mm at all).
+set(DIFFY_REVIEW_SOURCES
+  src/review/review.cc
+  src/review/secret_store.cc
+  src/review/link_header.cc)
+if(WIN32)
+  list(APPEND DIFFY_REVIEW_SOURCES src/review/http_win.cpp src/review/secret_store_win.cpp)
+elseif(APPLE)
+  enable_language(OBJCXX)
+  list(APPEND DIFFY_REVIEW_SOURCES src/review/http_mac.mm src/review/secret_store_mac.mm)
+else()
+  list(APPEND DIFFY_REVIEW_SOURCES src/review/http_curl.cc)
+endif()
+
+add_library(diffy_review STATIC ${DIFFY_REVIEW_SOURCES})
 target_include_directories(diffy_review PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(diffy_review PUBLIC nlohmann_json::nlohmann_json)
+
+# System libs for the backends (PUBLIC so they propagate through the static lib to
+# the final exe link). Windows: WinHTTP + Credential Manager. macOS: Foundation +
+# Keychain/Security. Linux: libcurl.
+if(WIN32)
+  target_link_libraries(diffy_review PUBLIC winhttp Advapi32)
+elseif(APPLE)
+  target_link_libraries(diffy_review PUBLIC
+    "-framework Foundation" "-framework Security" "-framework CoreFoundation")
+else()
+  find_package(CURL REQUIRED)
+  target_link_libraries(diffy_review PUBLIC CURL::libcurl)
+endif()
 
 add_executable(diffy-gui
   src/main.cpp
