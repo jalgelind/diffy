@@ -15,6 +15,7 @@
 #include <slint.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cmath>
 #include <condition_variable>
@@ -395,6 +396,14 @@ class ReviewPool {
     }
     ~ReviewPool() { stop(); }
 
+    // Set a callback invoked (possibly from a worker thread) whenever the in-flight
+    // count changes, with the new total. The callback must marshal to the UI thread
+    // itself. Set once before submitting work.
+    void
+    set_activity_callback(std::function<void(int)> cb) {
+        on_activity_ = std::move(cb);
+    }
+
     void
     submit(Prio p, Task fn) {
         {
@@ -404,14 +413,24 @@ class ReviewPool {
             }
             (p == Prio::Interactive ? hi_ : lo_).push_back(std::move(fn));
         }
+        inflight_.fetch_add(1);
+        notify_activity();
         cv_.notify_one();
     }
 
     // Drop pending speculative work (e.g. on a repo/PR switch).
     void
     clear_prefetch() {
-        std::lock_guard<std::mutex> lk(mu_);
-        lo_.clear();
+        int dropped = 0;
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            dropped = static_cast<int>(lo_.size());
+            lo_.clear();
+        }
+        if (dropped > 0) {
+            inflight_.fetch_sub(dropped);
+            notify_activity();
+        }
     }
 
     void
@@ -425,6 +444,7 @@ class ReviewPool {
             hi_.clear();
             lo_.clear();
         }
+        inflight_.store(0);
         cv_.notify_all();
         for (auto& t : threads_) {
             if (t.joinable()) {
@@ -457,6 +477,17 @@ class ReviewPool {
             if (task && client) {
                 task(*client);
             }
+            if (task) {
+                inflight_.fetch_sub(1);
+                notify_activity();
+            }
+        }
+    }
+
+    void
+    notify_activity() {
+        if (on_activity_) {
+            on_activity_(inflight_.load());
         }
     }
 
@@ -465,6 +496,8 @@ class ReviewPool {
     std::deque<Task> hi_;
     std::deque<Task> lo_;
     bool stop_ = false;
+    std::atomic<int> inflight_{0};  // queued + running
+    std::function<void(int)> on_activity_;
     std::vector<std::thread> threads_;
 };
 
@@ -825,6 +858,10 @@ main(int argc, char** argv) {
     // owns its own HttpClient; tasks post results to the UI thread. Stopped (and
     // joined) at shutdown before state is torn down. See REVIEW-ROADMAP.md.
     ReviewPool review_pool(4);
+    // Surface network activity in the status bar (marshalled to the UI thread).
+    review_pool.set_activity_callback([&](int n) {
+        slint::invoke_from_event_loop([&, n]() { backend.set_net_inflight(n); });
+    });
 
     // --- typography + initial option-bar state from [gui] -------------------
     // Map a generic/empty (or legacy macOS-only "Menlo") family to a concrete

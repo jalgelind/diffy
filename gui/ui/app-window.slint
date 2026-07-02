@@ -136,6 +136,7 @@ export global Backend {
     in-out property <int> find-current-row: -1;  // model row to highlight
     in property <string> branch: "";
     in property <string> status-text: "Open a repository to begin.";
+    in property <int> net-inflight: 0;  // in-flight network requests (status bar)
     in property <bool> loading: false;  // a repo open is in progress
     in property <bool> dark: true;      // active theme is dark (drives std-widget chrome)
     in property <int> max-cols: 0;  // longest line in chars, for horizontal scroll
@@ -2518,17 +2519,54 @@ export component AppWindow inherits Window {
             }
 
             // status bar — neutral chrome (accent can resolve to white/very light
-            // for some themes, which made this a blank white bar).
+            // for some themes, which made this a blank white bar). Left section is
+            // the general status message; the right section is reserved for network
+            // activity (in-flight request count + an activity dot).
             Rectangle {
                 height: 22px;
                 background: Backend.panel-bg;
                 Rectangle { y: 0; height: 1px; background: Backend.divider; }
-                Text {
-                    x: 8px;
-                    text: Backend.status-text;
-                    color: Backend.gutter-fg;
-                    font-size: 11px;
-                    vertical-alignment: center;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 8px;
+                    Text {
+                        text: Backend.status-text;
+                        color: Backend.gutter-fg;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                    }
+                    Rectangle { width: 1px; background: Backend.divider; }
+                    // Network section (right-aligned).
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Rectangle {
+                            width: 8px;
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: 7px;
+                                    height: 7px;
+                                    border-radius: 4px;
+                                    background: Backend.net-inflight > 0
+                                        ? Backend.accent
+                                        : Backend.divider;
+                                }
+                            }
+                        }
+                        Text {
+                            text: Backend.net-inflight > 0
+                                ? (Backend.net-inflight == 1
+                                    ? "1 request…"
+                                    : "\{Backend.net-inflight} requests…")
+                                : "idle";
+                            color: Backend.net-inflight > 0 ? Backend.accent : Backend.gutter-fg;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                    }
                 }
             }
         }
