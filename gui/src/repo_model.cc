@@ -62,6 +62,20 @@ commit_tree(git_commit* commit) {
     return tree;
 }
 
+// Look up a commit by a full or abbreviated hex sha (caller frees).
+git_commit*
+lookup_commit_flex(git_repository* repo, const std::string& sha) {
+    git_oid oid;
+    if (sha.empty() || git_oid_fromstrn(&oid, sha.data(), sha.size()) != 0) {
+        return nullptr;
+    }
+    git_commit* commit = nullptr;
+    const int rc = (sha.size() >= GIT_OID_HEXSZ)
+                       ? git_commit_lookup(&commit, repo, &oid)
+                       : git_commit_lookup_prefix(&commit, repo, &oid, sha.size());
+    return rc == 0 ? commit : nullptr;
+}
+
 git_tree*
 head_tree(git_repository* repo) {
     git_object* obj = nullptr;
@@ -396,6 +410,117 @@ Repo::diff_commit_file(const std::string& commit_oid, const std::string& path) c
     pair.note = classify_blob_pair(pair.old_text, pair.new_text);
     pair.ok = true;
     return pair;
+}
+
+BlobPair
+Repo::diff_oids(const std::string& old_sha, const std::string& new_sha,
+                const std::string& path) const {
+    BlobPair pair;
+    pair.old_name = path;
+    pair.new_name = path;
+    auto blob_at = [&](const std::string& sha) -> std::string {
+        git_commit* commit = lookup_commit_flex(repo_, sha);
+        if (!commit) {
+            return "";
+        }
+        git_tree* tree = commit_tree(commit);
+        std::string text = blob_text_in_tree(tree, path);
+        if (tree) {
+            git_tree_free(tree);
+        }
+        git_commit_free(commit);
+        return text;
+    };
+    if (!old_sha.empty()) {
+        pair.old_text = blob_at(old_sha);
+    }
+    if (!new_sha.empty()) {
+        pair.new_text = blob_at(new_sha);
+    }
+    pair.note = classify_blob_pair(pair.old_text, pair.new_text);
+    pair.ok = true;
+    return pair;
+}
+
+bool
+Repo::has_commit(const std::string& sha) const {
+    git_commit* commit = lookup_commit_flex(repo_, sha);
+    if (!commit) {
+        return false;
+    }
+    git_commit_free(commit);
+    return true;
+}
+
+std::string
+Repo::merge_base(const std::string& a, const std::string& b) const {
+    git_commit* ca = lookup_commit_flex(repo_, a);
+    git_commit* cb = lookup_commit_flex(repo_, b);
+    std::string out;
+    if (ca && cb) {
+        git_oid base;
+        if (git_merge_base(&base, repo_, git_commit_id(ca), git_commit_id(cb)) == 0) {
+            char buf[GIT_OID_HEXSZ + 1] = {0};
+            git_oid_tostr(buf, sizeof(buf), &base);
+            out = buf;
+        }
+    }
+    if (ca) {
+        git_commit_free(ca);
+    }
+    if (cb) {
+        git_commit_free(cb);
+    }
+    return out;
+}
+
+bool
+Repo::fetch_refspec(const std::string& url, const std::string& refspec, const std::string& user,
+                    const std::string& password, std::string* error) const {
+    auto capture = [&]() {
+        if (error) {
+            const git_error* e = git_error_last();
+            *error = e && e->message ? e->message : "unknown error";
+        }
+    };
+    git_remote* remote = nullptr;
+    // Anonymous HTTPS remote: independent of origin's protocol (origin may be SSH,
+    // where username/password auth wouldn't apply).
+    if (git_remote_create_anonymous(&remote, repo_, url.c_str()) != 0) {
+        capture();
+        return false;
+    }
+    struct Cred {
+        std::string user;
+        std::string pass;
+        int tries = 0;
+    } cred{user, password, 0};
+
+    git_fetch_options opts = GIT_FETCH_OPTIONS_INIT;
+    opts.callbacks.payload = &cred;
+    opts.callbacks.credentials = [](git_credential** out, const char* /*url*/,
+                                    const char* user_from_url, unsigned int /*allowed*/,
+                                    void* payload) -> int {
+        auto* c = static_cast<Cred*>(payload);
+        // Offer the credential once; if it's rejected, fail fast instead of letting
+        // libgit2 replay it (which ends in "too many authentication replays").
+        if (c->tries++ > 0) {
+            return GIT_EUSER;
+        }
+        // App password / access token over HTTPS Basic. For a Bearer/access token
+        // (no principal) Bitbucket accepts the special username "x-token-auth".
+        const std::string u =
+            !c->user.empty() ? c->user : (user_from_url ? std::string(user_from_url) : "x-token-auth");
+        return git_credential_userpass_plaintext_new(out, u.c_str(), c->pass.c_str());
+    };
+    const char* rs = refspec.c_str();
+    git_strarray specs{const_cast<char**>(&rs), 1};
+    const int rc = git_remote_fetch(remote, &specs, &opts, nullptr);
+    if (rc != 0) {
+        capture();
+    }
+    git_remote_free(remote);
+    return rc == 0;
 }
 
 bool

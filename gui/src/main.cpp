@@ -1135,6 +1135,20 @@ main(int argc, char** argv) {
         backend.set_current_file(ss(path));
         backend.set_diff_note(ss(""));
         const std::string pr = state.current_pr;
+        // Local-first: when both PR commits are present locally (the head ref was
+        // fetched), render the exact PR diff offline — merge-base(base,head)..head
+        // (three-dot). This is more accurate than the API's two-dot base tip.
+        {
+            const std::string base = state.pr_refs.base_sha, head = state.pr_refs.head_sha;
+            if (state.repo && !base.empty() && !head.empty() && state.repo->has_commit(base) &&
+                state.repo->has_commit(head)) {
+                const std::string mb = state.repo->merge_base(base, head);
+                state.pair = state.repo->diff_oids(mb.empty() ? base : mb, head, path);
+                backend.set_status_text(ss("PR #" + pr + ": " + path));
+                recompute();
+                return;
+            }
+        }
         const std::string ck = state.pr_ws + "/" + state.pr_repo + "#" + pr + ":" + path;
         // Cached blobs render instantly (content doesn't change within a session).
         auto cit = state.pr_file_cache.find(ck);
@@ -1362,6 +1376,36 @@ main(int argc, char** argv) {
                     apply_pr_detail(id, d, select_first);
                 } else {
                     backend.set_status_text(ss("Couldn't load PR: " + err));
+                }
+            });
+        });
+
+        // Fetch the PR's head ref in the background (libgit2 on a fresh Repo, so the
+        // shared handle isn't touched off-thread). On success, re-open the shared
+        // repo to pick up the new objects and re-render the current file — which
+        // then uses the exact local diff (#29).
+        const std::string rp = state.repo_path;
+        const std::string furl = "https://bitbucket.org/" + ws + "/" + repo + ".git";
+        const std::string refspec = "+refs/pull-requests/" + id + "/from:refs/diffy/pr/" + id;
+        const std::string fuser = cred.principal, fpass = cred.secret;
+        load_threads.emplace_back([&, rp, furl, refspec, fuser, fpass, id, gen]() {
+            auto r = Repo::open(rp);
+            std::string ferr;
+            if (!r || !r->fetch_refspec(furl, refspec, fuser, fpass, &ferr)) {
+                diffy::review::log_line("pr-ref fetch failed for #" + id + " (" + furl +
+                                        ") user='" + fuser + "': " + ferr);
+                return;
+            }
+            diffy::review::log_line("pr-ref fetched for #" + id + " (" + furl + ")");
+            slint::invoke_from_event_loop([&, rp, id, gen]() {
+                if (gen != state.load_generation || state.current_pr != id) {
+                    return;
+                }
+                if (auto nr = Repo::open(rp)) {
+                    state.repo = std::move(nr);  // see the fetched objects
+                }
+                if (!state.current_file.empty()) {
+                    open_pr_file(state.current_file);  // re-render locally (exact)
                 }
             });
         });

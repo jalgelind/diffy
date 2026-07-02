@@ -95,6 +95,26 @@ class Repo {
     BlobPair
     diff_commit_file(const std::string& commit_oid, const std::string& path) const;
 
+    // old = blob of `path` at old_sha, new = blob at new_sha (full or abbreviated
+    // hashes). Renders a PR file diff locally + exactly from fetched commits.
+    BlobPair
+    diff_oids(const std::string& old_sha, const std::string& new_sha, const std::string& path) const;
+
+    // True if a commit with (full or abbreviated) `sha` exists locally.
+    bool
+    has_commit(const std::string& sha) const;
+
+    // Merge-base of two commits (hex), or "" if either is missing or unrelated.
+    std::string
+    merge_base(const std::string& a, const std::string& b) const;
+
+    // Fetch `refspec` from an explicit HTTPS `url` (an anonymous remote, so it works
+    // regardless of origin's protocol — e.g. an SSH origin) with Basic credentials,
+    // to pull a PR's head ref so its diff renders locally. Returns false on error.
+    bool
+    fetch_refspec(const std::string& url, const std::string& refspec, const std::string& user,
+                  const std::string& password, std::string* error = nullptr) const;
+
     // --- write operations -------------------------------------------------
     // These mutate the repository (index / working tree / refs). All return
     // false on libgit2 error so the UI can report failure and re-scan. They are
