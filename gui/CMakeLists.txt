@@ -97,6 +97,7 @@ add_executable(diffy-gui
   src/main.cpp
   src/repo_model.cc
   src/diff_bridge.cc
+  src/pr_cache.cc
   src/text_layout.cc)
 
 target_include_directories(diffy-gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

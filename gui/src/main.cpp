@@ -4,6 +4,7 @@
 #include "config/gui_config.hpp"
 #include "config/repos.hpp"
 #include "diff_bridge.hpp"
+#include "pr_cache.hpp"
 #include "highlight/highlight_group.hpp"
 #include "highlight/highlight_palette.hpp"
 #include "render/diff_pipeline.hpp"
@@ -876,6 +877,9 @@ main(int argc, char** argv) {
     constexpr int kCommitPage = 50;  // commits per lazy page
     state.settings = settings;
     state.repos = repos_load();
+    // Seed the PR-list cache from disk so the sidebar populates instantly on launch;
+    // refresh_prs re-fetches in the background and swaps in the fresh result.
+    state.pr_list_cache = diffy::gui::pr_cache_load();
 
     // Restore a persisted Bitbucket connection: the account email is stored in
     // config, its token in the OS credential vault. (Bearer/access-token connects
@@ -2396,6 +2400,7 @@ main(int argc, char** argv) {
                 backend.set_loading_prs(false);
                 if (err.empty()) {
                     state.pr_list_cache[key] = *items;  // cache + swap in the fresh result
+                    diffy::gui::pr_cache_save(state.pr_list_cache);  // persist across runs
                     state.pr_list_key = key;
                     state.pr_next_cursor = *cursor;
                     backend.set_more_prs(!cursor->empty());
