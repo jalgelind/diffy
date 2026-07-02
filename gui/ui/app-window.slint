@@ -73,6 +73,11 @@ export struct PrEntry {
     state: string,
     comments: int,
     updated: string,
+    updated-rel: string,  // relative time, e.g. "3d"
+    avatar: image,        // author avatar (empty => initials circle)
+    initials: string,     // author initials fallback
+    tint: color,          // initials-circle colour
+    draft: bool,
     is-section: bool,   // a non-clickable group header row (title = section name)
 }
 
@@ -1744,26 +1749,85 @@ component CommitsPanel inherits Rectangle {
                     font-weight: 700;
                     vertical-alignment: center;
                 }
-                // Pull-request row.
+                // Pull-request row: author avatar + title/draft + meta + relative time.
                 if !pr.is-section : HorizontalLayout {
                     padding-left: 6px;
                     padding-right: 6px;
                     padding-top: 5px;
                     padding-bottom: 5px;
-                    spacing: 6px;
-                    VerticalLayout {
-                        Text {
-                            text: pr.title;
-                            color: Backend.fg;
-                            font-size: 12px;
-                            overflow: elide;
+                    spacing: 8px;
+                    // Author avatar (pre-masked circular in C++) or initials fallback.
+                    Rectangle {
+                        width: 26px;
+                        VerticalLayout {
+                            alignment: center;
+                            if pr.avatar.width > 0 : Image {
+                                width: 24px;
+                                height: 24px;
+                                image-rendering: smooth;
+                                source: pr.avatar;
+                            }
+                            if pr.avatar.width == 0 : Rectangle {
+                                width: 24px;
+                                height: 24px;
+                                border-radius: 12px;
+                                background: pr.tint;
+                                Text {
+                                    width: 100%;
+                                    height: 100%;
+                                    text: pr.initials;
+                                    color: #ffffff;
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
                         }
-                        Text {
-                            text: "#" + pr.id + "  " + pr.source + " → " + pr.dest + "  ·  " + pr.state
-                                  + (pr.comments > 0 ? "  ·  " + pr.comments + " 💬" : "");
-                            color: Backend.gutter-fg;
-                            font-size: 10px;
-                            overflow: elide;
+                    }
+                    VerticalLayout {
+                        HorizontalLayout {
+                            spacing: 5px;
+                            Text {
+                                text: pr.title;
+                                color: Backend.fg;
+                                font-size: 12px;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                                vertical-alignment: center;
+                            }
+                            if pr.draft : Rectangle {
+                                border-radius: 3px;
+                                background: Backend.divider;
+                                HorizontalLayout {
+                                    padding-left: 4px;
+                                    padding-right: 4px;
+                                    Text {
+                                        text: "draft";
+                                        color: Backend.gutter-fg;
+                                        font-size: 9px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 4px;
+                            Text {
+                                text: "#" + pr.id + "  " + pr.source + " → " + pr.dest
+                                      + (pr.comments > 0 ? "  ·  " + pr.comments + " 💬" : "");
+                                color: Backend.gutter-fg;
+                                font-size: 10px;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: pr.updated-rel;
+                                color: Backend.gutter-fg;
+                                font-size: 10px;
+                                vertical-alignment: center;
+                            }
                         }
                     }
                 }

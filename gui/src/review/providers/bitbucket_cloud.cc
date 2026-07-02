@@ -305,6 +305,12 @@ comment_body(const json& content) {
     return html.empty() ? jstr(content, "raw") : strip_html(html);
 }
 
+// The author's avatar URL from a Bitbucket `user` object (user.links.avatar.href).
+std::string
+avatar_href(const json& user) {
+    return jstr(jchild(jchild(user, "links"), "avatar"), "href");
+}
+
 PullRequest
 to_pr(const json& j) {
     PullRequest pr;
@@ -320,6 +326,7 @@ to_pr(const json& j) {
     if (pr.author_id.empty()) {
         pr.author_id = jstr(author, "uuid");
     }
+    pr.author_avatar = avatar_href(author);
     const json& participants = jchild(j, "participants");
     if (participants.is_array()) {
         for (const auto& p : participants) {
@@ -332,7 +339,12 @@ to_pr(const json& j) {
                 uid = jstr(u, "uuid");
             }
             if (!uid.empty()) {
-                pr.reviewers.push_back(Reviewer{uid, jbool(p, "approved")});
+                Reviewer rv;
+                rv.id = uid;
+                rv.name = jstr(u, "display_name");
+                rv.avatar = avatar_href(u);
+                rv.approved = jbool(p, "approved");
+                pr.reviewers.push_back(std::move(rv));
             }
         }
     }
@@ -522,12 +534,6 @@ BitbucketCloudClient::commits(const std::string& id) {
         out.push_back(to_commit(v));
     }
     return Result<std::vector<PrCommit>>::ok(std::move(out));
-}
-
-// The author's avatar URL from a Bitbucket `user` object (user.links.avatar.href).
-static std::string
-avatar_href(const json& user) {
-    return jstr(jchild(jchild(user, "links"), "avatar"), "href");
 }
 
 // Group a flat comment list (PR or commit) into anchored threads. Bitbucket's PR

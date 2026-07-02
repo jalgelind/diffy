@@ -1057,6 +1057,7 @@ main(int argc, char** argv) {
     auto avatar_cache = std::make_shared<std::unordered_map<std::string, slint::Image>>();
     auto avatar_inflight = std::make_shared<std::unordered_set<std::string>>();
     std::function<void()> repaint_diff;  // assigned to relayout once it exists
+    std::function<void()> repaint_prs;   // rebuild the PR list (swap in loaded avatars)
 
     auto avatar_for = [&, avatar_cache, avatar_inflight](const std::string& url) -> slint::Image {
         if (url.empty()) {
@@ -1105,6 +1106,9 @@ main(int argc, char** argv) {
                             (*avatar_cache)[u] = process_avatar(img, 52);
                             if (repaint_diff) {
                                 repaint_diff();
+                            }
+                            if (repaint_prs) {
+                                repaint_prs();  // swap the avatar into PR-list rows
                             }
                         }
                     });
@@ -2097,6 +2101,11 @@ main(int argc, char** argv) {
             e.state = ss(approval_str(pr->state));
             e.comments = pr->comment_count;
             e.updated = ss(pr->updated);
+            e.updated_rel = ss(relative_time(pr->updated));
+            e.draft = pr->draft;
+            e.initials = ss(initials_of(pr->author));
+            e.tint = avatar_tint(pr->author);
+            e.avatar = avatar_for(pr->author_avatar);
             model->push_back(e);
         };
         // Only show headers when there's more than the "Others" bucket to name.
@@ -2122,6 +2131,15 @@ main(int argc, char** argv) {
             }
         }
         backend.set_pull_requests(model);
+    };
+    // Rebuild the PR list from the cached page (used to swap in avatars as they load).
+    repaint_prs = [&]() {
+        if (state.pr_list_key.empty()) {
+            return;
+        }
+        if (auto it = state.pr_list_cache.find(state.pr_list_key); it != state.pr_list_cache.end()) {
+            show_prs(it->second);
+        }
     };
 
     // Fetch the connected account once (background) so show_prs can group PRs; when

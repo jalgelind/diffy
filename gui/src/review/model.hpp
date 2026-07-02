@@ -89,6 +89,8 @@ struct Account {
 // grouping when matched against the authenticated account).
 struct Reviewer {
     std::string id;  // provider account id
+    std::string name;    // display name
+    std::string avatar;  // avatar URL (may be empty)
     bool approved = false;
 };
 
@@ -98,6 +100,7 @@ struct PullRequest {
     std::string description;
     std::string author;
     std::string author_id;  // provider account id (for the "yours" grouping)
+    std::string author_avatar;  // author avatar URL (may be empty)
     std::string src_branch;
     std::string dst_branch;
     ApprovalState state = ApprovalState::Open;
