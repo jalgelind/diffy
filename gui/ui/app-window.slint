@@ -1463,7 +1463,7 @@ component FilesPanel inherits Rectangle {
 
                     // Collapsible folder row (tree view): chevron + folder icon + name.
                     if f.is-dir : HorizontalLayout {
-                        padding-left: 6px + f.depth * 12px;
+                        padding-left: 6px + f.depth * 10px;
                         padding-right: 6px;
                         spacing: 5px;
                         VerticalLayout {
@@ -1495,7 +1495,7 @@ component FilesPanel inherits Rectangle {
 
                     // A changed-file row.
                     if !f.is-section && !f.is-dir : HorizontalLayout {
-                        padding-left: 6px + f.depth * 12px;
+                        padding-left: 6px + f.depth * 10px;
                         padding-right: 6px;
                         spacing: 6px;
                         StatusIcon { status: f.status; }
@@ -1544,8 +1544,10 @@ component FilesPanel inherits Rectangle {
                                 background: #73c991;
                             }
                         }
-                        // Per-file actions: stage/unstage toggle + discard.
-                        Rectangle {
+                        // Per-file actions: stage/unstage + discard. Only meaningful
+                        // on the working tree — hidden in PR / commit views to save
+                        // horizontal space.
+                        if Backend.on-working-tree : Rectangle {
                             width: 16px;
                             stage-ta := TouchArea {
                                 clicked => {
@@ -1562,7 +1564,7 @@ component FilesPanel inherits Rectangle {
                                 colorize: stage-ta.has-hover ? Backend.accent : Backend.gutter-fg;
                             }
                         }
-                        Rectangle {
+                        if Backend.on-working-tree : Rectangle {
                             width: 16px;
                             discard-ta := TouchArea {
                                 clicked => { Backend.confirm-discard = f.path; }
@@ -1954,31 +1956,49 @@ component CommitsPanel inherits Rectangle {
                     padding-left: 8px;
                     padding-right: 8px;
                     spacing: 6px;
+                    // Avatar with the approval state as a small corner badge (green =
+                    // approved, muted = pending) — no separate column/label needed.
                     Rectangle {
                         width: 22px;
-                        VerticalLayout {
-                            alignment: center;
-                            if rv.avatar.width > 0 : Image {
-                                width: 20px;
-                                height: 20px;
-                                image-rendering: smooth;
-                                source: rv.avatar;
+                        property <length> av-y: (parent.height - 20px) / 2;
+                        if rv.avatar.width > 0 : Image {
+                            x: 0;
+                            y: parent.av-y;
+                            width: 20px;
+                            height: 20px;
+                            image-rendering: smooth;
+                            source: rv.avatar;
+                        }
+                        if rv.avatar.width == 0 : Rectangle {
+                            x: 0;
+                            y: parent.av-y;
+                            width: 20px;
+                            height: 20px;
+                            border-radius: 10px;
+                            background: rv.tint;
+                            Text {
+                                width: 100%;
+                                height: 100%;
+                                text: rv.initials;
+                                color: #ffffff;
+                                font-size: 10px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
                             }
-                            if rv.avatar.width == 0 : Rectangle {
-                                width: 20px;
-                                height: 20px;
-                                border-radius: 10px;
-                                background: rv.tint;
-                                Text {
-                                    width: 100%;
-                                    height: 100%;
-                                    text: rv.initials;
-                                    color: #ffffff;
-                                    font-size: 10px;
-                                    font-weight: 700;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                }
+                        }
+                        Rectangle {
+                            x: 12px;
+                            y: parent.av-y + 12px;
+                            width: 9px;
+                            height: 9px;
+                            border-radius: 5px;
+                            background: Backend.panel-bg;  // ring to separate from avatar
+                            Rectangle {
+                                width: 6px;
+                                height: 6px;
+                                border-radius: 3px;
+                                background: rv.approved ? #59a14f : Backend.gutter-fg;
                             }
                         }
                     }
@@ -1988,24 +2008,6 @@ component CommitsPanel inherits Rectangle {
                         font-size: 12px;
                         overflow: elide;
                         horizontal-stretch: 1;
-                        vertical-alignment: center;
-                    }
-                    Rectangle {
-                        width: 7px;
-                        VerticalLayout {
-                            alignment: center;
-                            Rectangle {
-                                width: 7px;
-                                height: 7px;
-                                border-radius: 4px;
-                                background: rv.approved ? #59a14f : Backend.gutter-fg;
-                            }
-                        }
-                    }
-                    Text {
-                        text: rv.approved ? "approved" : "pending";
-                        color: Backend.gutter-fg;
-                        font-size: 10px;
                         vertical-alignment: center;
                     }
                 }
@@ -2094,8 +2096,7 @@ component CommitsPanel inherits Rectangle {
                         }
                         VerticalLayout {
                             Text {
-                                text: cm.author + (cm.location != "" ? "  ·  " + cm.location : "")
-                                      + (cm.resolved ? "  ·  resolved" : "");
+                                text: cm.author + (cm.location != "" ? "  ·  " + cm.location : "");
                                 color: Backend.gutter-fg;
                                 font-size: 10px;
                                 overflow: elide;
