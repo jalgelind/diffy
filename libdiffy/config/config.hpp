@@ -169,6 +169,16 @@ config_bundled_themes();
 void
 config_apply_options(diffy::ProgramOptions& program_options);
 
+// Read highlight.extensions from diffy.conf and install it as the
+// extension→grammar override map (see language_set_overrides). Entries map a
+// grammar name to one extension/filename or an array of them, e.g.:
+//   [highlight]
+//   extensions = { cpp = ['.tpp', '.ixx'], zig = '.zig' }
+// (zig here would be a drop-in: zig.dll + zig.scm in <config>/grammars/.)
+// Safe to call when the file or section is missing (no-op).
+void
+config_apply_highlight_overrides();
+
 void
 config_apply_theme(const std::string& theme,
                    diffy::ColumnViewCharacters& cv_char_opts,

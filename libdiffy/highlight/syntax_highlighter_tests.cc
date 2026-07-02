@@ -10,11 +10,22 @@
 using namespace diffy;
 
 TEST_CASE("language detection by extension") {
-    CHECK(language_for_path("src/foo/bar.c") == Language::C);
-    CHECK(language_for_path("a.h") == Language::C);
-    CHECK(language_for_path("pkg/data.json") == Language::Json);
-    CHECK(language_for_path("notes.unknownext") == Language::None);
-    CHECK(language_for_path("Makefile") == Language::None);
+    CHECK(language_for_path("src/foo/bar.c") == "c");
+    CHECK(language_for_path("a.h") == "c");
+    CHECK(language_for_path("pkg/data.json") == "json");
+    CHECK(language_for_path("notes.unknownext") == "");
+    CHECK(language_for_path("Makefile") == "");
+}
+
+TEST_CASE("config extension overrides beat the built-in map, then clear") {
+    language_set_overrides({{".h", "cpp"}, {".zig", "zig"}, {"makefile", "bash"}});
+    CHECK(language_for_path("a.h") == "cpp");        // override wins over built-in
+    CHECK(language_for_path("main.zig") == "zig");   // new mapping
+    CHECK(language_for_path("sub/Makefile") == "bash");  // filename match, case-insensitive
+    CHECK(language_for_path("bar.c") == "c");        // untouched built-ins still work
+    language_set_overrides({});
+    CHECK(language_for_path("a.h") == "c");
+    CHECK(language_for_path("main.zig") == "");
 }
 
 TEST_CASE("group_for_capture maps dotted capture names") {
@@ -38,7 +49,7 @@ TEST_CASE("C source highlights into keyword/comment/string/number runs") {
         "  return 0;\n"
         "}\n";
 
-    auto lines = highlight_source(src, Language::C);
+    auto lines = highlight_source(src, "c");
     REQUIRE(lines.size() >= 5);
 
     bool kw = false, comment = false, str = false, num = false;
@@ -70,30 +81,29 @@ TEST_CASE("each bundled grammar parses and highlights") {
         return;
     }
     struct Sample {
-        const char* name;
         Language lang;
         const char* src;
     };
     const Sample samples[] = {
-        {"cpp", Language::Cpp, "// hi\nclass A { int x = 1; };\n"},
-        {"go", Language::Go, "// hi\npackage main\nfunc main() {}\n"},
-        {"rust", Language::Rust, "// hi\nfn main() { let x = 1; }\n"},
-        {"java", Language::Java, "// hi\nclass A { int x = 1; }\n"},
-        {"python", Language::Python, "# hi\ndef f():\n    return 1\n"},
-        {"javascript", Language::JavaScript, "// hi\nconst x = 'hi';\n"},
-        {"typescript", Language::TypeScript, "// hi\nconst x: number = 1;\n"},
-        {"tsx", Language::Tsx, "// hi\nconst x = 1;\n"},
-        {"ruby", Language::Ruby, "# hi\ndef f\n  return 1\nend\n"},
-        {"bash", Language::Bash, "# hi\nif true; then\n  echo hi\nfi\n"},
-        {"c_sharp", Language::CSharp, "// hi\nclass A { int X = 1; }\n"},
-        {"html", Language::Html, "<!-- hi -->\n<div class=\"x\">y</div>\n"},
-        {"css", Language::Css, "/* hi */\na { color: red; }\n"},
-        {"lua", Language::Lua, "-- hi\nlocal x = 1\n"},
-        {"toml", Language::Toml, "# hi\nkey = 1\n"},
-        {"cmake", Language::Cmake, "# hi\nset(MY_VAR 1)\n"},
+        {"cpp", "// hi\nclass A { int x = 1; };\n"},
+        {"go", "// hi\npackage main\nfunc main() {}\n"},
+        {"rust", "// hi\nfn main() { let x = 1; }\n"},
+        {"java", "// hi\nclass A { int x = 1; }\n"},
+        {"python", "# hi\ndef f():\n    return 1\n"},
+        {"javascript", "// hi\nconst x = 'hi';\n"},
+        {"typescript", "// hi\nconst x: number = 1;\n"},
+        {"tsx", "// hi\nconst x = 1;\n"},
+        {"ruby", "# hi\ndef f\n  return 1\nend\n"},
+        {"bash", "# hi\nif true; then\n  echo hi\nfi\n"},
+        {"c_sharp", "// hi\nclass A { int X = 1; }\n"},
+        {"html", "<!-- hi -->\n<div class=\"x\">y</div>\n"},
+        {"css", "/* hi */\na { color: red; }\n"},
+        {"lua", "-- hi\nlocal x = 1\n"},
+        {"toml", "# hi\nkey = 1\n"},
+        {"cmake", "# hi\nset(MY_VAR 1)\n"},
     };
     for (const auto& s : samples) {
-        CAPTURE(s.name);
+        CAPTURE(s.lang);
         auto lines = highlight_source(s.src, s.lang);
         bool comment = false;
         int total_runs = 0;
@@ -115,7 +125,7 @@ TEST_CASE("markdown highlights (no line-comment syntax)") {
     if (!highlighting_available()) {
         return;
     }
-    auto lines = highlight_source("# Heading\n\nsome **bold** text\n", Language::Markdown);
+    auto lines = highlight_source("# Heading\n\nsome **bold** text\n", "markdown");
     int total = 0;
     for (const auto& line : lines) {
         total += static_cast<int>(line.size());
@@ -149,7 +159,7 @@ TEST_CASE("syntax colour overrides apply, isolate, and clear") {
 }
 
 TEST_CASE("unknown language yields no highlights") {
-    auto lines = highlight_source("plain text\nmore text\n", Language::None);
+    auto lines = highlight_source("plain text\nmore text\n", "");
     bool any = false;
     for (const auto& line : lines) {
         any = any || !line.empty();

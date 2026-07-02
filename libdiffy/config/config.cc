@@ -1,5 +1,6 @@
 #include "config.hpp"
 
+#include <highlight/language.hpp>
 #include <output/column_view.hpp>
 #include <util/color.hpp>
 
@@ -9,6 +10,7 @@
 #include <config_parser/config_serializer.hpp>
 #include <config_parser/config_parser_utils.hpp>
 
+#include <cstdlib>
 #include <deque>
 #include <filesystem>
 #include <iostream>
@@ -58,6 +60,13 @@ static std::string config_doc_general = R"foo(# General configuration for ´diff
 # Bundled themes (created in the config directory on first run):
 #   theme_default, theme_dracula, theme_nord, theme_solarized_dark,
 #   theme_github_light
+#
+# Syntax highlighting grammars are loaded from 'grammars/' next to the diffy
+# executable, or dropped into '<this directory>/grammars/' (a tree-sitter
+# grammar library plus a <name>.scm highlights query). Map file extensions or
+# exact filenames to a grammar with:
+#   [highlight]
+#   extensions = { cpp = ['.tpp', '.ixx'], zig = '.zig' }
 #
 )foo";
 
@@ -397,6 +406,8 @@ diffy::config_apply_options(diffy::ProgramOptions& program_options) {
         program_options.algorithm = algo;
     }
 
+    config_apply_highlight_overrides();
+
     // Write the configuration to disk with default settings
     if (flush_config_to_disk) {
         if (config_file_table_value["general"].key_comments.empty()) {
@@ -404,6 +415,45 @@ diffy::config_apply_options(diffy::ProgramOptions& program_options) {
         }
         config_save(config_root, config_path, config_file_table_value);
     }
+}
+
+void
+diffy::config_apply_highlight_overrides() {
+    // Honor the same test/sandbox override as the GUI settings loader.
+    std::string config_path;
+    if (const char* override = std::getenv("DIFFY_CONF_PATH"); override && *override) {
+        config_path = override;
+    } else {
+        config_path = fmt::format("{}/diffy.conf", config_get_directory());
+    }
+
+    ParseResult parse_result;
+    Value table;
+    if (!cfg_load_file(config_path, parse_result, table) || !table.is_table()) {
+        return;
+    }
+    auto section = table.lookup_value_by_path("highlight.extensions");
+    if (!section || !section->get().is_table()) {
+        return;
+    }
+
+    std::vector<std::pair<std::string, Language>> patterns;
+    section->get().as_table().for_each([&](const std::string& lang, Value& v) {
+        if (v.is_string()) {
+            patterns.emplace_back(v.as_string(), lang);
+        } else if (v.is_array()) {
+            for (auto& entry : v.as_array()) {
+                if (entry.is_string()) {
+                    patterns.emplace_back(entry.as_string(), lang);
+                }
+            }
+        } else {
+            fmt::print("warning: config value at 'highlight.extensions.{}' is invalid "
+                       "(expected string or array of strings)\n",
+                       lang);
+        }
+    });
+    language_set_overrides(std::move(patterns));
 }
 
 void

@@ -41,7 +41,9 @@ target_link_libraries(diffy_core
 option(DIFFY_ENABLE_HIGHLIGHT "Build syntax highlighting (tree-sitter)" ON)
 if(DIFFY_ENABLE_HIGHLIGHT)
   include(${CMAKE_CURRENT_SOURCE_DIR}/highlight/treesitter.cmake)
-  target_sources(diffy_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/ts_queries_generated.cc)
-  target_link_libraries(diffy_core PUBLIC diffy_ts_grammars)
+  # Only the runtime is linked in; grammars build as shared libraries under
+  # <build>/grammars/ and are loaded on first use (see highlight/language.hpp).
+  target_link_libraries(diffy_core PUBLIC tree-sitter ${CMAKE_DL_LIBS})
   target_compile_definitions(diffy_core PUBLIC DIFFY_ENABLE_HIGHLIGHT=1)
+  add_dependencies(diffy_core diffy_grammars)
 endif()

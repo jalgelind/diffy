@@ -8,6 +8,15 @@ if(NOT SLINT_STYLE)
   set(SLINT_STYLE "fluent-dark" CACHE STRING "Slint widget style" FORCE)
 endif()
 
+# Trim Slint to what diffy-gui actually uses: the UI is precompiled by
+# slint_target_sources, so the runtime interpreter (which drags the whole Slint
+# compiler frontend into the DLL) is dead weight, as are the testing harness and
+# the software-renderer fallback (femtovg is the renderer). Must be set before
+# Slint is fetched below.
+set(SLINT_FEATURE_INTERPRETER OFF CACHE BOOL "" FORCE)
+set(SLINT_FEATURE_TESTING OFF CACHE BOOL "" FORCE)
+set(SLINT_FEATURE_RENDERER_SOFTWARE OFF CACHE BOOL "" FORCE)
+
 # Slint: prefer an installed package, otherwise build it from source (matches the
 # upstream slint-cpp-template). Building from source needs a Rust toolchain.
 find_package(Slint QUIET)

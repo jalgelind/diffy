@@ -11,91 +11,236 @@ namespace diffy {
 namespace {
 
 std::string
-lower_ext(std::string_view path) {
-    namespace fs = std::filesystem;
-    std::string ext = fs::path(std::string(path)).extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(),
+lowered(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return ext;
+    return s;
+}
+
+// Overrides from [highlight.extensions] in diffy.conf. Written once at startup
+// (language_set_overrides), read-only afterwards — no locking needed.
+std::unordered_map<std::string, Language>&
+override_by_ext() {
+    static std::unordered_map<std::string, Language> m;
+    return m;
+}
+
+std::unordered_map<std::string, Language>&
+override_by_name() {
+    static std::unordered_map<std::string, Language> m;
+    return m;
 }
 
 }  // namespace
 
+void
+language_set_overrides(std::vector<std::pair<std::string, Language>> patterns) {
+    override_by_ext().clear();
+    override_by_name().clear();
+    for (auto& [pattern, lang] : patterns) {
+        if (pattern.empty() || lang.empty()) {
+            continue;
+        }
+        if (pattern[0] == '.') {
+            override_by_ext()[lowered(pattern)] = lang;
+        } else {
+            override_by_name()[lowered(pattern)] = lang;
+        }
+    }
+}
+
 Language
 language_for_path(std::string_view path) {
     static const std::unordered_map<std::string, Language> by_ext = {
-        {".c", Language::C},
-        {".h", Language::C},
-        {".cc", Language::Cpp},   {".cpp", Language::Cpp}, {".cxx", Language::Cpp},
-        {".hpp", Language::Cpp},  {".hh", Language::Cpp},  {".hxx", Language::Cpp},
-        {".go", Language::Go},
-        {".rs", Language::Rust},
-        {".java", Language::Java},
-        {".cs", Language::CSharp},
-        {".py", Language::Python}, {".pyi", Language::Python},
-        {".rb", Language::Ruby},
-        {".sh", Language::Bash}, {".bash", Language::Bash},
-        {".js", Language::JavaScript}, {".mjs", Language::JavaScript},
-        {".cjs", Language::JavaScript}, {".jsx", Language::JavaScript},
-        {".ts", Language::TypeScript}, {".mts", Language::TypeScript},
-        {".cts", Language::TypeScript},
-        {".tsx", Language::Tsx},
-        {".html", Language::Html}, {".htm", Language::Html},
-        {".css", Language::Css},
-        {".lua", Language::Lua},
-        {".toml", Language::Toml},
-        {".cmake", Language::Cmake},
-        {".md", Language::Markdown}, {".markdown", Language::Markdown},
-        {".json", Language::Json},
+        {".c", "c"},
+        {".h", "c"},
+        {".cc", "cpp"},   {".cpp", "cpp"}, {".cxx", "cpp"},
+        {".hpp", "cpp"},  {".hh", "cpp"},  {".hxx", "cpp"},
+        {".go", "go"},
+        {".rs", "rust"},
+        {".java", "java"},
+        {".cs", "c_sharp"},
+        {".py", "python"}, {".pyi", "python"},
+        {".rb", "ruby"},
+        {".sh", "bash"}, {".bash", "bash"},
+        {".js", "javascript"}, {".mjs", "javascript"},
+        {".cjs", "javascript"}, {".jsx", "javascript"},
+        {".ts", "typescript"}, {".mts", "typescript"},
+        {".cts", "typescript"},
+        {".tsx", "tsx"},
+        {".html", "html"}, {".htm", "html"},
+        {".css", "css"},
+        {".lua", "lua"},
+        {".toml", "toml"},
+        {".cmake", "cmake"},
+        {".md", "markdown"}, {".markdown", "markdown"},
+        {".json", "json"},
     };
     // Languages identified by filename rather than extension.
     static const std::unordered_map<std::string, Language> by_name = {
-        {"cmakelists.txt", Language::Cmake},
+        {"cmakelists.txt", "cmake"},
     };
     namespace fs = std::filesystem;
-    std::string fname = fs::path(std::string(path)).filename().string();
-    std::transform(fname.begin(), fname.end(), fname.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    const fs::path p{std::string(path)};
+    const std::string fname = lowered(p.filename().string());
+    const std::string ext = lowered(p.extension().string());
+
+    // Config overrides win over the built-in map; exact filename beats extension.
+    if (auto it = override_by_name().find(fname); it != override_by_name().end()) {
+        return it->second;
+    }
+    if (auto it = override_by_ext().find(ext); it != override_by_ext().end()) {
+        return it->second;
+    }
     if (auto it = by_name.find(fname); it != by_name.end()) {
         return it->second;
     }
-    auto it = by_ext.find(lower_ext(path));
-    return it == by_ext.end() ? Language::None : it->second;
+    auto it = by_ext.find(ext);
+    return it == by_ext.end() ? Language{} : it->second;
 }
 
 }  // namespace diffy
 
 #ifdef DIFFY_ENABLE_HIGHLIGHT
 
-#include <map>
+#include "config/config.hpp"  // config_get_directory
 
-extern "C" {
-const TSLanguage* tree_sitter_c(void);
-const TSLanguage* tree_sitter_cpp(void);
-const TSLanguage* tree_sitter_go(void);
-const TSLanguage* tree_sitter_rust(void);
-const TSLanguage* tree_sitter_java(void);
-const TSLanguage* tree_sitter_c_sharp(void);
-const TSLanguage* tree_sitter_python(void);
-const TSLanguage* tree_sitter_ruby(void);
-const TSLanguage* tree_sitter_bash(void);
-const TSLanguage* tree_sitter_javascript(void);
-const TSLanguage* tree_sitter_typescript(void);
-const TSLanguage* tree_sitter_tsx(void);
-const TSLanguage* tree_sitter_html(void);
-const TSLanguage* tree_sitter_css(void);
-const TSLanguage* tree_sitter_lua(void);
-const TSLanguage* tree_sitter_toml(void);
-const TSLanguage* tree_sitter_cmake(void);
-const TSLanguage* tree_sitter_markdown(void);
-const TSLanguage* tree_sitter_json(void);
-}
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <dlfcn.h>
+#else
+#include <dlfcn.h>
+#endif
+
+#include <fstream>
+#include <map>
+#include <mutex>
+#include <sstream>
 
 namespace diffy {
 
-// Defined in the generated ts_queries_generated.cc.
-const std::map<std::string, std::string>&
-ts_raw_queries();
+namespace {
+
+#ifdef _WIN32
+constexpr const char* kLibSuffix = ".dll";
+#elif defined(__APPLE__)
+constexpr const char* kLibSuffix = ".dylib";
+#else
+constexpr const char* kLibSuffix = ".so";
+#endif
+
+namespace fs = std::filesystem;
+
+fs::path
+exe_dir() {
+#ifdef _WIN32
+    wchar_t buf[MAX_PATH];
+    const DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) {
+        return {};
+    }
+    return fs::path(buf).parent_path();
+#elif defined(__APPLE__)
+    char buf[4096];
+    uint32_t size = sizeof(buf);
+    if (_NSGetExecutablePath(buf, &size) != 0) {
+        return {};
+    }
+    std::error_code ec;
+    fs::path p = fs::canonical(buf, ec);
+    return ec ? fs::path(buf).parent_path() : p.parent_path();
+#else
+    std::error_code ec;
+    fs::path p = fs::read_symlink("/proc/self/exe", ec);
+    return ec ? fs::path{} : p.parent_path();
+#endif
+}
+
+std::vector<fs::path>
+grammar_dirs() {
+    std::vector<fs::path> dirs;
+    const fs::path exe = exe_dir();
+    if (!exe.empty()) {
+        dirs.push_back(exe / "grammars");                // installed layout
+        dirs.push_back(exe.parent_path() / "grammars");  // build tree (cli/, gui/, tests/ siblings)
+    }
+    dirs.push_back(fs::path(config_get_directory()) / "grammars");  // user drop-ins
+    return dirs;
+}
+
+// Loaded grammar + its highlights query; ts == nullptr caches a failed lookup.
+struct Grammar {
+    const TSLanguage* ts = nullptr;
+    std::string query;
+};
+
+const TSLanguage*
+load_grammar_lib(const fs::path& lib, const std::string& symbol) {
+    using LangFn = const TSLanguage* (*)();
+#ifdef _WIN32
+    HMODULE handle = LoadLibraryW(lib.wstring().c_str());
+    if (!handle) {
+        return nullptr;
+    }
+    auto fn = reinterpret_cast<LangFn>(
+        reinterpret_cast<void*>(GetProcAddress(handle, symbol.c_str())));
+#else
+    void* handle = dlopen(lib.string().c_str(), RTLD_NOW | RTLD_LOCAL);
+    if (!handle) {
+        return nullptr;
+    }
+    auto fn = reinterpret_cast<LangFn>(dlsym(handle, symbol.c_str()));
+#endif
+    // The library handle is intentionally kept for the process lifetime: the
+    // TSLanguage tables live inside it.
+    return fn ? fn() : nullptr;
+}
+
+const Grammar&
+grammar_for(const Language& name) {
+    static std::mutex mu;
+    static std::map<Language, Grammar> cache;
+    std::lock_guard<std::mutex> lock(mu);
+    if (auto it = cache.find(name); it != cache.end()) {
+        return it->second;
+    }
+    Grammar g;
+    // The name becomes a filename; permit only [a-z0-9_] so a config entry
+    // can't point the loader outside the grammar directories.
+    const bool sane = !name.empty() &&
+                      std::all_of(name.begin(), name.end(), [](unsigned char c) {
+                          return std::islower(c) || std::isdigit(c) || c == '_';
+                      });
+    if (sane) {
+        for (const auto& dir : grammar_dirs()) {
+            std::error_code ec;
+            const fs::path lib = dir / (name + kLibSuffix);
+            if (!fs::exists(lib, ec)) {
+                continue;
+            }
+            g.ts = load_grammar_lib(lib, "tree_sitter_" + name);
+            if (!g.ts) {
+                continue;  // wrong arch / missing symbol — try the next dir
+            }
+            // A grammar built against an incompatible tree-sitter ABI is caught
+            // later: ts_parser_set_language() fails and highlighting degrades
+            // to a no-op for that language.
+            std::ifstream q(dir / (name + ".scm"), std::ios::binary);
+            if (q) {
+                std::stringstream ss;
+                ss << q.rdbuf();
+                g.query = ss.str();
+            }
+            break;
+        }
+    }
+    return cache.emplace(name, std::move(g)).first->second;
+}
+
+}  // namespace
 
 bool
 highlighting_available() {
@@ -103,74 +248,13 @@ highlighting_available() {
 }
 
 const TSLanguage*
-ts_language_for(Language lang) {
-    switch (lang) {
-        case Language::C:          return tree_sitter_c();
-        case Language::Cpp:        return tree_sitter_cpp();
-        case Language::Go:         return tree_sitter_go();
-        case Language::Rust:       return tree_sitter_rust();
-        case Language::Java:       return tree_sitter_java();
-        case Language::CSharp:     return tree_sitter_c_sharp();
-        case Language::Python:     return tree_sitter_python();
-        case Language::Ruby:       return tree_sitter_ruby();
-        case Language::Bash:       return tree_sitter_bash();
-        case Language::JavaScript: return tree_sitter_javascript();
-        case Language::TypeScript: return tree_sitter_typescript();
-        case Language::Tsx:        return tree_sitter_tsx();
-        case Language::Html:       return tree_sitter_html();
-        case Language::Css:        return tree_sitter_css();
-        case Language::Lua:        return tree_sitter_lua();
-        case Language::Toml:       return tree_sitter_toml();
-        case Language::Cmake:      return tree_sitter_cmake();
-        case Language::Markdown:   return tree_sitter_markdown();
-        case Language::Json:       return tree_sitter_json();
-        default:                   return nullptr;
-    }
+ts_language_for(const Language& lang) {
+    return grammar_for(lang).ts;
 }
-
-namespace {
-
-// The query keys to concatenate for a language, base-first (inheritance).
-std::vector<std::string>
-query_chain(Language lang) {
-    switch (lang) {
-        case Language::C:          return {"c"};
-        case Language::Cpp:        return {"c", "cpp"};  // C++ inherits C highlights
-        case Language::Go:         return {"go"};
-        case Language::Rust:       return {"rust"};
-        case Language::Java:       return {"java"};
-        case Language::CSharp:     return {"c_sharp"};
-        case Language::Python:     return {"python"};
-        case Language::Ruby:       return {"ruby"};
-        case Language::Bash:       return {"bash"};
-        case Language::JavaScript: return {"javascript"};
-        case Language::TypeScript: return {"javascript", "typescript"};  // TS inherits JS
-        case Language::Tsx:        return {"javascript", "tsx"};         // TSX inherits JS
-        case Language::Html:       return {"html"};
-        case Language::Css:        return {"css"};
-        case Language::Lua:        return {"lua"};
-        case Language::Toml:       return {"toml"};
-        case Language::Cmake:      return {"cmake"};
-        case Language::Markdown:   return {"markdown"};
-        case Language::Json:       return {"json"};
-        default:                   return {};
-    }
-}
-
-}  // namespace
 
 std::string
-highlight_query_for(Language lang) {
-    const auto& raw = ts_raw_queries();
-    std::string out;
-    for (const auto& key : query_chain(lang)) {
-        auto it = raw.find(key);
-        if (it != raw.end()) {
-            out += it->second;
-            out += '\n';
-        }
-    }
-    return out;
+highlight_query_for(const Language& lang) {
+    return grammar_for(lang).query;
 }
 
 }  // namespace diffy
@@ -185,12 +269,12 @@ highlighting_available() {
 }
 
 const TSLanguage*
-ts_language_for(Language) {
+ts_language_for(const Language&) {
     return nullptr;
 }
 
 std::string
-highlight_query_for(Language) {
+highlight_query_for(const Language&) {
     return {};
 }
 

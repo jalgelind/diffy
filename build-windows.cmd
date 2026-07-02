@@ -23,6 +23,7 @@ set RUN_TESTS=0
 set CLEAN=0
 set RECONFIGURE=0
 set DO_RUN=0
+set DO_DIST=0
 set SKIP_DEPS=0
 
 REM Target selection: cli (diffy), gui (diffy-gui), all. Default = cli + tests.
@@ -83,6 +84,11 @@ if /I "%1"=="all" (
 )
 if /I "%1"=="run" (
     set DO_RUN=1
+    shift
+    goto :parse_args
+)
+if /I "%1"=="dist" (
+    set DO_DIST=1
     shift
     goto :parse_args
 )
@@ -354,6 +360,26 @@ if %RUN_TESTS%==1 (
     echo All tests passed
 )
 
+REM Assemble a self-contained dist folder if requested: the built executables,
+REM their runtime DLLs (Slint + vcpkg-deployed libgit2 etc.), and the
+REM tree-sitter grammars. Lands beside the build tree (out\<config>\dist-<tc>).
+if %DO_DIST%==1 (
+    set "DIST_DIR=%BUILD_DIR:build=dist%"
+    echo.
+    echo Assembling dist folder: !DIST_DIR!
+    if exist "!DIST_DIR!" rd /s /q "!DIST_DIR!"
+    mkdir "!DIST_DIR!"
+    if exist "%BUILD_DIR%\cli\diffy.exe" copy /y "%BUILD_DIR%\cli\diffy.exe" "!DIST_DIR!" >nul
+    if exist "%BUILD_DIR%\gui\diffy-gui.exe" (
+        copy /y "%BUILD_DIR%\gui\diffy-gui.exe" "!DIST_DIR!" >nul
+        copy /y "%BUILD_DIR%\gui\*.dll" "!DIST_DIR!" >nul
+    )
+    if exist "%BUILD_DIR%\grammars" (
+        xcopy /y /i /q "%BUILD_DIR%\grammars" "!DIST_DIR!\grammars" >nul
+    )
+    echo Dist folder ready: !DIST_DIR!
+)
+
 REM Run the built app if requested
 if %DO_RUN%==1 (
     echo.
@@ -399,6 +425,8 @@ echo   mingw              Force MinGW/MSYS2 UCRT64
 echo.
 echo Other options:
 echo   run                Run the built executable after building
+echo   dist               Copy executables, runtime DLLs and grammars into a
+echo                      self-contained out\^<config^>\dist-^<toolchain^> folder
 echo   --skip-deps        Skip git submodule initialization
 echo.
 echo Prerequisites:
@@ -413,6 +441,7 @@ echo   build-windows.cmd release             Build the CLI ^(Release^)
 echo   build-windows.cmd debug cli run       Build and run the CLI ^(Debug^)
 echo   build-windows.cmd release gui run     Build and run the GUI ^(Release^)
 echo   build-windows.cmd release all         Build CLI + GUI + tests
+echo   build-windows.cmd release all dist    Build everything and assemble dist\
 echo   build-windows.cmd test                Build Debug and run tests
 echo   build-windows.cmd clean               Remove build outputs
 echo.

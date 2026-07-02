@@ -38,6 +38,10 @@ write_table(diffy::Value& table) {
 
 void
 diffy::gui_settings_load(GuiSettings& settings) {
+    // Extension→grammar overrides live in the same diffy.conf; install them
+    // whenever the GUI (re)loads its settings.
+    config_apply_highlight_overrides();
+
     ParseResult parse_result;
     Value table;  // default empty table
     cfg_load_file(diffy_conf_path(), parse_result, table);
