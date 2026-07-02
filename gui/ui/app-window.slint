@@ -2501,9 +2501,11 @@ export component AppWindow inherits Window {
                             }
                         }
                     }
-                    // Drag the bottom edge to resize the overview body.
+                    // Drag the bottom edge to resize the overview body. Anchored to
+                    // the band's bottom (a bare child would sit at y:0, over the header).
                     if !Backend.overview-collapsed && Backend.overview-body != "" : Rectangle {
-                        height: 6px;
+                        height: 7px;
+                        y: parent.height - self.height;
                         property <length> start-h;
                         property <length> start-y;
                         ovresize := TouchArea {
@@ -2524,8 +2526,8 @@ export component AppWindow inherits Window {
                             }
                         }
                         Rectangle {
-                            y: 2px;
-                            height: 2px;
+                            y: (parent.height - self.height) / 2;
+                            height: 3px;
                             width: 40px;
                             x: (parent.width - self.width) / 2;
                             border-radius: 1px;
