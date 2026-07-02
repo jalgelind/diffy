@@ -166,6 +166,14 @@ TEST_CASE("string escaping") {
     }
     SUBCASE("roundtrip empty") { REQUIRE_EQ(roundtrip(""), ""); }
 
+    SUBCASE("double-quote-only strings stay single-quoted literals") {
+        // A literal can hold double-quotes fine, so don't needlessly escape.
+        diffy::Value v;
+        v["k"] = diffy::Value{std::string("has \"double\" quotes")};
+        REQUIRE(cfg_serialize_obj(v).find("'has \"double\" quotes'") != std::string::npos);
+        REQUIRE_EQ(roundtrip("has \"double\" quotes"), "has \"double\" quotes");
+    }
+
     SUBCASE("back-compat: single-quoted literals keep backslashes verbatim") {
         // Existing configs store Windows paths as raw single-quoted literals; the
         // backslashes must NOT be treated as escapes (\t etc.).

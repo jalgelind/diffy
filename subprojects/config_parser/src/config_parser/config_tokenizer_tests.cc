@@ -334,3 +334,80 @@ TEST_CASE("tokenizer") {
         REQUIRE((a[0].id & TokenId_Identifier) == TokenId_Identifier);
     }
 }
+
+TEST_CASE("escaped strings") {
+    SUBCASE("double-quoted string captures an escaped quote (doesn't terminate early)") {
+        // Text: "a\"b"  (an escaped double-quote in the middle)
+        auto line = "\"a\\\"b\"";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        REQUIRE(result.ok);
+        auto a = result.tokens;
+        REQUIRE(a.size() == 3);  // DoubleQuote, String, DoubleQuote
+        REQUIRE((a[0].id & TokenId_DoubleQuote) == TokenId_DoubleQuote);
+        REQUIRE((a[1].id & TokenId_String) == TokenId_String);
+        // Double-quoted strings are tagged escaped so the parser unescapes them.
+        REQUIRE((a[1].id & TokenId_EscapedString) == TokenId_EscapedString);
+        REQUIRE(a[1].str_from(line) == "a\\\"b");  // raw text still carries the backslash
+        REQUIRE((a[2].id & TokenId_DoubleQuote) == TokenId_DoubleQuote);
+    }
+
+    SUBCASE("single-quoted string is a raw literal (not tagged escaped)") {
+        // Text: 'a\b'  (a backslash that must be preserved verbatim, e.g. a path)
+        auto line = "'a\\b'";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        REQUIRE(result.ok);
+        auto a = result.tokens;
+        REQUIRE(a.size() == 3);
+        REQUIRE((a[1].id & TokenId_String) == TokenId_String);
+        REQUIRE((a[1].id & TokenId_EscapedString) != TokenId_EscapedString);
+        REQUIRE(a[1].str_from(line) == "a\\b");
+    }
+
+    SUBCASE("escaped backslash then closing quote terminates") {
+        // Text: "a\\"  -> content is a backslash; the \\ pair doesn't swallow the quote
+        auto line = "\"a\\\\\"";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        REQUIRE(result.ok);
+        auto a = result.tokens;
+        REQUIRE(a.size() == 3);
+        REQUIRE(a[1].str_from(line) == "a\\\\");
+    }
+
+    SUBCASE("dangling backslash at end of a double-quoted string is unterminated") {
+        auto line = "\"abc\\";  // "abc\   (backslash then EOF)
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        REQUIRE(result.ok == false);
+    }
+
+    SUBCASE("newline inside a double-quoted string is an error") {
+        auto line = "\"abc\ndef\"";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        REQUIRE(result.ok == false);
+    }
+}
+
+TEST_CASE("escape helpers") {
+    SUBCASE("escape_string escapes the specials") {
+        REQUIRE(escape_string("a\tb\"c\\d\ne") == "a\\tb\\\"c\\\\d\\ne");
+    }
+    SUBCASE("unescape_string reverses escape_string") {
+        const std::string s = "tab\tquote\"back\\slash\nline\rcarriage";
+        REQUIRE(unescape_string(escape_string(s)) == s);
+    }
+    SUBCASE("unescape_string preserves unknown escapes") {
+        REQUIRE(unescape_string("a\\qb") == "a\\qb");
+    }
+    SUBCASE("unescape_string tolerates a trailing backslash") {
+        REQUIRE(unescape_string("abc\\") == "abc\\");
+    }
+}
