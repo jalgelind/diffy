@@ -240,7 +240,7 @@ build_row_model(const diffy::DiffViewModel& model, const GuiTheme& theme, int ta
         result.first_visual.push_back(static_cast<int>(result.rows->row_count()));
 
         if (r.kind == diffy::RowKind::HunkHeader) {
-            DiffRowData d;
+            DiffRowData d{};  // value-init so is_comment (and future flags) default false
             d.is_header = true;
             d.header = shared(r.header_text);
             d.left_present = false;
@@ -268,7 +268,7 @@ build_row_model(const diffy::DiffViewModel& model, const GuiTheme& theme, int ta
         // divider. Line numbers show on the first visual row only.
         const size_t n = std::max<size_t>(std::max(left.size(), right.size()), 1);
         for (size_t i = 0; i < n; ++i) {
-            DiffRowData d;
+            DiffRowData d{};  // value-init so is_comment (and future flags) default false
             d.is_header = false;
             d.old_no = (i == 0) ? old_no : slint::SharedString();
             d.new_no = (i == 0) ? new_no : slint::SharedString();
