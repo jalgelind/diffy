@@ -186,8 +186,11 @@ export global Backend {
     in-out property <bool> pr-list-collapsed: false;  // PR-list shelf; auto-set on open, user-toggle
     in property <string> pr-title;      // "#id  title"
     in property <string> pr-subtitle;   // "src → dst · state"
+    in property <string> pr-stat;       // "N files · +x −y"
+    in property <string> pr-url;        // web URL of the PR (quick actions)
     in property <[PrComment]> pr-comments;  // all of the open PR's comments (Comments shelf)
     callback close-pr();
+    callback open-url(string);          // open a URL in the system browser
     callback show-pr-aggregate();  // leave a single-commit view, show the full PR diff
     in-out property <int> tab-width: 4;
     in property <[string]> font-choices;   // curated monospace families (per-OS)
@@ -1672,6 +1675,40 @@ component CommitsPanel inherits Rectangle {
             color: Backend.gutter-fg;
             font-size: 10px;
             overflow: elide;
+        }
+        // Diffstat + quick actions (Open in browser / Copy link).
+        if Backend.pr-open : HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: Backend.pr-stat;
+                color: Backend.gutter-fg;
+                font-size: 10px;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            open-ext-ta := TouchArea {
+                width: 36px;
+                clicked => { if (Backend.pr-url != "") { Backend.open-url(Backend.pr-url); } }
+                Text {
+                    text: "Open";
+                    color: open-ext-ta.has-hover ? Backend.accent : Backend.gutter-fg;
+                    font-size: 10px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+            }
+            copy-link-ta := TouchArea {
+                width: 34px;
+                clicked => { if (Backend.pr-url != "") { Backend.copy-to-clipboard(Backend.pr-url); } }
+                Text {
+                    text: "Copy";
+                    color: copy-link-ta.has-hover ? Backend.accent : Backend.gutter-fg;
+                    font-size: 10px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+            }
         }
 
         // ---- Shelf: Pull requests (collapses when a PR opens) ----

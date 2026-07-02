@@ -109,11 +109,17 @@ shell_reveal(const std::string& abs_path) {
     const std::wstring arg = L"/select,\"" + to_windows_path(abs_path) + L"\"";
     ShellExecuteW(nullptr, L"open", L"explorer.exe", arg.c_str(), nullptr, SW_SHOWNORMAL);
 }
+
+void
+open_url(const std::string& url) {
+    ShellExecuteW(nullptr, L"open", to_wide(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
 #else
 // TODO: xdg-open / pbcopy equivalents for Linux/macOS.
 void copy_to_clipboard(const std::string&) {}
 void shell_open(const std::string&) {}
 void shell_reveal(const std::string&) {}
+void open_url(const std::string&) {}
 #endif
 
 #ifdef _WIN32
@@ -851,6 +857,8 @@ main(int argc, char** argv) {
             std::string subtitle;
             std::string description;  // PR body (markdown) for the overview header
             std::string author;
+            int total_adds = 0;  // summed diffstat across files
+            int total_dels = 0;
         };
         std::unordered_map<std::string, PrDetail> pr_detail_cache;
         std::unordered_map<std::string, std::pair<std::string, std::string>> pr_file_cache;
@@ -1733,6 +1741,8 @@ main(int argc, char** argv) {
                            : f.status == "deleted" ? "D"
                            : f.status == "renamed" ? "R"
                                                    : "M";
+                d.total_adds += f.additions;
+                d.total_dels += f.deletions;
                 d.files.push_back(std::move(c));
             }
         }
@@ -1849,6 +1859,10 @@ main(int argc, char** argv) {
         rebuild_comment_shelf(d.threads);
         backend.set_pr_title(ss("#" + id + "  " + d.title));
         backend.set_pr_subtitle(ss(d.subtitle));
+        backend.set_pr_stat(ss(std::to_string(d.files.size()) + " files  ·  +" +
+                               std::to_string(d.total_adds) + "  -" + std::to_string(d.total_dels)));
+        backend.set_pr_url(ss("https://bitbucket.org/" + state.pr_ws + "/" + state.pr_repo +
+                              "/pull-requests/" + id));
         // Overview = the PR description (Full diff). Don't clobber it while the user
         // is viewing a single commit (a background detail refresh can land then).
         if (state.current_pr_commit.empty()) {
@@ -3160,6 +3174,7 @@ main(int argc, char** argv) {
     });
     // --- context-menu actions ----------------------------------------------
     backend.on_copy_to_clipboard([&](slint::SharedString t) { copy_to_clipboard(str(t)); });
+    backend.on_open_url([&](slint::SharedString u) { open_url(str(u)); });
     backend.on_open_file([&](slint::SharedString p) {
         if (state.repo) {
             shell_open(join_path(state.repo->workdir(), str(p)));
