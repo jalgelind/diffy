@@ -24,6 +24,7 @@ struct GuiSettings {
     int64_t font_size = 13;
     bool word_wrap = false;  // off by default so syntax/token colours always show
     bool show_line_numbers = true;
+    bool group_by_folder = true;  // file list: nested directory tree (default) vs flat
     bool syntax_highlight = true;  // tree-sitter syntax highlighting in the diff
     bool ignore_whitespace = false;
     bool token_granularity = true;  // token- vs line-level intra-change highlighting

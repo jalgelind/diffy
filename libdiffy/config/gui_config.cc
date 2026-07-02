@@ -79,6 +79,7 @@ diffy::gui_settings_load(GuiSettings& settings) {
     sync_int("gui.font_size", settings.font_size);
     sync_bool("gui.word_wrap", settings.word_wrap);
     sync_bool("gui.show_line_numbers", settings.show_line_numbers);
+    sync_bool("gui.group_by_folder", settings.group_by_folder);
     sync_bool("gui.syntax_highlight", settings.syntax_highlight);
     sync_bool("gui.ignore_whitespace", settings.ignore_whitespace);
     sync_bool("gui.token_granularity", settings.token_granularity);
@@ -123,6 +124,7 @@ diffy::gui_settings_save(const GuiSettings& settings) {
     table.set_value_at("gui.font_size", Value{static_cast<int>(settings.font_size)});
     table.set_value_at("gui.word_wrap", Value{settings.word_wrap});
     table.set_value_at("gui.show_line_numbers", Value{settings.show_line_numbers});
+    table.set_value_at("gui.group_by_folder", Value{settings.group_by_folder});
     table.set_value_at("gui.syntax_highlight", Value{settings.syntax_highlight});
     table.set_value_at("gui.ignore_whitespace", Value{settings.ignore_whitespace});
     table.set_value_at("gui.token_granularity", Value{settings.token_granularity});

@@ -979,6 +979,7 @@ main(int argc, char** argv) {
     options.set_side_by_side(settings.view_mode() == ViewMode::SideBySide);
     options.set_show_line_numbers(settings.show_line_numbers);
     options.set_word_wrap(settings.word_wrap);
+    backend.set_group_by_folder(settings.group_by_folder);  // nested tree by default
     options.set_token_granularity(settings.token_granularity);
     options.set_syntax_highlight(settings.syntax_highlight);
     options.set_ignore_whitespace(settings.ignore_whitespace);
@@ -2970,6 +2971,33 @@ main(int argc, char** argv) {
             });
         });
     });
+    // Sync the live view/layout options into state.settings so they can be saved.
+    // Shared by the immediate per-toggle persist and the persist-on-exit path.
+    auto capture_settings = [&]() {
+        state.settings.default_view = options.get_side_by_side() ? "side-by-side" : "unified";
+        state.settings.word_wrap = options.get_word_wrap();
+        state.settings.show_line_numbers = options.get_show_line_numbers();
+        state.settings.syntax_highlight = options.get_syntax_highlight();
+        state.settings.ignore_whitespace = options.get_ignore_whitespace();
+        state.settings.token_granularity = options.get_token_granularity();
+        state.settings.context_lines = options.get_context_lines();
+        state.settings.algorithm = options.get_algorithm();
+        state.settings.group_by_folder = backend.get_group_by_folder();
+        state.settings.font_family = str(backend.get_mono_font());
+        state.settings.font_size = backend.get_font_size();
+        state.settings.tab_width = backend.get_tab_width();
+        state.settings.theme = str(backend.get_theme_name());
+        state.settings.sidebar_width = static_cast<int64_t>(backend.get_sidebar_width());
+        state.settings.commits_panel_height =
+            static_cast<int64_t>(backend.get_commits_panel_height());
+        const auto win_size = ui->window().size();
+        const float scale = ui->window().scale_factor();
+        if (scale > 0.0f) {
+            state.settings.window_width = static_cast<int64_t>(win_size.width / scale);
+            state.settings.window_height = static_cast<int64_t>(win_size.height / scale);
+        }
+    };
+
     backend.on_select_file([&](slint::SharedString p) { open_file(str(p)); });
     backend.on_filter_files([&](slint::SharedString p) {
         std::string f = str(p);
@@ -2983,7 +3011,11 @@ main(int argc, char** argv) {
     backend.on_navigate([&](slint::SharedString d) { navigate(str(d)); });
     backend.on_refresh([&]() { refresh(); });
     backend.on_auto_refresh([&]() { soft_refresh(); });
-    backend.on_regroup_files([&]() { render_files(); });
+    backend.on_regroup_files([&]() {
+        render_files();
+        capture_settings();  // persist the flat/tree choice immediately
+        gui_settings_save(state.settings);
+    });
     backend.on_set_base_ref([&](slint::SharedString r) {
         state.base_ref = str(r);
         // Re-diff the open file against the new base (working-tree mode only).
@@ -3390,27 +3422,7 @@ main(int argc, char** argv) {
 
     // --- persist on exit ----------------------------------------------------
     // Capture the live option-bar state and window layout so they survive restart.
-    state.settings.default_view = options.get_side_by_side() ? "side-by-side" : "unified";
-    state.settings.word_wrap = options.get_word_wrap();
-    state.settings.show_line_numbers = options.get_show_line_numbers();
-    state.settings.syntax_highlight = options.get_syntax_highlight();
-    state.settings.ignore_whitespace = options.get_ignore_whitespace();
-    state.settings.token_granularity = options.get_token_granularity();
-    state.settings.context_lines = options.get_context_lines();
-    state.settings.algorithm = options.get_algorithm();
-    state.settings.font_family = str(backend.get_mono_font());
-    state.settings.font_size = backend.get_font_size();
-    state.settings.tab_width = backend.get_tab_width();
-    state.settings.theme = str(backend.get_theme_name());
-    state.settings.sidebar_width = static_cast<int64_t>(backend.get_sidebar_width());
-    state.settings.commits_panel_height =
-        static_cast<int64_t>(backend.get_commits_panel_height());
-    const auto win_size = ui->window().size();
-    const float scale = ui->window().scale_factor();
-    if (scale > 0.0f) {
-        state.settings.window_width = static_cast<int64_t>(win_size.width / scale);
-        state.settings.window_height = static_cast<int64_t>(win_size.height / scale);
-    }
+    capture_settings();
     gui_settings_save(state.settings);
     // Remember the open working-tree file for the current repo (front entry).
     if (state.current_commit.empty() && !state.current_file.empty() && !state.repos.empty()) {
