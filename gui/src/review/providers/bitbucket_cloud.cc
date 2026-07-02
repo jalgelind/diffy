@@ -253,16 +253,34 @@ collect_all(HttpClient& http, const Credential& cred, std::string url) {
 // decodes the common entities, collapsing whitespace.
 std::string
 strip_html(const std::string& html) {
+    // Block-level tags become newlines so paragraph structure survives (the
+    // overview header shows multi-line descriptions); inline tags become spaces.
+    auto is_break = [](const std::string& tag) {
+        std::string t;
+        for (char c : tag) {
+            if (c == ' ' || c == '\t' || c == '\n') {
+                break;
+            }
+            t.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+        }
+        return t == "br" || t == "br/" || t == "/p" || t == "/div" || t == "/li" ||
+               t == "/tr" || t == "/blockquote" || t == "/pre" || t == "hr" || t == "hr/" ||
+               (t.size() == 3 && t[0] == '/' && t[1] == 'h' && t[2] >= '1' && t[2] <= '6');
+    };
     std::string out;
     out.reserve(html.size());
+    std::string tag;
     bool in_tag = false;
     for (char ch : html) {
         if (ch == '<') {
             in_tag = true;
+            tag.clear();
         } else if (ch == '>') {
             in_tag = false;
-            out.push_back(' ');
-        } else if (!in_tag) {
+            out.push_back(is_break(tag) ? '\n' : ' ');
+        } else if (in_tag) {
+            tag.push_back(ch);
+        } else {
             out.push_back(ch);
         }
     }
@@ -281,17 +299,27 @@ strip_html(const std::string& html) {
     rep("&#x27;", "'");
     rep("&nbsp;", " ");
     rep("&amp;", "&");
+    // Collapse runs of spaces/tabs, but preserve line breaks (cap blank runs at
+    // one blank line) and trim leading whitespace.
     std::string cleaned;
     cleaned.reserve(out.size());
-    bool pending_space = false;
+    int pending_nl = 0;
+    bool pending_sp = false;
     for (char ch : out) {
-        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') {
-            pending_space = !cleaned.empty();
+        if (ch == '\n') {
+            ++pending_nl;
+            pending_sp = false;
+        } else if (ch == ' ' || ch == '\t' || ch == '\r') {
+            pending_sp = !cleaned.empty();
         } else {
-            if (pending_space) {
-                cleaned.push_back(' ');
-                pending_space = false;
+            if (pending_nl > 0 && !cleaned.empty()) {
+                cleaned.append(std::min(pending_nl, 2), '\n');
             }
+            else if (pending_sp) {
+                cleaned.push_back(' ');
+            }
+            pending_nl = 0;
+            pending_sp = false;
             cleaned.push_back(ch);
         }
     }
@@ -316,9 +344,11 @@ to_pr(const json& j) {
     PullRequest pr;
     pr.id = jid(j);
     pr.title = jstr(j, "title");
-    pr.description = jstr(j, "description");
+    // Prefer the rendered summary (resolves @{account-id} mentions to names, with
+    // block newlines preserved by strip_html); fall back to the raw description.
+    pr.description = comment_body(jchild(j, "summary"));
     if (pr.description.empty()) {
-        pr.description = jstr(jchild(j, "summary"), "raw");
+        pr.description = jstr(j, "description");
     }
     const json& author = jchild(j, "author");
     pr.author = jstr(author, "display_name");
@@ -396,8 +426,11 @@ to_commit(const json& j) {
     c.sha = jstr(j, "hash");
     c.short_sha = c.sha.substr(0, std::min<std::size_t>(8, c.sha.size()));
     const std::string msg = jstr(j, "message");
-    c.message = msg;
     c.summary = msg.substr(0, msg.find('\n'));
+    // Rendered summary resolves @{account-id} mentions (newlines preserved);
+    // fall back to the raw message.
+    const std::string rendered = comment_body(jchild(j, "summary"));
+    c.message = rendered.empty() ? msg : rendered;
     const json& au = jchild(j, "author");
     c.author = jstr(jchild(au, "user"), "display_name");
     if (c.author.empty()) {

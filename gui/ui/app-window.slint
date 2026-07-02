@@ -2497,12 +2497,16 @@ export component AppWindow inherits Window {
                             // height and the text is clipped instead of scrolled.
                             viewport-width: ov-scroll.width - 14px;
                             viewport-height: ov-body.preferred-height;
-                            ov-body := Text {
+                            // Read-only TextInput (not Text) so the description /
+                            // commit message can be selected and copied (Ctrl/Cmd+C).
+                            ov-body := TextInput {
                                 width: ov-scroll.width - 14px;
                                 text: Backend.overview-body;
                                 color: Backend.fg;
                                 font-size: 12px;
                                 wrap: word-wrap;
+                                single-line: false;
+                                read-only: true;
                             }
                         }
                     }
