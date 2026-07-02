@@ -36,7 +36,9 @@ struct TokenDescriptor {
         { "Assign",       TokenId_Assign,        "=" ,          std::nullopt        , std::nullopt    },
         { "OpenCurly",    TokenId_OpenCurly,     "{" ,          std::nullopt        , std::nullopt    },
         { "CloseCurly",   TokenId_CloseCurly,    "}" ,          std::nullopt        , std::nullopt    },
-        { "DoubleQuote",  TokenId_DoubleQuote,   "\"",          TokenId_DoubleQuote , std::nullopt    },
+        // Double-quoted strings are escaped (tagged so the parser unescapes them);
+        // single-quoted strings are raw literals (backward compatible).
+        { "DoubleQuote",  TokenId_DoubleQuote,   "\"",          TokenId_DoubleQuote , (TokenId)(TokenId_String | TokenId_EscapedString) },
         { "SingleQuote",  TokenId_SingleQuote,   "'" ,          TokenId_SingleQuote , std::nullopt    },
         { "Hashtag",      TokenId_Hashtag,       "#" ,          TokenId_Newline     , TokenId_Comment },
         { "Comma",        TokenId_Comma,         "," ,          std::nullopt        , std::nullopt    },
@@ -103,6 +105,45 @@ Token::str_display_from(const std::string& input_text) const {
         }
     }
     return sanitized;
+}
+
+std::string
+diffy::config_tokenizer::escape_string(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+        switch (c) {
+            case '\\': out += "\\\\"; break;
+            case '"':  out += "\\\""; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:   out += c;
+        }
+    }
+    return out;
+}
+
+std::string
+diffy::config_tokenizer::unescape_string(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (std::size_t i = 0; i < s.size(); i++) {
+        if (s[i] == '\\' && i + 1 < s.size()) {
+            switch (s[++i]) {
+                case 'n':  out += '\n'; break;
+                case 'r':  out += '\r'; break;
+                case 't':  out += '\t'; break;
+                case '\\': out += '\\'; break;
+                case '"':  out += '"';  break;
+                case '\'': out += '\''; break;
+                default:   out += '\\'; out += s[i]; break;  // preserve unknown escapes
+            }
+        } else {
+            out += s[i];
+        }
+    }
+    return out;
 }
 
 bool
@@ -208,6 +249,12 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
         // inside a quoted string?
         if (capture_string) {
             for (auto i = start_idx; i < text.size(); i++) {
+                // In an escaped ("double") string a backslash escapes the next
+                // character, so it can't terminate the string or be misread.
+                if (string_terminator == TokenId_DoubleQuote && text[i] == '\\') {
+                    i++;  // skip the escaped char (loop's ++ skips the backslash)
+                    continue;
+                }
                 if (auto tokopt = find_token(i, text); tokopt) {
                     auto tok = *tokopt;
 

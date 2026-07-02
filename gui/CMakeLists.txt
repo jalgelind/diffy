@@ -101,7 +101,7 @@ add_executable(diffy-gui
   src/text_layout.cc)
 
 target_include_directories(diffy-gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(diffy-gui PRIVATE diffy_core diffy_review Slint::Slint ${DIFFY_LIBGIT2_TARGET})
+target_link_libraries(diffy-gui PRIVATE diffy_core diffy_review config_parser Slint::Slint ${DIFFY_LIBGIT2_TARGET})
 
 # Slint's winit/skia backend is built as a static Rust library; the macOS
 # frameworks and the ObjC runtime its objc2/winit/skia/accesskit crates call

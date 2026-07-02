@@ -406,7 +406,13 @@ diffy::cfg_parse(const std::string& input_data,
                                    } else if (token.id & TokenId_Float) {
                                        ins = TbInstruction::Value(token.token_float_arg);
                                    } else if (token.id & TokenId_String) {
-                                       ins = TbInstruction::Value(token.str_from(input_data));
+                                       // Double-quoted strings are escaped; unescape
+                                       // them. Single-quoted stay literal (raw).
+                                       ins = TbInstruction::Value(
+                                           (token.id & config_tokenizer::TokenId_EscapedString)
+                                               ? config_tokenizer::unescape_string(
+                                                     token.str_from(input_data))
+                                               : token.str_from(input_data));
                                    } else {
                                        assert(false && "Not reached");
                                        ins.oparg_type = TbValueType::String;

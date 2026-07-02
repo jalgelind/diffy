@@ -1,10 +1,30 @@
 #include "config_serializer.hpp"
 
+#include "config_tokenizer.hpp"
+
 #include <fmt/format.h>
 
 using namespace diffy;
 
 namespace internal {
+
+// Emit a string value: a raw 'single'-quoted literal when it needs no escaping
+// (keeps existing configs byte-identical), otherwise an escaped "double"-quoted
+// string. A literal can't contain a single-quote, newline or carriage return.
+static std::string
+serialize_string(const std::string& s) {
+    bool needs_escape = false;
+    for (char c : s) {
+        if (c == '\'' || c == '\n' || c == '\r') {
+            needs_escape = true;
+            break;
+        }
+    }
+    if (!needs_escape) {
+        return "'" + s + "'";
+    }
+    return "\"" + diffy::config_tokenizer::escape_string(s) + "\"";
+}
 
 static std::string
 indent(int count) {
@@ -104,7 +124,7 @@ serialize_obj(Value& value, int depth, std::string& output, bool is_last_element
             output += " " + comment + "\n";
         }
     } else if (value.is_string()) {
-        output += fmt::format("'{}'", value.as_string());
+        output += serialize_string(value.as_string());
         if (!is_last_element)
             output += ", ";
         for (auto& comment : value.value_comments) {

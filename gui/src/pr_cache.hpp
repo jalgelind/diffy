@@ -7,7 +7,8 @@
     detail — refs/commits/threads — whenever it is opened), so stale entries
     (new or replaced commits, merged/declined PRs) are corrected within moments.
 
-    Stored as pr_cache.json next to diffy.conf. Keyed by "workspace/repo".
+    Stored as pr_cache.conf next to diffy.conf (same format family). Keyed by
+    "workspace/repo".
 */
 
 #include "review/model.hpp"
