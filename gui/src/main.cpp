@@ -23,6 +23,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -180,6 +181,53 @@ approval_str(diffy::review::ApprovalState s) {
         case A::Declined: return "declined";
         default: return "open";
     }
+}
+
+// Greedy word-wrap of prose into lines of at most `cols` columns, respecting
+// existing newlines. Used to render review-comment bodies as uniform-height rows.
+std::vector<std::string>
+wrap_text(const std::string& text, int cols) {
+    if (cols < 8) {
+        cols = 8;
+    }
+    std::vector<std::string> out;
+    std::size_t start = 0;
+    while (start <= text.size()) {
+        std::size_t nl = text.find('\n', start);
+        std::string para = text.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
+        // Greedy-fill words into lines.
+        std::string line;
+        std::size_t i = 0;
+        while (i < para.size()) {
+            while (i < para.size() && para[i] == ' ') {
+                ++i;
+            }
+            std::size_t j = i;
+            while (j < para.size() && para[j] != ' ') {
+                ++j;
+            }
+            const std::string word = para.substr(i, j - i);
+            i = j;
+            if (word.empty()) {
+                continue;
+            }
+            if (line.empty()) {
+                line = word;
+            } else if (static_cast<int>(line.size() + 1 + word.size()) <= cols) {
+                line += ' ';
+                line += word;
+            } else {
+                out.push_back(line);
+                line = word;
+            }
+        }
+        out.push_back(line);  // may be empty (blank line)
+        if (nl == std::string::npos) {
+            break;
+        }
+        start = nl + 1;
+    }
+    return out;
 }
 
 }  // namespace
@@ -487,11 +535,15 @@ main(int argc, char** argv) {
             diffy::review::PrRefs refs;
             std::vector<diffy::gui::FileChange> files;
             std::vector<diffy::gui::CommitInfo> commits;
+            std::vector<diffy::review::ReviewThread> threads;
             std::string title;
             std::string subtitle;
         };
         std::unordered_map<std::string, PrDetail> pr_detail_cache;
         std::unordered_map<std::string, std::pair<std::string, std::string>> pr_file_cache;
+        // Threads for the open PR (all files); relayout interleaves those matching
+        // the current file into the diff.
+        std::vector<diffy::review::ReviewThread> pr_threads;
     } state;
     constexpr int kCommitPage = 50;  // commits per lazy page
     state.settings = settings;
@@ -650,7 +702,82 @@ main(int argc, char** argv) {
                                                  static_cast<int>(state.settings.tab_width),
                                                  options.get_word_wrap(), wrap_cols);
         backend.set_max_cols(model.max_cols);
-        backend.set_rows(model.rows);
+
+        // In PR mode, interleave review-comment rows beneath their anchor lines for
+        // the current file (comments are wrapped into uniform one-line rows in
+        // wrap_text). Threads with no usable anchor (outdated/general) are appended.
+        if (state.current_pr.empty() || state.pr_threads.empty()) {
+            backend.set_rows(model.rows);
+        } else {
+            using diffy::review::ReviewThread;
+            using diffy::review::Side;
+            std::unordered_map<std::string, std::vector<const ReviewThread*>> by_anchor;
+            std::vector<const ReviewThread*> outdated;
+            for (const auto& th : state.pr_threads) {
+                if (th.anchor.new_path != state.current_file) {
+                    continue;
+                }
+                if (th.outdated || th.anchor.start.line < 1) {
+                    outdated.push_back(&th);
+                    continue;
+                }
+                by_anchor[std::to_string(th.anchor.start.line) +
+                          (th.anchor.side == Side::New ? "|n" : "|o")]
+                    .push_back(&th);
+            }
+            const int wc = wrap_cols > 0 ? wrap_cols : 80;
+            auto out = std::make_shared<slint::VectorModel<DiffRowData>>();
+            auto push_thread = [&](const ReviewThread* th) {
+                for (std::size_t ci = 0; ci < th->comments.size(); ++ci) {
+                    const auto& cm = th->comments[ci];
+                    const std::string who = ci == 0 ? cm.author : ("\xE2\x86\xB3 " + cm.author);
+                    auto lines = wrap_text(cm.body_md, wc);
+                    if (lines.empty()) {
+                        lines.emplace_back();
+                    }
+                    for (std::size_t li = 0; li < lines.size(); ++li) {
+                        DiffRowData d{};
+                        d.is_comment = true;
+                        d.comment_author = ss(li == 0 ? who : std::string());
+                        d.comment_body = ss(lines[li]);
+                        d.comment_outdated = th->outdated;
+                        out->push_back(d);
+                    }
+                }
+            };
+            const std::size_t n = model.rows->row_count();
+            for (std::size_t i = 0; i < n; ++i) {
+                DiffRowData row = *model.rows->row_data(i);
+                out->push_back(row);
+                if (row.is_header || row.is_comment) {
+                    continue;
+                }
+                const std::string nn(std::string_view(row.new_no));
+                const std::string on(std::string_view(row.old_no));
+                if (!nn.empty()) {
+                    if (auto it = by_anchor.find(nn + "|n"); it != by_anchor.end()) {
+                        for (auto* th : it->second) push_thread(th);
+                    }
+                }
+                if (!on.empty()) {
+                    if (auto it = by_anchor.find(on + "|o"); it != by_anchor.end()) {
+                        for (auto* th : it->second) push_thread(th);
+                    }
+                }
+            }
+            for (auto* th : outdated) {
+                DiffRowData hdr{};
+                hdr.is_comment = true;
+                hdr.comment_outdated = true;
+                hdr.comment_author = ss(std::string("outdated"));
+                hdr.comment_body =
+                    ss(th->anchor.new_path.empty() ? std::string("(general comment)")
+                                                   : th->anchor.new_path);
+                out->push_back(hdr);
+                push_thread(th);
+            }
+            backend.set_rows(out);
+        }
 
         // A logical line may render as several wrapped rows; navigation targets the
         // first visual row of the matching logical line.
@@ -986,6 +1113,7 @@ main(int argc, char** argv) {
     // the user off the file they're reading.
     auto apply_pr_detail = [&](const std::string& id, const State::PrDetail& d, bool select_first) {
         state.pr_refs = d.refs;
+        state.pr_threads = d.threads;
         backend.set_pr_title(ss("#" + id + "  " + d.title));
         backend.set_pr_subtitle(ss(d.subtitle));
         set_files(d.files);
@@ -997,6 +1125,8 @@ main(int argc, char** argv) {
                 backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
                 backend.set_current_file(ss(""));
             }
+        } else if (!state.current_file.empty() && state.pair.ok) {
+            relayout();  // background swap: re-render the open file with fresh comments
         }
     };
 
@@ -1040,9 +1170,13 @@ main(int argc, char** argv) {
             auto refs = client.refs(id);
             auto files = client.files(id);
             auto commits = client.commits(id);
+            auto threads = client.threads(id);
 
             State::PrDetail d;
             d.refs = refs ? refs.value() : diffy::review::PrRefs{};
+            if (threads) {
+                d.threads = std::move(threads.value());
+            }
             if (files) {
                 for (const auto& f : files.value()) {
                     diffy::gui::FileChange c;
@@ -1262,6 +1396,7 @@ main(int argc, char** argv) {
         backend.set_status_text(ss("Opening " + path + " …"));
         // Leave any PR detail mode when (re)opening a repo.
         state.current_pr.clear();
+        state.pr_threads.clear();
         backend.set_pr_open(false);
         // Clear the current view so switching repos feels immediate.
         set_files({});

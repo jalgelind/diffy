@@ -28,6 +28,12 @@ export struct DiffRowData {
     right-spans: [DiffSpan],
     right-bg: color,
     right-present: bool,
+    // Review comment rows are interleaved into the diff beneath their anchor line.
+    // A comment row renders a bubble (variable height) instead of the diff cells.
+    is-comment: bool,
+    comment-author: string,
+    comment-body: string,
+    comment-outdated: bool,
 }
 
 export struct FileEntry {
@@ -488,10 +494,40 @@ component DiffRow inherits Rectangle {
         }
     }
 
+    // Review comment row: a bubble under its anchor line. C++ wraps the body into
+    // one-line rows (keeping uniform height); the author prefixes the first line.
+    if rowdata.is-comment : Rectangle {
+        background: rowdata.comment-outdated ? Backend.panel-bg : Backend.header-bg;
+        Rectangle {
+            x: 0;
+            width: 3px;
+            background: rowdata.comment-outdated ? Backend.gutter-fg : Backend.accent;
+        }
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 8px;
+            spacing: 6px;
+            if rowdata.comment-author != "" : Text {
+                text: rowdata.comment-author + ":";
+                color: rowdata.comment-outdated ? Backend.gutter-fg : Backend.accent;
+                font-size: Backend.font-size * 1px;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+            Text {
+                text: rowdata.comment-body;
+                color: Backend.fg;
+                font-size: Backend.font-size * 1px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+
     // All cells/gutters are always present (widths collapse to 0 when unused) so
     // their heights stay referenceable from the row height binding above.
     body := HorizontalLayout {
-        visible: !rowdata.is-header;
+        visible: !rowdata.is-header && !rowdata.is-comment;
         spacing: 0px;
         // Side-by-side: old# on the left (new# is the right gutter below). Unified:
         // a single gutter showing the new line number, or the old one for deletions.
