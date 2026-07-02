@@ -615,6 +615,7 @@ main(int argc, char** argv) {
         // Active Bitbucket credential (from a live connect or restored from the
         // vault at startup); drives detection/PR listing for bitbucket.org repos.
         std::optional<diffy::review::Credential> bitbucket_cred;
+        std::string account_id;  // the connected account's provider id (for PR grouping)
         // PR detail mode: the open PR's id ("" = not in a PR), its ref SHAs (for
         // sourcing file diffs), and the workspace/repo parsed from origin.
         std::string current_pr;
@@ -1490,20 +1491,105 @@ main(int argc, char** argv) {
     // the UI thread; a load_generation check drops results if the repo switched.
     // Build the PrEntry model from neutral PRs and push it to the sidebar.
     auto show_prs = [&](const std::vector<diffy::review::PullRequest>& prs) {
-        auto model = std::make_shared<slint::VectorModel<PrEntry>>();
+        // Group into Needs-your-review / Yours / Others using the connected account
+        // (account id known once whoami returns; until then everything is "Others").
+        const std::string& me = state.account_id;
+        auto needs_my_review = [&](const diffy::review::PullRequest& pr) {
+            if (me.empty()) {
+                return false;
+            }
+            for (const auto& r : pr.reviewers) {
+                if (r.id == me) {
+                    return !r.approved;
+                }
+            }
+            return false;
+        };
+        std::vector<const diffy::review::PullRequest*> need, mine, others;
         for (const auto& pr : prs) {
-            PrEntry e;
-            e.id = ss(pr.id);
-            e.title = ss(pr.title);
-            e.author = ss(pr.author);
-            e.source = ss(pr.src_branch);
-            e.dest = ss(pr.dst_branch);
-            e.state = ss(approval_str(pr.state));
-            e.comments = pr.comment_count;
-            e.updated = ss(pr.updated);
+            if (needs_my_review(pr)) {
+                need.push_back(&pr);
+            } else if (!me.empty() && pr.author_id == me) {
+                mine.push_back(&pr);
+            } else {
+                others.push_back(&pr);
+            }
+        }
+        auto model = std::make_shared<slint::VectorModel<PrEntry>>();
+        auto add_section = [&](const char* title) {
+            PrEntry e{};
+            e.is_section = true;
+            e.title = ss(title);
             model->push_back(e);
+        };
+        auto add_pr = [&](const diffy::review::PullRequest* pr) {
+            PrEntry e{};
+            e.id = ss(pr->id);
+            e.title = ss(pr->title);
+            e.author = ss(pr->author);
+            e.source = ss(pr->src_branch);
+            e.dest = ss(pr->dst_branch);
+            e.state = ss(approval_str(pr->state));
+            e.comments = pr->comment_count;
+            e.updated = ss(pr->updated);
+            model->push_back(e);
+        };
+        // Only show headers when there's more than the "Others" bucket to name.
+        const bool sectioned = !need.empty() || !mine.empty();
+        if (!need.empty()) {
+            add_section("NEEDS YOUR REVIEW");
+            for (auto* p : need) {
+                add_pr(p);
+            }
+        }
+        if (!mine.empty()) {
+            add_section("YOURS");
+            for (auto* p : mine) {
+                add_pr(p);
+            }
+        }
+        if (!others.empty()) {
+            if (sectioned) {
+                add_section("OTHERS");
+            }
+            for (auto* p : others) {
+                add_pr(p);
+            }
         }
         backend.set_pull_requests(model);
+    };
+
+    // Fetch the connected account once (background) so show_prs can group PRs; when
+    // it arrives, re-group whatever list is currently cached/shown.
+    auto ensure_account = [&]() {
+        if (!state.account_id.empty() || !state.bitbucket_cred) {
+            return;
+        }
+        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const uint64_t gen = state.load_generation;
+        review_pool.submit(ReviewPool::Prio::Interactive,
+                           [&, cred, gen](diffy::review::HttpClient& http) {
+            diffy::review::BitbucketCloudClient client(http, cred, state.pr_ws, state.pr_repo);
+            auto who = client.whoami();
+            if (!who) {
+                return;
+            }
+            const std::string acct = who.value().id;
+            slint::invoke_from_event_loop([&, acct, gen]() {
+                if (gen != state.load_generation || acct.empty()) {
+                    return;
+                }
+                state.account_id = acct;
+                // Re-group the currently-cached list, if any, now that we know "me".
+                auto parsed = diffy::review::parse_remote_url(state.repo->origin_url());
+                if (parsed) {
+                    auto it = state.pr_list_cache.find(parsed->owner + "/" + parsed->repo);
+                    if (it != state.pr_list_cache.end()) {
+                        show_prs(it->second);
+                    }
+                }
+            });
+        });
     };
 
     auto refresh_prs = [&]() {
@@ -1517,6 +1603,7 @@ main(int argc, char** argv) {
             return;
         }
         backend.set_has_bitbucket(true);
+        ensure_account();  // learn "me" so PRs group by needs-review / yours / others
         const std::string ws = parsed->owner;
         const std::string repo = parsed->repo;
         const std::string key = ws + "/" + repo;

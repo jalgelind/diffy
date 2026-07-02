@@ -85,17 +85,26 @@ struct Account {
 
 // A pull request (GitLab: "merge request" — see Capabilities::item_noun). `state`
 // + `draft` drive the approval glyph and toolbar; `updated` is ISO-8601.
+// A reviewer on a PR and whether they've approved (drives the "needs your review"
+// grouping when matched against the authenticated account).
+struct Reviewer {
+    std::string id;  // provider account id
+    bool approved = false;
+};
+
 struct PullRequest {
     std::string id;
     std::string title;
     std::string description;
     std::string author;
+    std::string author_id;  // provider account id (for the "yours" grouping)
     std::string src_branch;
     std::string dst_branch;
     ApprovalState state = ApprovalState::Open;
     bool draft = false;
     int comment_count = 0;
     std::string updated;  // ISO-8601
+    std::vector<Reviewer> reviewers;
 };
 
 // The refs + SHAs the git layer needs to fetch and diff a PR locally. The

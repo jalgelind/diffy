@@ -63,6 +63,7 @@ export struct PrEntry {
     state: string,
     comments: int,
     updated: string,
+    is-section: bool,   // a non-clickable group header row (title = section name)
 }
 
 // ---- option-bar state, shared with C++ -------------------------------------
@@ -1409,10 +1410,25 @@ component CommitsPanel inherits Rectangle {
             vertical-stretch: 1;
             horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
             for pr in Backend.pull-requests : Rectangle {
-                height: 52px;
-                background: pr-ta.has-hover ? Backend.hover : transparent;
-                pr-ta := TouchArea { clicked => { Backend.open-pr(pr.id); } }
-                HorizontalLayout {
+                height: pr.is-section ? 22px : 52px;
+                background: (!pr.is-section && pr-ta.has-hover) ? Backend.hover : transparent;
+                pr-ta := TouchArea {
+                    enabled: !pr.is-section;
+                    clicked => { Backend.open-pr(pr.id); }
+                }
+                // Group header row.
+                if pr.is-section : Text {
+                    x: 8px;
+                    width: parent.width - 12px;
+                    height: 100%;
+                    text: pr.title;
+                    color: Backend.gutter-fg;
+                    font-size: 10px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+                // Pull-request row.
+                if !pr.is-section : HorizontalLayout {
                     padding-left: 6px;
                     padding-right: 6px;
                     padding-top: 5px;

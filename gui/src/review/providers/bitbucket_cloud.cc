@@ -257,7 +257,28 @@ to_pr(const json& j) {
     if (pr.description.empty()) {
         pr.description = jstr(jchild(j, "summary"), "raw");
     }
-    pr.author = jstr(jchild(j, "author"), "display_name");
+    const json& author = jchild(j, "author");
+    pr.author = jstr(author, "display_name");
+    pr.author_id = jstr(author, "account_id");
+    if (pr.author_id.empty()) {
+        pr.author_id = jstr(author, "uuid");
+    }
+    const json& participants = jchild(j, "participants");
+    if (participants.is_array()) {
+        for (const auto& p : participants) {
+            if (jstr(p, "role") != "REVIEWER") {
+                continue;
+            }
+            const json& u = jchild(p, "user");
+            std::string uid = jstr(u, "account_id");
+            if (uid.empty()) {
+                uid = jstr(u, "uuid");
+            }
+            if (!uid.empty()) {
+                pr.reviewers.push_back(Reviewer{uid, jbool(p, "approved")});
+            }
+        }
+    }
     pr.src_branch = jstr(jchild(jchild(j, "source"), "branch"), "name");
     pr.dst_branch = jstr(jchild(jchild(j, "destination"), "branch"), "name");
     pr.draft = jbool(j, "draft");
@@ -370,8 +391,11 @@ BitbucketCloudClient::whoami() {
 
 Result<Page<PullRequest>>
 BitbucketCloudClient::list_open(const std::string& cursor) {
+    // Request participants alongside the default fields so the UI can group PRs by
+    // "needs your review" (fields=+values.participants; '+' encoded as %2B).
     const std::string url =
-        cursor.empty() ? base_ + "/repositories/" + ws_ + "/" + repo_ + "/pullrequests?state=OPEN"
+        cursor.empty() ? base_ + "/repositories/" + ws_ + "/" + repo_ +
+                             "/pullrequests?state=OPEN&fields=%2Bvalues.participants"
                        : cursor;
     Result<json> r = req_json(http_, cred_, "GET", url);
     if (!r) {
