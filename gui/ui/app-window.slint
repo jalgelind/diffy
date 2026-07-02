@@ -53,6 +53,7 @@ export struct FileEntry {
     staged: bool,
     is-section: bool,  // a non-selectable section/group header row
     depth: int,        // indent level (folder grouping)
+    comment-count: int,  // review comments anchored to this file (PR mode; 0 otherwise)
 }
 
 export struct CommitEntry {
@@ -127,7 +128,7 @@ export global Backend {
     in-out property <string> confirm-discard: "";  // path pending a discard confirm
     in property <string> current-file: "";
     in property <string> diff-note: "";  // why the file isn't diffed (binary/large)
-    in-out property <int> diff-scroll-row: -1;  // jump the diff to this model row
+    in-out property <float> diff-scroll-y: -1;  // jump the diff to this pixel offset (< 0 = no-op)
     // Find-in-diff state.
     in-out property <bool> show-find: false;
     in property <int> find-count: 0;          // total matches
@@ -604,11 +605,11 @@ component DiffRow inherits Rectangle {
     property <length> cellw: max(10px, sxs
         ? (root.width - 2 * gut - 1px) / 2
         : (root.width - 2 * gut));
-    // Every row — header or content, wrapped or not — is exactly one text line
-    // tall. C++ already split wrapped lines into separate rows, so this uniform
-    // height makes the ListView's total extent (and thus the scrollbar thumb and
-    // jump-to-hunk offsets) exact rather than estimated.
-    height: Backend.font-size * 1.6px;
+    // Content rows are exactly one text line tall (C++ pre-split wrapped lines),
+    // which keeps the scrollbar/jump math exact. Comment rows are a bit roomier so
+    // avatars and text aren't cramped; the C++ scroll math accounts for the two
+    // heights (see row_pixel_offset).
+    height: rowdata.is-comment ? Backend.font-size * 2.2px : Backend.font-size * 1.6px;
 
     if rowdata.is-header : Rectangle {
         height: Backend.font-size * 1.6px;
@@ -642,23 +643,23 @@ component DiffRow inherits Rectangle {
             // Avatar column (fixed) — rendered only on the header row so body lines
             // align beneath the author.
             Rectangle {
-                width: 22px;
+                width: 28px;
                 if rowdata.comment-is-head : Rectangle {
-                    width: 16px;
-                    height: 16px;
-                    border-radius: 8px;
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 11px;
                     clip: true;
                     background: rowdata.comment-tint;
                     if rowdata.comment-avatar.width > 0 : Image {
-                        width: 16px;
-                        height: 16px;
+                        width: 22px;
+                        height: 22px;
                         image-fit: cover;
                         source: rowdata.comment-avatar;
                     }
                     if rowdata.comment-avatar.width == 0 : Text {
                         text: rowdata.comment-initials;
                         color: #ffffff;
-                        font-size: 9px;
+                        font-size: 11px;
                         font-weight: 700;
                         horizontal-alignment: center;
                         vertical-alignment: center;
@@ -1417,6 +1418,23 @@ component FilesPanel inherits Rectangle {
                             horizontal-stretch: 1;
                             font-size: 11px;
                             vertical-alignment: center;
+                        }
+                        // Review-comment count badge (PR mode).
+                        if f.comment-count > 0 : Rectangle {
+                            height: 15px;
+                            border-radius: 7px;
+                            background: selected ? #ffffff : Backend.accent;
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+                                Text {
+                                    text: f.comment-count;
+                                    color: selected ? Backend.accent : Backend.on-accent;
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    vertical-alignment: center;
+                                }
+                            }
                         }
                         if f.staged : Rectangle {
                             width: 8px;
@@ -2306,12 +2324,12 @@ export component AppWindow inherits Window {
                     // the horizontal scrollbar — the fluent style otherwise draws its
                     // track as a white strip across the bottom of the diff.
                     horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
-                    // Jump-to-hunk: scroll so the requested (visual) row is near
-                    // the top. Rows are uniform-height, so this offset is exact.
-                    property <int> scroll-to: Backend.diff-scroll-row;
+                    // Jump-to-hunk / comment ref: C++ computes the exact pixel
+                    // offset (accounting for taller comment rows) and pushes it here.
+                    property <float> scroll-to: Backend.diff-scroll-y;
                     changed scroll-to => {
                         if (self.scroll-to >= 0) {
-                            self.viewport-y = -self.scroll-to * Backend.font-size * 1.6px;
+                            self.viewport-y = -self.scroll-to * 1px;
                         }
                     }
                     // Rows fill the list width so they re-size (and re-split / re-wrap)

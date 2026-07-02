@@ -882,6 +882,28 @@ main(int argc, char** argv) {
     int wrap_cols = 0;
     slint::Timer wrap_debounce;  // coalesces re-wraps during a live resize
 
+    // Pixel offset of a model row, matching the DiffRow height binding in the
+    // .slint (content rows 1.6em, comment rows 2.2em) so jump targets land exactly
+    // even when taller comment rows sit above them.
+    auto row_pixel_offset = [&](int target) -> float {
+        const float fs = static_cast<float>(backend.get_font_size());
+        auto rows = backend.get_rows();
+        if (!rows) {
+            return target * fs * 1.6f;
+        }
+        float y = 0.0f;
+        const int n = static_cast<int>(rows->row_count());
+        for (int r = 0; r < target && r < n; ++r) {
+            auto rd = rows->row_data(r);
+            y += (rd && rd->is_comment) ? fs * 2.2f : fs * 1.6f;
+        }
+        return y;
+    };
+    auto scroll_to_row = [&](int i) {
+        backend.set_diff_scroll_y(-1.0f);  // force a change edge
+        backend.set_diff_scroll_y(row_pixel_offset(i));
+    };
+
     // ---- avatar images ----------------------------------------------------
     // Fetched lazily and cached by URL, decoded via a temp file (Slint decodes
     // PNG/JPEG from a path). Rows show the initials circle until the image lands,
@@ -970,8 +992,7 @@ main(int argc, char** argv) {
                 backend.set_sel_anchor_col(0);
                 backend.set_sel_focus_row(i);
                 backend.set_sel_focus_col(100000);
-                backend.set_diff_scroll_row(-1);  // force a change edge
-                backend.set_diff_scroll_row(i);
+                scroll_to_row(i);
                 break;
             }
         }
@@ -1117,7 +1138,7 @@ main(int argc, char** argv) {
         state.cur_hunk = -1;
         state.find_rows.clear();
         state.find_idx = -1;
-        backend.set_diff_scroll_row(-1);  // reset so the first n/p always re-fires
+        backend.set_diff_scroll_y(-1.0f);  // reset so the first n/p always re-fires
         apply_pending_scroll();  // honour a queued jump-to-code from a comment ref
     };
     repaint_diff = relayout;  // let async avatar loads re-lay-out to swap in images
@@ -1174,6 +1195,20 @@ main(int argc, char** argv) {
         state.shown_files.clear();
         state.file_model_index.clear();
 
+        // In a PR, tally live (non-outdated) review comments per file so the list can
+        // badge them. Uses the active thread set (commit view vs aggregate).
+        std::unordered_map<std::string, int> comment_counts;
+        if (!state.current_pr.empty()) {
+            const auto& ths =
+                state.current_pr_commit.empty() ? state.pr_threads : state.pr_commit_threads;
+            for (const auto& th : ths) {
+                if (th.outdated || th.anchor.new_path.empty()) {
+                    continue;
+                }
+                comment_counts[th.anchor.new_path] += static_cast<int>(th.comments.size());
+            }
+        }
+
         auto make_entry = [&](const diffy::gui::FileChange& f, int depth) {
             FileEntry fe;
             fe.path = ss(f.path);
@@ -1181,6 +1216,9 @@ main(int argc, char** argv) {
             fe.staged = f.staged;
             fe.is_section = false;
             fe.depth = depth;
+            if (auto it = comment_counts.find(f.path); it != comment_counts.end()) {
+                fe.comment_count = it->second;
+            }
             const auto slash = f.path.find_last_of('/');
             if (slash == std::string::npos) {
                 fe.name = ss(f.path);
@@ -2250,7 +2288,7 @@ main(int argc, char** argv) {
             state.cur_hunk = dir == "next-hunk"
                                  ? (state.cur_hunk < 0 ? 0 : (state.cur_hunk + 1) % n)
                                  : (state.cur_hunk <= 0 ? n - 1 : state.cur_hunk - 1);
-            backend.set_diff_scroll_row(state.hunk_rows[state.cur_hunk]);
+            scroll_to_row(state.hunk_rows[state.cur_hunk]);
             backend.set_status_text(ss("Hunk " + std::to_string(state.cur_hunk + 1) + "/" +
                                        std::to_string(n) + " — " + state.current_file));
             return;
@@ -2370,7 +2408,7 @@ main(int argc, char** argv) {
         const int row = state.find_rows[state.find_idx];
         backend.set_find_current(state.find_idx + 1);
         backend.set_find_current_row(row);
-        backend.set_diff_scroll_row(row);
+        scroll_to_row(row);
     };
     auto run_find = [&](const std::string& query) {
         std::string q = query;
