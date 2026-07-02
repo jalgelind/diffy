@@ -817,8 +817,12 @@ main(int argc, char** argv) {
                 continue;
             }
             if (str(old_side ? rd->old_no : rd->new_no) == want) {
-                backend.set_sel_anchor(i);  // highlight the anchored line
-                backend.set_sel_focus(i);
+                // Highlight the whole anchored line (col 0..∞, clamped per row).
+                backend.set_sel_side(old_side ? 0 : 1);
+                backend.set_sel_anchor_row(i);
+                backend.set_sel_anchor_col(0);
+                backend.set_sel_focus_row(i);
+                backend.set_sel_focus_col(100000);
                 backend.set_diff_scroll_row(-1);  // force a change edge
                 backend.set_diff_scroll_row(i);
                 break;
@@ -1182,8 +1186,8 @@ main(int argc, char** argv) {
             return;
         }
         if (state.current_file != path) {
-            backend.set_sel_anchor(-1);  // drop a stale selection when switching files
-            backend.set_sel_focus(-1);
+            backend.set_sel_anchor_row(-1);  // drop a stale selection when switching files
+            backend.set_sel_focus_row(-1);
         }
         state.current_file = path;
         backend.set_current_file(ss(path));
@@ -1244,8 +1248,8 @@ main(int argc, char** argv) {
             return;
         }
         if (state.current_file != path) {
-            backend.set_sel_anchor(-1);
-            backend.set_sel_focus(-1);
+            backend.set_sel_anchor_row(-1);
+            backend.set_sel_focus_row(-1);
         }
         state.current_file = path;
         backend.set_current_file(ss(path));
@@ -1285,8 +1289,8 @@ main(int argc, char** argv) {
             return;
         }
         if (state.current_file != path) {
-            backend.set_sel_anchor(-1);  // drop a stale selection when switching files
-            backend.set_sel_focus(-1);
+            backend.set_sel_anchor_row(-1);  // drop a stale selection when switching files
+            backend.set_sel_focus_row(-1);
         }
         state.current_file = path;
         std::string ctx;
@@ -1921,8 +1925,8 @@ main(int argc, char** argv) {
         }
         state.current_pr_commit = sha;
         state.pr_commit_threads.clear();
-        backend.set_sel_anchor(-1);
-        backend.set_sel_focus(-1);
+        backend.set_sel_anchor_row(-1);
+        backend.set_sel_focus_row(-1);
         int idx = -1;
         for (size_t i = 0; i < state.shown_commits.size(); ++i) {
             if (state.shown_commits[i] == sha) {
@@ -1984,8 +1988,8 @@ main(int argc, char** argv) {
         }
         state.current_pr_commit.clear();
         state.pr_commit_threads.clear();
-        backend.set_sel_anchor(-1);
-        backend.set_sel_focus(-1);
+        backend.set_sel_anchor_row(-1);
+        backend.set_sel_focus_row(-1);
         backend.set_commit_sel_index(-1);  // the "Full diff" row reads as selected
         const std::string key = state.pr_ws + "/" + state.pr_repo + "#" + state.current_pr;
         if (auto it = state.pr_detail_cache.find(key); it != state.pr_detail_cache.end()) {
@@ -2490,30 +2494,63 @@ main(int argc, char** argv) {
         }
         refresh();
     });
-    // Copy the current line-range selection (visual rows sel-anchor..sel-focus).
-    // Reconstructs each content row's text from its rendered spans (new side when
-    // present, else old), joining wrapped continuation rows onto the same line.
+    // Copy the current character-level selection. The span runs (anchor -> focus)
+    // over {row, column} on ONE side of the diff; we normalise it (row-major, then
+    // column), take each row's codepoint substring on that side, and join rows with
+    // newlines (wrapped continuation rows keep the same physical line).
     backend.on_copy_selection([&]() {
-        const int a0 = backend.get_sel_anchor(), b0 = backend.get_sel_focus();
-        if (a0 < 0 || b0 < 0) {
+        const int ar = backend.get_sel_anchor_row(), fr = backend.get_sel_focus_row();
+        if (ar < 0 || fr < 0) {
             return;
         }
+        const int ac = backend.get_sel_anchor_col(), fc = backend.get_sel_focus_col();
+        const int side = backend.get_sel_side();
         auto rows = backend.get_rows();
         if (!rows) {
             return;
         }
         const int n = static_cast<int>(rows->row_count());
-        const int lo = std::min(a0, b0), hi = std::min(std::max(a0, b0), n - 1);
+        if (n <= 0) {
+            return;
+        }
+        int sr, sc, er, ec;
+        if (ar < fr || (ar == fr && ac <= fc)) {
+            sr = ar, sc = ac, er = fr, ec = fc;
+        } else {
+            sr = fr, sc = fc, er = ar, ec = ac;
+        }
+        sr = std::max(0, sr);
+        er = std::min(er, n - 1);
+        // Codepoint substring [start, start+count) of a UTF-8 string; count < 0 = to end.
+        auto cp_sub = [](const std::string& s, int start, int count) -> std::string {
+            std::string out;
+            int idx = 0;
+            for (size_t b = 0; b < s.size();) {
+                const unsigned char c = s[b];
+                size_t len = c < 0x80        ? 1
+                             : (c >> 5) == 6 ? 2
+                             : (c >> 4) == 14 ? 3
+                             : (c >> 3) == 30 ? 4
+                                              : 1;
+                if (len > s.size() - b) {
+                    len = 1;
+                }
+                if (idx >= start && (count < 0 || idx < start + count)) {
+                    out.append(s, b, len);
+                }
+                ++idx;
+                b += len;
+            }
+            return out;
+        };
         std::string out;
-        for (int i = lo; i <= hi; ++i) {
+        for (int i = sr; i <= er; ++i) {
             auto rd = rows->row_data(i);
             if (!rd || rd->is_header || rd->is_comment) {
                 continue;
             }
-            // Wrapped continuation rows carry blank line numbers; append them to the
-            // current physical line rather than starting a new one.
             const bool cont = str(rd->old_no).empty() && str(rd->new_no).empty();
-            const auto& spans = rd->right_present ? rd->right_spans : rd->left_spans;
+            const auto& spans = side == 0 ? rd->left_spans : rd->right_spans;
             std::string line;
             if (spans) {
                 for (size_t s = 0; s < spans->row_count(); ++s) {
@@ -2522,10 +2559,13 @@ main(int argc, char** argv) {
                     }
                 }
             }
+            const int c0 = std::max(0, (i == sr) ? sc : 0);
+            const int c1 = (i == er) ? ec : -1;  // -1 => to end of line
+            std::string seg = cp_sub(line, c0, c1 < 0 ? -1 : std::max(0, c1 - c0));
             if (!out.empty() && !cont) {
                 out += "\n";
             }
-            out += line;
+            out += seg;
         }
         if (!out.empty()) {
             copy_to_clipboard(out);
@@ -2549,7 +2589,7 @@ main(int argc, char** argv) {
     // row that carries a line number, preferring the new side (falling back to the
     // old side for a pure-deletion selection). Returns false if nothing anchorable.
     auto selection_anchor = [&](int& line, bool& old_side) -> bool {
-        const int a0 = backend.get_sel_anchor(), b0 = backend.get_sel_focus();
+        const int a0 = backend.get_sel_anchor_row(), b0 = backend.get_sel_focus_row();
         if (a0 < 0 || b0 < 0) {
             return false;
         }
@@ -2559,21 +2599,35 @@ main(int argc, char** argv) {
         }
         const int n = static_cast<int>(rows->row_count());
         const int lo = std::min(a0, b0), hi = std::min(std::max(a0, b0), n - 1);
+        const bool want_old = backend.get_sel_side() == 0;  // anchor on the selected side
         for (int i = lo; i <= hi; ++i) {
             auto rd = rows->row_data(i);
             if (!rd || rd->is_header || rd->is_comment) {
                 continue;
             }
             const std::string nn = str(rd->new_no), on = str(rd->old_no);
-            if (!nn.empty()) {
-                line = std::atoi(nn.c_str());
-                old_side = false;
-                return true;
-            }
-            if (!on.empty()) {
-                line = std::atoi(on.c_str());
-                old_side = true;
-                return true;
+            if (want_old) {
+                if (!on.empty()) {
+                    line = std::atoi(on.c_str());
+                    old_side = true;
+                    return true;
+                }
+                if (!nn.empty()) {
+                    line = std::atoi(nn.c_str());
+                    old_side = false;
+                    return true;
+                }
+            } else {
+                if (!nn.empty()) {
+                    line = std::atoi(nn.c_str());
+                    old_side = false;
+                    return true;
+                }
+                if (!on.empty()) {
+                    line = std::atoi(on.c_str());
+                    old_side = true;
+                    return true;
+                }
             }
         }
         return false;

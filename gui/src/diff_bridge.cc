@@ -175,6 +175,22 @@ cell_visual_lines(const GuiTheme& t, const diffy::DiffCell& cell, int tab_width,
     return out;
 }
 
+// Count UTF-8 codepoints across a visual line's spans. For monospace code this is
+// the column count, which must agree with the UI's char-advance so the selection
+// highlight and the copied substring line up.
+int
+visual_line_len(const std::vector<DiffSpan>& spans) {
+    int n = 0;
+    for (const auto& s : spans) {
+        for (const char* p = s.text.data(); *p; ++p) {
+            if ((static_cast<unsigned char>(*p) & 0xC0) != 0x80) {
+                ++n;
+            }
+        }
+    }
+    return n;
+}
+
 // Wrap a span list into a Slint model (one visual line's worth of spans).
 std::shared_ptr<slint::VectorModel<DiffSpan>>
 spans_model(const std::vector<DiffSpan>& spans) {
@@ -278,6 +294,8 @@ build_row_model(const diffy::DiffViewModel& model, const GuiTheme& theme, int ta
             d.right_bg = right_bg;
             d.left_spans = (i < left.size()) ? spans_model(left[i]) : empty_spans();
             d.right_spans = (i < right.size()) ? spans_model(right[i]) : empty_spans();
+            d.left_len = (i < left.size()) ? visual_line_len(left[i]) : 0;
+            d.right_len = (i < right.size()) ? visual_line_len(right[i]) : 0;
             result.rows->push_back(d);
         }
     }

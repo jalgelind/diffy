@@ -25,9 +25,11 @@ export struct DiffRowData {
     left-spans: [DiffSpan],
     left-bg: color,
     left-present: bool,
+    left-len: int,   // character count of the left cell's text (for selection)
     right-spans: [DiffSpan],
     right-bg: color,
     right-present: bool,
+    right-len: int,  // character count of the right cell's text
     // Review comment rows are interleaved into the diff beneath their anchor line.
     // A comment row renders a bubble (variable height) instead of the diff cells.
     is-comment: bool,
@@ -211,12 +213,19 @@ export global Backend {
     // px) so C++ can compute the exact wrap column count and re-wrap the rows.
     callback set-wrap-metrics(float /* cell-px */, float /* advance-px */);
 
-    // Diff text selection (line-range). sel-anchor is where the selection began,
-    // sel-focus is the moving end; both are visual row indices, -1 when there is
-    // no selection. Consumers normalize via min/max.
-    in-out property <int> sel-anchor: -1;
-    in-out property <int> sel-focus: -1;
-    callback copy-selection();      // copy the selected rows' text to the clipboard
+    // Diff text selection (character-level, monospace hit-tested). The selection is
+    // an (anchor -> focus) span over {row, column} pairs on ONE side of the diff.
+    // Rows are visual row indices; columns are 0-based character offsets. row == -1
+    // means no selection. Consumers normalize (row-major, then column).
+    in-out property <int> sel-anchor-row: -1;
+    in-out property <int> sel-anchor-col: 0;
+    in-out property <int> sel-focus-row: -1;
+    in-out property <int> sel-focus-col: 0;
+    in-out property <int> sel-side: 1;         // 0 = left/old cell, 1 = right/new cell
+    // Measured monospace glyph advance (logical px per column); drives x<->column
+    // hit-testing and the selection highlight. Kept >0 to avoid divide-by-zero.
+    in-out property <length> char-advance: 8px;
+    callback copy-selection();      // copy the selected text span to the clipboard
     // Jump from a sidebar comment reference to the anchored code: open the file
     // (if needed) and scroll/select the anchored line. path == "" is a no-op
     // (general / PR-level comment).
@@ -455,9 +464,42 @@ component TextArea inherits Rectangle {
 component DiffCellView inherits Rectangle {
     in property <[DiffSpan]> spans;
     in property <color> bg;
+    in property <int> row-index: -1;   // visual row index (for selection)
+    in property <int> side: 1;         // 0 = left/old, 1 = right/new
+    in property <int> text-len: 0;     // character count of this cell's text
+    // Callback so the row can hit-test: report a press/drag at char column `col`
+    // on this side/row. `extend` means "shift-click / drag" (move focus only).
+    callback select-at(int /* col */, int /* row */, bool /* extend */);
+
+    property <length> pad: 6px;
+    property <length> adv: max(1px, Backend.char-advance);
+
+    // Is this cell within the current selection, and on the selected side?
+    property <bool> anchor-first:
+        Backend.sel-anchor-row < Backend.sel-focus-row
+        || (Backend.sel-anchor-row == Backend.sel-focus-row
+            && Backend.sel-anchor-col <= Backend.sel-focus-col);
+    property <int> s-row: anchor-first ? Backend.sel-anchor-row : Backend.sel-focus-row;
+    property <int> s-col: anchor-first ? Backend.sel-anchor-col : Backend.sel-focus-col;
+    property <int> e-row: anchor-first ? Backend.sel-focus-row : Backend.sel-anchor-row;
+    property <int> e-col: anchor-first ? Backend.sel-focus-col : Backend.sel-anchor-col;
+    property <bool> in-range: Backend.sel-anchor-row >= 0 && root.side == Backend.sel-side
+        && root.row-index >= s-row && root.row-index <= e-row;
+    // Column bounds for THIS row, clamped to its own text length.
+    property <int> c0: clamp(root.row-index == s-row ? s-col : 0, 0, root.text-len);
+    property <int> c1: clamp(root.row-index == e-row ? e-col : root.text-len, 0, root.text-len);
 
     background: bg;
     clip: true;  // long lines clip at the cell edge; wrap/unified reveals them
+
+    // Selection highlight (under the text). Full-width tail on interior rows so a
+    // multi-line selection reads as a continuous block.
+    if in-range && (root.c1 > root.c0 || root.row-index < e-row) : Rectangle {
+        x: root.pad + root.c0 * root.adv;
+        width: (root.row-index < e-row ? root.text-len - root.c0 : root.c1 - root.c0) * root.adv
+               + (root.row-index < e-row ? root.adv : 0px);  // +1 col hints the newline
+        background: Backend.selection;
+    }
 
     // One visual line: a row of coloured spans. Wrapping already happened in C++
     // (this cell is a single wrapped sub-line), so every span keeps its per-token
@@ -469,7 +511,7 @@ component DiffCellView inherits Rectangle {
         // every span, and re-tokenising on WS-toggle changes the span count —
         // making the spacing between words visibly shift.)
         spacing: 0px;
-        padding-left: 6px;
+        padding-left: root.pad;
         for span in spans : Text {
             text: span.text;
             color: span.color;
@@ -477,6 +519,29 @@ component DiffCellView inherits Rectangle {
             font-size: Backend.font-size * 1px;
             font-weight: span.bold ? 700 : 400;
             vertical-alignment: center;
+        }
+    }
+
+    // Transparent hit layer: press sets the anchor, drag (capture gives us
+    // out-of-bounds coords) extends across rows/columns; Shift+click extends.
+    sel-ta := TouchArea {
+        mouse-cursor: text;
+        property <length> row-h: Backend.font-size * 1.6px;
+        function col-at(mx: length) -> int {
+            return max(0, round((mx - root.pad) / root.adv));
+        }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.select-at(self.col-at(self.mouse-x), root.row-index, e.modifiers.shift);
+            }
+        }
+        moved => {
+            if (self.pressed) {
+                // Capture keeps events here even past the cell edge: derive the row
+                // the pointer is over from the vertical offset.
+                root.select-at(self.col-at(self.mouse-x),
+                               root.row-index + floor(self.mouse-y / self.row-h), true);
+            }
         }
     }
 }
@@ -506,11 +571,24 @@ component DiffRow inherits Rectangle {
     in property <DiffRowData> rowdata;
     in property <bool> highlight: false;  // current find match
     in property <int> index: -1;          // visual row index (for selection)
-    // Within the current line-range selection? (content rows only; headers and
-    // comment bubbles are not selectable.)
-    property <bool> selected: Backend.sel-anchor >= 0 && !rowdata.is-header && !rowdata.is-comment
-        && root.index >= min(Backend.sel-anchor, Backend.sel-focus)
-        && root.index <= max(Backend.sel-anchor, Backend.sel-focus);
+    // Begin/extend a character-level selection on `sd` (0=left/old, 1=right/new).
+    // extend (Shift+click or drag) moves only the focus end; a plain press starts
+    // fresh and pins the side. Ignored on header / comment rows.
+    function select(col: int, row: int, sd: int, extend: bool) {
+        if (rowdata.is-header || rowdata.is-comment) {
+            return;
+        }
+        if (extend && Backend.sel-anchor-row >= 0) {
+            Backend.sel-focus-row = row;
+            Backend.sel-focus-col = col;
+        } else {
+            Backend.sel-side = sd;
+            Backend.sel-anchor-row = row;
+            Backend.sel-anchor-col = col;
+            Backend.sel-focus-row = row;
+            Backend.sel-focus-col = col;
+        }
+    }
     // Explicit per-cell width (one gutter per shown line-number column, minus the
     // 1px divider in side-by-side). Giving cells a definite width is what lets
     // the wrapped Text report a real height-for-width.
@@ -585,6 +663,10 @@ component DiffRow inherits Rectangle {
             width: cellw;
             spans: rowdata.left-spans;
             bg: rowdata.left-bg;
+            row-index: root.index;
+            side: 0;
+            text-len: rowdata.left-len;
+            select-at(col, row, extend) => { root.select(col, row, 0, extend); }
         }
         Rectangle { width: sxs ? 1px : 0px; background: Backend.divider; }
         LineNo {
@@ -596,13 +678,11 @@ component DiffRow inherits Rectangle {
             width: sxs ? cellw : 0px;
             spans: rowdata.right-spans;
             bg: rowdata.right-bg;
+            row-index: root.index;
+            side: 1;
+            text-len: rowdata.right-len;
+            select-at(col, row, extend) => { root.select(col, row, 1, extend); }
         }
-    }
-
-    // Line-range selection tint (drawn over the cells, under the find outline).
-    if root.selected : Rectangle {
-        background: Backend.accent;
-        opacity: 0.20;
     }
 
     // Current find match: an accent outline drawn over the row.
@@ -610,23 +690,6 @@ component DiffRow inherits Rectangle {
         background: transparent;
         border-width: 2px;
         border-color: Backend.accent;
-    }
-
-    // Topmost, transparent hit layer for line selection: click sets the anchor,
-    // Shift+click (or drag) extends the focus end. Disabled on non-content rows.
-    if !rowdata.is-header && !rowdata.is-comment : sel-ta := TouchArea {
-        mouse-cursor: text;
-        pointer-event(e) => {
-            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
-                if (e.modifiers.shift && Backend.sel-anchor >= 0) {
-                    Backend.sel-focus = root.index;
-                } else {
-                    Backend.sel-anchor = root.index;
-                    Backend.sel-focus = root.index;
-                }
-            }
-        }
-        moved => { if (self.pressed) { Backend.sel-focus = root.index; } }
     }
 }
 
@@ -2004,7 +2067,7 @@ export component AppWindow inherits Window {
                 return accept;
             }
             if ((event.modifiers.control || event.modifiers.meta) && event.text == "c"
-                && Backend.sel-anchor >= 0) {
+                && Backend.sel-anchor-row >= 0) {
                 Backend.copy-selection();
                 return accept;
             }
@@ -2012,12 +2075,12 @@ export component AppWindow inherits Window {
                 Backend.composer-open = false;
                 return accept;
             }
-            if (event.text == Key.Escape && Backend.sel-anchor >= 0) {
-                Backend.sel-anchor = -1;
-                Backend.sel-focus = -1;
+            if (event.text == Key.Escape && Backend.sel-anchor-row >= 0) {
+                Backend.sel-anchor-row = -1;
+                Backend.sel-focus-row = -1;
                 return accept;
             }
-            if (event.text == "c" && Backend.pr-open && Backend.sel-anchor >= 0
+            if (event.text == "c" && Backend.pr-open && Backend.sel-anchor-row >= 0
                 && !Backend.composer-open) {
                 Backend.open-composer(false);
                 return accept;
@@ -2169,8 +2232,14 @@ export component AppWindow inherits Window {
                     ? (self.width - 2 * gut - 1px) / 2
                     : (self.width - 2 * gut));
                 changed cellw => { Backend.set-wrap-metrics(cellw / 1px, advance / 1px); }
-                changed advance => { Backend.set-wrap-metrics(cellw / 1px, advance / 1px); }
-                init => { Backend.set-wrap-metrics(cellw / 1px, advance / 1px); }
+                changed advance => {
+                    Backend.set-wrap-metrics(cellw / 1px, advance / 1px);
+                    Backend.char-advance = advance;  // for selection hit-testing
+                }
+                init => {
+                    Backend.set-wrap-metrics(cellw / 1px, advance / 1px);
+                    Backend.char-advance = advance;
+                }
 
                 // Hidden sample, used only to measure the font advance above.
                 calib := Text {
@@ -2277,7 +2346,7 @@ export component AppWindow inherits Window {
 
                 // Floating affordance: appears when lines are selected inside a PR.
                 // Opens the composer anchored to the selection.
-                if Backend.pr-open && Backend.sel-anchor >= 0 && !Backend.composer-open : Rectangle {
+                if Backend.pr-open && Backend.sel-anchor-row >= 0 && !Backend.composer-open : Rectangle {
                     y: parent.height - self.height - 14px;
                     x: parent.width / 2 - self.width / 2;
                     width: 190px;
