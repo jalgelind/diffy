@@ -84,6 +84,15 @@ export struct PrEntry {
     is-section: bool,   // a non-clickable group header row (title = section name)
 }
 
+// A reviewer shown in the PR "Reviewers" shelf.
+export struct PrReviewer {
+    name: string,
+    avatar: image,     // pre-masked circular avatar (empty => initials circle)
+    initials: string,
+    tint: color,
+    approved: bool,
+}
+
 // One comment shown in the PR "Comments" shelf.
 export struct PrComment {
     author: string,
@@ -199,6 +208,11 @@ export global Backend {
     in property <string> pr-subtitle;   // "src → dst · state"
     in property <string> pr-stat;       // "N files · +x −y"
     in property <string> pr-url;        // web URL of the PR (quick actions)
+    in property <[PrReviewer]> pr-reviewers;  // the open PR's reviewers (Reviewers shelf)
+    in property <bool> pr-approved-by-me;      // the connected account has approved this PR
+    in property <bool> pr-approving;           // approve/unapprove request in flight
+    callback approve-pr();
+    callback unapprove-pr();
     in property <[PrComment]> pr-comments;  // grouped Comments-shelf rows (sections + comments)
     in property <bool> pr-has-comments;      // PR has >=1 comment (unfiltered) -> show the shelf
     in property <int> pr-comment-count;      // filtered comment count (excludes section rows)
@@ -1680,6 +1694,7 @@ component CommitsPanel inherits Rectangle {
     // Backend.pr-list-collapsed when a PR opens/closes).
     property <bool> sh-commits-collapsed: false;
     property <bool> sh-comments-collapsed: false;
+    property <bool> sh-reviewers-collapsed: false;
 
     VerticalLayout {
         padding: 8px;
@@ -1887,6 +1902,112 @@ component CommitsPanel inherits Rectangle {
             text: "No open pull requests";
             color: Backend.gutter-fg;
             font-size: 11px;
+        }
+
+        // ---- Shelf: Reviewers (inside a PR, when it has any) ----
+        if Backend.pr-open && Backend.pr-reviewers.length > 0 : ShelfHeader {
+            title: "REVIEWERS";
+            count: "\{Backend.pr-reviewers.length}";
+            collapsed <=> root.sh-reviewers-collapsed;
+        }
+        if Backend.pr-open && Backend.pr-reviewers.length > 0 && !root.sh-reviewers-collapsed
+                : VerticalLayout {
+            // Approve / remove-approval toggle for the connected account.
+            Rectangle {
+                height: 30px;
+                appr-ta := TouchArea {
+                    clicked => {
+                        if (!Backend.pr-approving) {
+                            if (Backend.pr-approved-by-me) { Backend.unapprove-pr(); }
+                            else { Backend.approve-pr(); }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    padding: 4px;
+                    Rectangle {
+                        border-radius: 5px;
+                        background: Backend.pr-approved-by-me
+                            ? Backend.selection
+                            : (appr-ta.has-hover ? Backend.selection : Backend.accent);
+                        HorizontalLayout {
+                            alignment: center;
+                            Text {
+                                text: Backend.pr-approving
+                                    ? "Working…"
+                                    : (Backend.pr-approved-by-me ? "Approved — click to undo"
+                                                                 : "Approve");
+                                color: Backend.pr-approved-by-me ? Backend.fg : Backend.on-accent;
+                                font-size: 11px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+            for rv in Backend.pr-reviewers : Rectangle {
+                height: 30px;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 6px;
+                    Rectangle {
+                        width: 22px;
+                        VerticalLayout {
+                            alignment: center;
+                            if rv.avatar.width > 0 : Image {
+                                width: 20px;
+                                height: 20px;
+                                image-rendering: smooth;
+                                source: rv.avatar;
+                            }
+                            if rv.avatar.width == 0 : Rectangle {
+                                width: 20px;
+                                height: 20px;
+                                border-radius: 10px;
+                                background: rv.tint;
+                                Text {
+                                    width: 100%;
+                                    height: 100%;
+                                    text: rv.initials;
+                                    color: #ffffff;
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        text: rv.name;
+                        color: Backend.fg;
+                        font-size: 12px;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    Rectangle {
+                        width: 7px;
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 7px;
+                                height: 7px;
+                                border-radius: 4px;
+                                background: rv.approved ? #59a14f : Backend.gutter-fg;
+                            }
+                        }
+                    }
+                    Text {
+                        text: rv.approved ? "approved" : "pending";
+                        color: Backend.gutter-fg;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
         }
 
         // ---- Shelf: Comments (inside a PR, when it has any) ----

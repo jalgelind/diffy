@@ -845,6 +845,7 @@ main(int argc, char** argv) {
         // PR commits keyed by sha (carries the full message for the overview header,
         // API-sourced so it works even when the commit isn't present locally).
         std::unordered_map<std::string, diffy::review::PrCommit> pr_commits_by_sha;
+        std::vector<diffy::review::Reviewer> pr_reviewers;  // open PR's reviewers (Reviewers shelf)
         // Caches so lists show instantly from the last result and refresh in the
         // background (swap-in rather than clear+fetch+show). Keys: PR list by
         // "ws/repo"; PR detail + file blobs by "ws/repo#id" (+ ":path").
@@ -855,6 +856,7 @@ main(int argc, char** argv) {
             std::vector<diffy::gui::CommitInfo> commits;
             std::vector<diffy::review::ReviewThread> threads;
             std::vector<diffy::review::PrCommit> pr_commits;  // raw (carries full message)
+            std::vector<diffy::review::Reviewer> reviewers;
             std::string title;
             std::string subtitle;
             std::string description;  // PR body (markdown) for the overview header
@@ -1059,8 +1061,9 @@ main(int argc, char** argv) {
     // unique author avatar.
     auto avatar_cache = std::make_shared<std::unordered_map<std::string, slint::Image>>();
     auto avatar_inflight = std::make_shared<std::unordered_set<std::string>>();
-    std::function<void()> repaint_diff;  // assigned to relayout once it exists
-    std::function<void()> repaint_prs;   // rebuild the PR list (swap in loaded avatars)
+    std::function<void()> repaint_diff;   // assigned to relayout once it exists
+    std::function<void()> repaint_prs;    // rebuild the PR list (swap in loaded avatars)
+    std::function<void()> repaint_reviewers;  // rebuild the Reviewers shelf (avatars)
 
     auto avatar_for = [&, avatar_cache, avatar_inflight](const std::string& url) -> slint::Image {
         if (url.empty()) {
@@ -1112,6 +1115,9 @@ main(int argc, char** argv) {
                             }
                             if (repaint_prs) {
                                 repaint_prs();  // swap the avatar into PR-list rows
+                            }
+                            if (repaint_reviewers) {
+                                repaint_reviewers();
                             }
                         }
                     });
@@ -1810,6 +1816,9 @@ main(int argc, char** argv) {
                         : std::string{};
         d.description = pr ? pr.value().description : std::string{};
         d.author = pr ? pr.value().author : std::string{};
+        if (pr) {
+            d.reviewers = pr.value().reviewers;
+        }
         err = files ? std::string{} : files.error().message;
     };
 
@@ -1937,6 +1946,29 @@ main(int argc, char** argv) {
         backend.set_pr_comment_count(comment_rows);
     };
 
+    // Build the Reviewers-shelf model (avatar + approval state) and record whether
+    // the connected account has approved.
+    auto rebuild_reviewers = [&]() {
+        auto model = std::make_shared<slint::VectorModel<PrReviewer>>();
+        bool approved_by_me = false;
+        for (const auto& r : state.pr_reviewers) {
+            const std::string label = r.name.empty() ? r.id : r.name;
+            PrReviewer e{};
+            e.name = ss(label);
+            e.initials = ss(initials_of(label));
+            e.tint = avatar_tint(label);
+            e.avatar = avatar_for(r.avatar);
+            e.approved = r.approved;
+            model->push_back(e);
+            if (r.approved && !state.account_id.empty() && r.id == state.account_id) {
+                approved_by_me = true;
+            }
+        }
+        backend.set_pr_reviewers(model);
+        backend.set_pr_approved_by_me(approved_by_me);
+    };
+    repaint_reviewers = rebuild_reviewers;  // swap in reviewer avatars as they load
+
     // Apply a fetched-or-cached PR detail to the sidebars. `select_first` opens the
     // first file — only on the initial display, so a background swap doesn't yank
     // the user off the file they're reading.
@@ -1947,6 +1979,8 @@ main(int argc, char** argv) {
         for (const auto& c : d.pr_commits) {
             state.pr_commits_by_sha[c.sha] = c;
         }
+        state.pr_reviewers = d.reviewers;
+        rebuild_reviewers();
         rebuild_comment_shelf(d.threads);
         backend.set_pr_title(ss("#" + id + "  " + d.title));
         backend.set_pr_subtitle(ss(d.subtitle));
@@ -2399,6 +2433,7 @@ main(int argc, char** argv) {
         state.pr_threads.clear();
         state.pr_commit_threads.clear();
         state.pr_commits_by_sha.clear();
+        state.pr_reviewers.clear();
         clear_overview();
         backend.set_pr_open(false);
         backend.set_pr_list_collapsed(false);  // re-expand the PR-list shelf
@@ -2842,6 +2877,53 @@ main(int argc, char** argv) {
         rebuild_comment_shelf(state.current_pr_commit.empty() ? state.pr_threads
                                                               : state.pr_commit_threads);
     });
+    // Approve / remove-approval on the open PR, then refetch reviewers to reflect it.
+    auto set_approval = [&](bool approve) {
+        if (state.current_pr.empty() || !state.bitbucket_cred) {
+            return;
+        }
+        const std::string id = state.current_pr, ws = state.pr_ws, repo = state.pr_repo;
+        const std::string key = ws + "/" + repo + "#" + id;
+        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const uint64_t gen = state.load_generation;
+        backend.set_pr_approving(true);
+        backend.set_net_label(ss(approve ? "Approving" : "Removing approval"));
+        review_pool.submit(
+            ReviewPool::Prio::Interactive,
+            [&, id, ws, repo, key, cred, approve, gen](diffy::review::HttpClient& http) {
+                diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                auto r = approve ? client.approve(id) : client.unapprove(id);
+                const bool ok = static_cast<bool>(r);
+                std::string err = ok ? std::string{} : r.error().message;
+                std::vector<diffy::review::Reviewer> reviewers;
+                if (ok) {
+                    if (auto pr = client.get(id)) {
+                        reviewers = pr.value().reviewers;
+                    }
+                }
+                slint::invoke_from_event_loop([&, id, key, gen, reviewers, ok, err, approve]() {
+                    backend.set_pr_approving(false);
+                    if (gen != state.load_generation || state.current_pr != id) {
+                        return;
+                    }
+                    if (!ok) {
+                        backend.set_status_text(ss("Approval failed: " + err));
+                        return;
+                    }
+                    state.pr_reviewers = reviewers;
+                    if (auto it = state.pr_detail_cache.find(key); it != state.pr_detail_cache.end()) {
+                        it->second.reviewers = reviewers;
+                    }
+                    rebuild_reviewers();
+                    // The user just (un)approved: reflect it even if they aren't a
+                    // designated reviewer (so wouldn't appear in the reviewer list).
+                    backend.set_pr_approved_by_me(approve);
+                    backend.set_status_text(ss(approve ? "Approved" : "Approval removed"));
+                });
+            });
+    };
+    backend.on_approve_pr([&]() { set_approval(true); });
+    backend.on_unapprove_pr([&]() { set_approval(false); });
     backend.on_close_pr([&]() {
         // Leave PR detail mode and restore the repo view (working tree + local
         // commits + the PR list) by reloading the repo.
