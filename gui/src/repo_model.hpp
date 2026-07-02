@@ -104,6 +104,19 @@ class Repo {
     bool
     has_commit(const std::string& sha) const;
 
+    // Full commit message + metadata for `sha` (full or abbreviated). `ok` is false
+    // when the commit isn't present locally. Used for the diff overview header.
+    struct CommitText {
+        bool ok = false;
+        std::string short_sha;
+        std::string summary;  // first line
+        std::string author;
+        std::string message;  // full message (summary + body)
+        int64_t time = 0;     // author time, unix seconds
+    };
+    CommitText
+    commit_text(const std::string& sha) const;
+
     // Merge-base of two commits (hex), or "" if either is missing or unrelated.
     std::string
     merge_base(const std::string& a, const std::string& b) const;

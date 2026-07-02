@@ -137,6 +137,14 @@ export global Backend {
     in property <string> branch: "";
     in property <string> status-text: "Open a repository to begin.";
     in property <int> net-inflight: 0;  // in-flight network requests (status bar)
+
+    // Diff overview header: PR description (Full diff) or commit message (commit
+    // view). Shown above the diff when there's content; user-collapsible.
+    in property <bool> overview-visible: false;
+    in-out property <bool> overview-collapsed: false;
+    in property <string> overview-title;
+    in property <string> overview-subtitle;
+    in property <string> overview-body;
     in property <bool> loading: false;  // a repo open is in progress
     in property <bool> dark: true;      // active theme is dark (drives std-widget chrome)
     in property <int> max-cols: 0;  // longest line in chars, for horizontal scroll
@@ -2333,6 +2341,63 @@ export component AppWindow inherits Window {
                     font-size: Backend.font-size * 1px;
                 }
 
+                // Diff column: an optional overview header (PR description in Full
+                // diff, or the commit message in a commit view) above the diff.
+                VerticalLayout {
+                if Backend.overview-visible : Rectangle {
+                    background: Backend.panel-bg;
+                    Rectangle { y: parent.height - 1px; height: 1px; background: Backend.divider; }
+                    VerticalLayout {
+                        padding: 8px;
+                        spacing: 5px;
+                        Rectangle {
+                            height: 20px;
+                            ovhdr := TouchArea {
+                                clicked => { Backend.overview-collapsed = !Backend.overview-collapsed; }
+                            }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Icon {
+                                        size: 11px;
+                                        source: @image-url("icons/chevron-down.svg");
+                                        rotation: Backend.overview-collapsed ? -90deg : 0deg;
+                                        colorize: ovhdr.has-hover ? Backend.accent : Backend.gutter-fg;
+                                    }
+                                }
+                                Text {
+                                    text: Backend.overview-title;
+                                    color: Backend.fg;
+                                    font-size: 13px;
+                                    font-weight: 700;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: Backend.overview-subtitle;
+                                    color: Backend.gutter-fg;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                    horizontal-stretch: 1;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+                        if !Backend.overview-collapsed && Backend.overview-body != "" : ov-scroll := ScrollView {
+                            height: min(150px, ov-body.preferred-height + 2px);
+                            ov-body := Text {
+                                width: ov-scroll.width - 14px;
+                                text: Backend.overview-body;
+                                color: Backend.fg;
+                                font-size: 12px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+                Rectangle {
+                    vertical-stretch: 1;
                 if Backend.rows.length > 0 : diff-list := ListView {
                     // A ListView is a widget, not a layout, so it must be told
                     // to fill the (plain Rectangle) diff area explicitly.
@@ -2389,6 +2454,8 @@ export component AppWindow inherits Window {
                         font-size: 13px;
                     }
                 }
+                }  // content (diff list / empty state)
+                }  // diff column VerticalLayout
 
                 // Find-in-diff bar (Cmd/Ctrl-F): a top-right overlay on the diff.
                 if Backend.show-find : Rectangle {

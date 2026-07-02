@@ -452,6 +452,31 @@ Repo::has_commit(const std::string& sha) const {
     return true;
 }
 
+Repo::CommitText
+Repo::commit_text(const std::string& sha) const {
+    CommitText out;
+    git_commit* commit = lookup_commit_flex(repo_, sha);
+    if (!commit) {
+        return out;
+    }
+    char buf[GIT_OID_HEXSZ + 1] = {0};
+    git_oid_tostr(buf, 8, git_commit_id(commit));  // 7 hex + NUL
+    out.short_sha = buf;
+    if (const char* s = git_commit_summary(commit)) {
+        out.summary = s;
+    }
+    if (const char* m = git_commit_message(commit)) {
+        out.message = m;
+    }
+    if (const git_signature* a = git_commit_author(commit)) {
+        out.author = a->name ? a->name : "";
+        out.time = static_cast<int64_t>(a->when.time);
+    }
+    out.ok = true;
+    git_commit_free(commit);
+    return out;
+}
+
 std::string
 Repo::merge_base(const std::string& a, const std::string& b) const {
     git_commit* ca = lookup_commit_flex(repo_, a);

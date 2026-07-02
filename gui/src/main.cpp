@@ -235,6 +235,24 @@ relative_time(const std::string& iso) {
     return iso.substr(0, 10);
 }
 
+// A short absolute date (YYYY-MM-DD, UTC) from a unix timestamp; "" if unset.
+std::string
+fmt_date(int64_t unix_secs) {
+    if (unix_secs <= 0) {
+        return "";
+    }
+    std::time_t t = static_cast<std::time_t>(unix_secs);
+    std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &t);
+#else
+    gmtime_r(&t, &tm);
+#endif
+    char buf[32] = {0};
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
+    return buf;
+}
+
 // Up to two uppercase initials from a display name (first letter of the first two
 // words). ASCII-first; leaves multibyte bytes as-is.
 std::string
@@ -820,6 +838,8 @@ main(int argc, char** argv) {
             std::vector<diffy::review::ReviewThread> threads;
             std::string title;
             std::string subtitle;
+            std::string description;  // PR body (markdown) for the overview header
+            std::string author;
         };
         std::unordered_map<std::string, PrDetail> pr_detail_cache;
         std::unordered_map<std::string, std::pair<std::string, std::string>> pr_file_cache;
@@ -1403,6 +1423,40 @@ main(int argc, char** argv) {
         render_files();
     };
 
+    // Diff overview header (PR description / commit message). Empty title+body hides it.
+    auto set_overview = [&](const std::string& title, const std::string& subtitle,
+                            const std::string& body) {
+        backend.set_overview_title(ss(title));
+        backend.set_overview_subtitle(ss(subtitle));
+        backend.set_overview_body(ss(body));
+        backend.set_overview_visible(!title.empty() || !body.empty());
+    };
+    auto clear_overview = [&]() {
+        backend.set_overview_visible(false);
+        backend.set_overview_title(ss(""));
+        backend.set_overview_subtitle(ss(""));
+        backend.set_overview_body(ss(""));
+    };
+    // Populate the overview from a commit's local git object (PR commit or local).
+    auto set_commit_overview = [&](const std::string& sha) {
+        if (state.repo) {
+            auto ct = state.repo->commit_text(sha);
+            if (ct.ok) {
+                std::string sub = ct.short_sha;
+                if (!ct.author.empty()) {
+                    sub += "  ·  " + ct.author;
+                }
+                if (const std::string d = fmt_date(ct.time); !d.empty()) {
+                    sub += "  ·  " + d;
+                }
+                set_overview(ct.summary, sub, ct.message);
+                return;
+            }
+        }
+        set_overview("Commit " + sha.substr(0, std::min<size_t>(sha.size(), 8)),
+                     "commit message unavailable locally", "");
+    };
+
     auto commit_entry = [&](const diffy::gui::CommitInfo& c) {
         CommitEntry ce;
         ce.oid = ss(c.oid);
@@ -1664,6 +1718,8 @@ main(int argc, char** argv) {
         d.subtitle = pr ? (pr.value().src_branch + " → " + pr.value().dst_branch + "  ·  " +
                            approval_str(pr.value().state))
                         : std::string{};
+        d.description = pr ? pr.value().description : std::string{};
+        d.author = pr ? pr.value().author : std::string{};
         err = files ? std::string{} : files.error().message;
     };
 
@@ -1756,6 +1812,16 @@ main(int argc, char** argv) {
         rebuild_comment_shelf(d.threads);
         backend.set_pr_title(ss("#" + id + "  " + d.title));
         backend.set_pr_subtitle(ss(d.subtitle));
+        // Overview = the PR description (Full diff). Don't clobber it while the user
+        // is viewing a single commit (a background detail refresh can land then).
+        if (state.current_pr_commit.empty()) {
+            std::string sub = d.subtitle;
+            if (!d.author.empty()) {
+                sub = d.author + "  ·  " + sub;
+            }
+            set_overview(d.title, sub,
+                         d.description.empty() ? std::string("(no description)") : d.description);
+        }
         set_files(d.files);
         set_commits(d.commits, false);
         if (select_first) {
@@ -2174,6 +2240,7 @@ main(int argc, char** argv) {
         state.current_pr_commit.clear();
         state.pr_threads.clear();
         state.pr_commit_threads.clear();
+        clear_overview();
         backend.set_pr_open(false);
         backend.set_pr_list_collapsed(false);  // re-expand the PR-list shelf
         review_pool.clear_prefetch();  // drop speculative work for the previous repo
@@ -2240,6 +2307,7 @@ main(int argc, char** argv) {
             }
         }
         backend.set_commit_sel_index(idx);
+        set_commit_overview(sha);  // overview = this commit's full message
         if (!state.repo->has_commit(sha)) {
             backend.set_status_text(ss("Commit " + sha.substr(0, 8) + " isn't available locally"));
             set_files({});
@@ -2323,6 +2391,7 @@ main(int argc, char** argv) {
             }
         }
         backend.set_commit_sel_index(idx);
+        set_commit_overview(oid);  // overview = this commit's full message
         auto changes = state.repo->commit_files(oid);
         set_files(changes);
         backend.set_status_text(ss("Commit " + oid.substr(0, 8) + " — " +
@@ -2346,6 +2415,7 @@ main(int argc, char** argv) {
         state.current_commit.clear();
         backend.set_on_working_tree(true);
         backend.set_commit_sel_index(-1);
+        clear_overview();  // the working tree has no description/message
         auto files = state.repo->status();
         int staged = 0;
         for (const auto& fc : files) {
