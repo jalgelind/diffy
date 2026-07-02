@@ -523,6 +523,12 @@ BitbucketCloudClient::commits(const std::string& id) {
     return Result<std::vector<PrCommit>>::ok(std::move(out));
 }
 
+// The author's avatar URL from a Bitbucket `user` object (user.links.avatar.href).
+static std::string
+avatar_href(const json& user) {
+    return jstr(jchild(jchild(user, "links"), "avatar"), "href");
+}
+
 // Group a flat comment list (PR or commit) into anchored threads. Bitbucket's PR
 // and commit comment payloads share the same shape (content / inline / parent /
 // user), so both threads() and commit_threads() funnel through here.
@@ -591,6 +597,7 @@ parse_comment_threads(const std::vector<json>& all) {
         cm.id = cid;
         cm.parent_id = parent_of[cid];
         cm.author = jstr(jchild(c, "user"), "display_name");
+        cm.author_avatar = avatar_href(jchild(c, "user"));
         cm.body_md = comment_body(jchild(c, "content"));
         cm.created = jstr(c, "created_on");
         th.comments.push_back(std::move(cm));
@@ -670,6 +677,7 @@ post_comment(HttpClient& http, const Credential& cred, const std::string& commen
     cm.id = jid(j);
     cm.parent_id = jid(jchild(j, "parent"));
     cm.author = jstr(jchild(j, "user"), "display_name");
+    cm.author_avatar = avatar_href(jchild(j, "user"));
     cm.body_md = comment_body(jchild(j, "content"));
     cm.created = jstr(j, "created_on");
     return Result<Comment>::ok(cm);

@@ -17,10 +17,13 @@
 #include <algorithm>
 #include <cctype>
 #include <condition_variable>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <deque>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -29,6 +32,7 @@
 #include <string_view>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #ifdef _WIN32
@@ -184,6 +188,87 @@ approval_str(diffy::review::ApprovalState s) {
         case A::Declined: return "declined";
         default: return "open";
     }
+}
+
+// A short relative time ("just now", "5m", "3h", "6d", "2w") from an ISO-8601
+// UTC timestamp like "2026-06-20T10:00:00.000000+00:00". Falls back to the date
+// portion if parsing fails.
+std::string
+relative_time(const std::string& iso) {
+    int y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0;
+    if (std::sscanf(iso.c_str(), "%d-%d-%dT%d:%d:%d", &y, &mo, &d, &h, &mi, &s) != 6) {
+        return iso.size() >= 10 ? iso.substr(0, 10) : iso;
+    }
+    std::tm tm{};
+    tm.tm_year = y - 1900;
+    tm.tm_mon = mo - 1;
+    tm.tm_mday = d;
+    tm.tm_hour = h;
+    tm.tm_min = mi;
+    tm.tm_sec = s;
+#ifdef _WIN32
+    const std::time_t t = _mkgmtime(&tm);
+#else
+    const std::time_t t = timegm(&tm);
+#endif
+    if (t <= 0) {
+        return iso.substr(0, 10);
+    }
+    const double secs = std::difftime(std::time(nullptr), t);
+    if (secs < 60) {
+        return "just now";
+    }
+    if (secs < 3600) {
+        return std::to_string(static_cast<int>(secs / 60)) + "m";
+    }
+    if (secs < 86400) {
+        return std::to_string(static_cast<int>(secs / 3600)) + "h";
+    }
+    if (secs < 7 * 86400) {
+        return std::to_string(static_cast<int>(secs / 86400)) + "d";
+    }
+    if (secs < 365 * 86400) {
+        return std::to_string(static_cast<int>(secs / (7 * 86400))) + "w";
+    }
+    return iso.substr(0, 10);
+}
+
+// Up to two uppercase initials from a display name (first letter of the first two
+// words). ASCII-first; leaves multibyte bytes as-is.
+std::string
+initials_of(const std::string& name) {
+    std::string out;
+    bool at_word_start = true;
+    for (char c : name) {
+        if (c == ' ' || c == '\t') {
+            at_word_start = true;
+            continue;
+        }
+        if (at_word_start) {
+            out += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            at_word_start = false;
+            if (out.size() >= 2) {
+                break;
+            }
+        }
+    }
+    if (out.empty()) {
+        out = "?";
+    }
+    return out;
+}
+
+// A stable, pleasant avatar-fallback colour derived from the author name.
+slint::Color
+avatar_tint(const std::string& name) {
+    static const uint32_t palette[] = {0x4E79A7, 0xF28E2B, 0x59A14F, 0xB07AA1,
+                                       0xE15759, 0x76B7B2, 0xEDC948, 0xFF9DA7};
+    uint32_t hash = 2166136261u;
+    for (char c : name) {
+        hash = (hash ^ static_cast<unsigned char>(c)) * 16777619u;
+    }
+    const uint32_t rgb = palette[hash % (sizeof(palette) / sizeof(palette[0]))];
+    return slint::Color::from_rgb_uint8((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
 }
 
 // Greedy word-wrap of prose into lines of at most `cols` columns, respecting
@@ -797,6 +882,68 @@ main(int argc, char** argv) {
     int wrap_cols = 0;
     slint::Timer wrap_debounce;  // coalesces re-wraps during a live resize
 
+    // ---- avatar images ----------------------------------------------------
+    // Fetched lazily and cached by URL, decoded via a temp file (Slint decodes
+    // PNG/JPEG from a path). Rows show the initials circle until the image lands,
+    // then we repaint the diff so it swaps in. Deduped per URL, so one fetch per
+    // unique author avatar.
+    auto avatar_cache = std::make_shared<std::unordered_map<std::string, slint::Image>>();
+    auto avatar_inflight = std::make_shared<std::unordered_set<std::string>>();
+    std::function<void()> repaint_diff;  // assigned to relayout once it exists
+
+    auto avatar_for = [&, avatar_cache, avatar_inflight](const std::string& url) -> slint::Image {
+        if (url.empty()) {
+            return slint::Image{};
+        }
+        if (auto it = avatar_cache->find(url); it != avatar_cache->end()) {
+            return it->second;
+        }
+        if (!avatar_inflight->count(url)) {
+            avatar_inflight->insert(url);
+            const std::string u = url;
+            review_pool.submit(
+                ReviewPool::Prio::Prefetch, [&, u, avatar_cache, avatar_inflight](
+                                                diffy::review::HttpClient& http) {
+                    diffy::review::HttpRequest rq;
+                    rq.method = "GET";
+                    rq.url = u;
+                    const auto res = http.send(rq);
+                    std::string body = res.ok() ? res.response.body : std::string{};
+                    slint::invoke_from_event_loop([&, u, body, avatar_cache, avatar_inflight]() {
+                        avatar_inflight->erase(u);
+                        if (body.size() < 12) {
+                            return;
+                        }
+                        const unsigned char* b = reinterpret_cast<const unsigned char*>(body.data());
+                        const char* ext = ".png";
+                        if (b[0] == 0xFF && b[1] == 0xD8) {
+                            ext = ".jpg";
+                        } else if (b[0] == 'G' && b[1] == 'I' && b[2] == 'F') {
+                            ext = ".gif";
+                        }
+                        std::error_code ec;
+                        const auto dir = std::filesystem::temp_directory_path(ec) / "diffy-avatars";
+                        std::filesystem::create_directories(dir, ec);
+                        const auto path =
+                            dir / (std::to_string(std::hash<std::string>{}(u)) + ext);
+                        {
+                            std::ofstream f(path, std::ios::binary | std::ios::trunc);
+                            f.write(body.data(), static_cast<std::streamsize>(body.size()));
+                        }
+                        auto img =
+                            slint::Image::load_from_path(slint::SharedString(path.string().c_str()));
+                        if (img.size().width > 0) {
+                            (*avatar_cache)[u] = img;
+                            if (repaint_diff) {
+                                repaint_diff();
+                            }
+                        }
+                    });
+                });
+        }
+        return slint::Image{};
+    };
+
     // Consume a pending jump-to-code request: find the visual row whose gutter
     // matches the anchored line and scroll+select it. A no-op unless a scroll is
     // pending and the row is present (call after set_rows / relayout).
@@ -877,16 +1024,30 @@ main(int argc, char** argv) {
             auto push_thread = [&](const ReviewThread* th) {
                 for (std::size_t ci = 0; ci < th->comments.size(); ++ci) {
                     const auto& cm = th->comments[ci];
-                    const std::string who = ci == 0 ? cm.author : ("\xE2\x86\xB3 " + cm.author);
-                    auto lines = wrap_text(cm.body_md, wc);
+                    const int depth = (ci == 0) ? 0 : 1;  // replies indent one level
+                    // Header row: avatar + author + relative time.
+                    DiffRowData h{};
+                    h.is_comment = true;
+                    h.comment_is_head = true;
+                    h.comment_author = ss(cm.author);
+                    h.comment_time = ss(relative_time(cm.created));
+                    h.comment_depth = depth;
+                    h.comment_outdated = th->outdated;
+                    h.comment_initials = ss(initials_of(cm.author));
+                    h.comment_tint = avatar_tint(cm.author);
+                    h.comment_avatar = avatar_for(cm.author_avatar);
+                    out->push_back(h);
+                    // Body rows: wrapped to the indented width.
+                    auto lines = wrap_text(cm.body_md, std::max(16, wc - depth * 2 - 4));
                     if (lines.empty()) {
                         lines.emplace_back();
                     }
-                    for (std::size_t li = 0; li < lines.size(); ++li) {
+                    for (const auto& ln : lines) {
                         DiffRowData d{};
                         d.is_comment = true;
-                        d.comment_author = ss(li == 0 ? who : std::string());
-                        d.comment_body = ss(lines[li]);
+                        d.comment_is_head = false;
+                        d.comment_body = ss(ln);
+                        d.comment_depth = depth;
                         d.comment_outdated = th->outdated;
                         out->push_back(d);
                     }
@@ -913,14 +1074,17 @@ main(int argc, char** argv) {
                 }
             }
             for (auto* th : outdated) {
-                DiffRowData hdr{};
-                hdr.is_comment = true;
-                hdr.comment_outdated = true;
-                hdr.comment_author = ss(std::string("outdated"));
-                hdr.comment_body =
-                    ss(th->anchor.new_path.empty() ? std::string("(general comment)")
-                                                   : th->anchor.new_path);
-                out->push_back(hdr);
+                DiffRowData sep{};
+                sep.is_comment = true;
+                sep.comment_is_head = true;
+                sep.comment_outdated = true;
+                sep.comment_author = ss(th->anchor.new_path.empty() ? std::string("General comment")
+                                                                     : std::string("Outdated"));
+                sep.comment_time = ss(th->anchor.new_path.empty() ? std::string("on the pull request")
+                                                                  : th->anchor.new_path);
+                sep.comment_initials = ss(std::string("!"));
+                sep.comment_tint = avatar_tint("outdated");
+                out->push_back(sep);
                 push_thread(th);
             }
             backend.set_rows(out);
@@ -956,6 +1120,7 @@ main(int argc, char** argv) {
         backend.set_diff_scroll_row(-1);  // reset so the first n/p always re-fires
         apply_pending_scroll();  // honour a queued jump-to-code from a comment ref
     };
+    repaint_diff = relayout;  // let async avatar loads re-lay-out to swap in images
 
     // full refresh: re-run the diff for the current blob pair, then lay out. Small
     // pairs diff synchronously (instant preview); large ones run on a background

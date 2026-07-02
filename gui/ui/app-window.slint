@@ -31,10 +31,17 @@ export struct DiffRowData {
     right-present: bool,
     right-len: int,  // character count of the right cell's text
     // Review comment rows are interleaved into the diff beneath their anchor line.
-    // A comment row renders a bubble (variable height) instead of the diff cells.
+    // Each comment is a header row (avatar + author + time) followed by wrapped
+    // body rows, all uniform-height so the scrollbar/jump math stays exact.
     is-comment: bool,
-    comment-author: string,
-    comment-body: string,
+    comment-is-head: bool,     // true = the avatar/author/time header row
+    comment-author: string,    // (head row)
+    comment-time: string,      // relative timestamp, e.g. "3d" (head row)
+    comment-body: string,      // one wrapped line (body row)
+    comment-depth: int,        // reply nesting -> left indent
+    comment-initials: string,  // avatar fallback letters (head row)
+    comment-tint: color,       // avatar fallback circle colour (head row)
+    comment-avatar: image,     // fetched avatar; empty => draw the initials circle
     comment-outdated: bool,
 }
 
@@ -617,27 +624,68 @@ component DiffRow inherits Rectangle {
         }
     }
 
-    // Review comment row: a bubble under its anchor line. C++ wraps the body into
-    // one-line rows (keeping uniform height); the author prefixes the first line.
+    // Review comment row. Each comment is a header row (avatar + author + time)
+    // then wrapped body rows; replies indent one level. Uniform height per row is
+    // preserved (C++ pre-wraps), so the avatar is one line tall.
     if rowdata.is-comment : Rectangle {
         background: rowdata.comment-outdated ? Backend.panel-bg : Backend.header-bg;
+        // Thread accent bar, indented by reply depth.
         Rectangle {
-            x: 0;
-            width: 3px;
+            x: 8px + rowdata.comment-depth * 16px;
+            width: 2px;
             background: rowdata.comment-outdated ? Backend.gutter-fg : Backend.accent;
         }
         HorizontalLayout {
-            padding-left: 12px;
+            padding-left: 14px + rowdata.comment-depth * 16px;
             padding-right: 8px;
             spacing: 6px;
-            if rowdata.comment-author != "" : Text {
-                text: rowdata.comment-author + ":";
-                color: rowdata.comment-outdated ? Backend.gutter-fg : Backend.accent;
-                font-size: Backend.font-size * 1px;
-                font-weight: 700;
-                vertical-alignment: center;
+            // Avatar column (fixed) — rendered only on the header row so body lines
+            // align beneath the author.
+            Rectangle {
+                width: 22px;
+                if rowdata.comment-is-head : Rectangle {
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 8px;
+                    clip: true;
+                    background: rowdata.comment-tint;
+                    if rowdata.comment-avatar.width > 0 : Image {
+                        width: 16px;
+                        height: 16px;
+                        image-fit: cover;
+                        source: rowdata.comment-avatar;
+                    }
+                    if rowdata.comment-avatar.width == 0 : Text {
+                        text: rowdata.comment-initials;
+                        color: #ffffff;
+                        font-size: 9px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
             }
-            Text {
+            // Header (author + relative time) or a wrapped body line.
+            if rowdata.comment-is-head : HorizontalLayout {
+                spacing: 6px;
+                Text {
+                    text: rowdata.comment-author;
+                    color: rowdata.comment-outdated ? Backend.gutter-fg : Backend.fg;
+                    font-size: Backend.font-size * 1px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Text {
+                    text: rowdata.comment-time;
+                    color: Backend.gutter-fg;
+                    font-size: (Backend.font-size - 1) * 1px;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+            }
+            if !rowdata.comment-is-head : Text {
                 text: rowdata.comment-body;
                 color: Backend.fg;
                 font-size: Backend.font-size * 1px;
