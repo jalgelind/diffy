@@ -248,6 +248,63 @@ collect_all(HttpClient& http, const Credential& cred, std::string url) {
 
 // --- JSON -> neutral model -------------------------------------------------
 
+// Turn Bitbucket's rendered comment HTML into plain text. @mentions resolve to
+// display names in `html`, whereas `raw` only has @{account-id}. Strips tags and
+// decodes the common entities, collapsing whitespace.
+std::string
+strip_html(const std::string& html) {
+    std::string out;
+    out.reserve(html.size());
+    bool in_tag = false;
+    for (char ch : html) {
+        if (ch == '<') {
+            in_tag = true;
+        } else if (ch == '>') {
+            in_tag = false;
+            out.push_back(' ');
+        } else if (!in_tag) {
+            out.push_back(ch);
+        }
+    }
+    auto rep = [&](const char* from, const char* to) {
+        const std::string f = from, t = to;
+        std::size_t p = 0;
+        while ((p = out.find(f, p)) != std::string::npos) {
+            out.replace(p, f.size(), t);
+            p += t.size();
+        }
+    };
+    rep("&lt;", "<");
+    rep("&gt;", ">");
+    rep("&quot;", "\"");
+    rep("&#39;", "'");
+    rep("&#x27;", "'");
+    rep("&nbsp;", " ");
+    rep("&amp;", "&");
+    std::string cleaned;
+    cleaned.reserve(out.size());
+    bool pending_space = false;
+    for (char ch : out) {
+        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') {
+            pending_space = !cleaned.empty();
+        } else {
+            if (pending_space) {
+                cleaned.push_back(' ');
+                pending_space = false;
+            }
+            cleaned.push_back(ch);
+        }
+    }
+    return cleaned;
+}
+
+// A comment's display text: rendered HTML (mentions as names) if present, else raw.
+std::string
+comment_body(const json& content) {
+    const std::string html = jstr(content, "html");
+    return html.empty() ? jstr(content, "raw") : strip_html(html);
+}
+
 PullRequest
 to_pr(const json& j) {
     PullRequest pr;
@@ -531,7 +588,7 @@ BitbucketCloudClient::threads(const std::string& id) {
         cm.id = cid;
         cm.parent_id = parent_of[cid];
         cm.author = jstr(jchild(c, "user"), "display_name");
-        cm.body_md = jstr(jchild(c, "content"), "raw");
+        cm.body_md = comment_body(jchild(c, "content"));
         cm.created = jstr(c, "created_on");
         th.comments.push_back(std::move(cm));
     }
@@ -587,7 +644,7 @@ BitbucketCloudClient::comment(const std::string& id, const NewComment& nc) {
     cm.id = jid(j);
     cm.parent_id = jid(jchild(j, "parent"));
     cm.author = jstr(jchild(j, "user"), "display_name");
-    cm.body_md = jstr(jchild(j, "content"), "raw");
+    cm.body_md = comment_body(jchild(j, "content"));
     cm.created = jstr(j, "created_on");
     return Result<Comment>::ok(cm);
 }

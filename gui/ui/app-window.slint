@@ -152,9 +152,12 @@ export global Backend {
     in property <[PrEntry]> pull-requests;
     callback open-pr(string);    // pr id
     callback refresh-prs();
+    in property <bool> more-prs: false;  // the PR history has another page
+    callback load-more-prs();
     // PR detail mode: the right sidebar shows a back row + PR header + the PR's
     // commits; the left shows the PR's changed files.
     in property <bool> pr-open: false;
+    in-out property <bool> pr-list-collapsed: false;  // PR-list shelf; auto-set on open, user-toggle
     in property <string> pr-title;      // "#id  title"
     in property <string> pr-subtitle;   // "src → dst · state"
     in property <[PrComment]> pr-comments;  // all of the open PR's comments (Comments shelf)
@@ -223,6 +226,7 @@ component Icon inherits Rectangle {
     in property <length> size: 16px;
     in property <image> source;
     in property <color> colorize: Backend.fg;
+    in property <angle> rotation: 0deg;
     width: size;
     Image {
         width: root.size;
@@ -230,6 +234,7 @@ component Icon inherits Rectangle {
         image-fit: contain;
         source: root.source;
         colorize: root.colorize;
+        rotation-angle: root.rotation;
     }
 }
 
@@ -1347,11 +1352,14 @@ component ShelfHeader inherits Rectangle {
         padding-left: 2px;
         padding-right: 4px;
         spacing: 6px;
-        Text {
-            text: root.collapsed ? "▸" : "▾";
-            color: ta.has-hover ? Backend.accent : Backend.gutter-fg;
-            font-size: 11px;
-            vertical-alignment: center;
+        VerticalLayout {
+            alignment: center;
+            Icon {
+                size: 12px;
+                source: @image-url("icons/chevron-down.svg");
+                colorize: ta.has-hover ? Backend.accent : Backend.gutter-fg;
+                rotation: root.collapsed ? -90deg : 0deg;
+            }
         }
         Text {
             text: root.title;
@@ -1402,38 +1410,38 @@ component CommitsPanel inherits Rectangle {
         }
     }
 
-    // Per-shelf open/closed state; auto-arranged when entering/leaving PR mode.
-    property <bool> sh-prs-collapsed: false;
+    // User-toggled shelf state (the PR-list shelf's collapse is driven from C++ via
+    // Backend.pr-list-collapsed when a PR opens/closes).
     property <bool> sh-commits-collapsed: false;
     property <bool> sh-comments-collapsed: false;
-    property <bool> pr-open-tracker: Backend.pr-open;
-    changed pr-open-tracker => {
-        root.sh-prs-collapsed = root.pr-open-tracker;  // collapse the PR list inside a PR
-        root.sh-commits-collapsed = false;
-        root.sh-comments-collapsed = false;
-    }
 
     VerticalLayout {
         padding: 8px;
         spacing: 4px;
 
-        // PR detail: back row + header (only inside a PR).
-        if Backend.pr-open : back-ta := TouchArea {
-            height: 20px;
-            clicked => { Backend.close-pr(); }
+        // PR detail header (only inside a PR): title + a Close control that exits
+        // the review to the working tree. (Switch PRs by expanding the shelf below.)
+        if Backend.pr-open : HorizontalLayout {
+            spacing: 6px;
             Text {
-                text: "‹ Pull requests";
-                color: back-ta.has-hover ? Backend.accent : Backend.gutter-fg;
-                font-size: 11px;
-                vertical-alignment: center;
+                text: Backend.pr-title;
+                color: Backend.fg;
+                font-size: 13px;
+                font-weight: 600;
+                overflow: elide;
+                horizontal-stretch: 1;
             }
-        }
-        if Backend.pr-open : Text {
-            text: Backend.pr-title;
-            color: Backend.fg;
-            font-size: 13px;
-            font-weight: 600;
-            overflow: elide;
+            close-ta := TouchArea {
+                width: 40px;
+                clicked => { Backend.close-pr(); }
+                Text {
+                    text: "Close";
+                    color: close-ta.has-hover ? Backend.accent : Backend.gutter-fg;
+                    font-size: 11px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+            }
         }
         if Backend.pr-open : Text {
             text: Backend.pr-subtitle;
@@ -1445,11 +1453,18 @@ component CommitsPanel inherits Rectangle {
         // ---- Shelf: Pull requests (collapses when a PR opens) ----
         if Backend.has-bitbucket : ShelfHeader {
             title: "PULL REQUESTS";
-            collapsed <=> root.sh-prs-collapsed;
+            collapsed <=> Backend.pr-list-collapsed;
         }
-        if Backend.has-bitbucket && !root.sh-prs-collapsed : ListView {
+        if Backend.has-bitbucket && !Backend.pr-list-collapsed : ListView {
             vertical-stretch: 1;
             horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+            // Lazy pagination: fetch the next page as the list nears the bottom.
+            changed viewport-y => {
+                if (Backend.more-prs && !Backend.loading-prs
+                    && -self.viewport-y + self.visible-height >= self.viewport-height - 150px) {
+                    Backend.load-more-prs();
+                }
+            }
             for pr in Backend.pull-requests : Rectangle {
                 height: pr.is-section ? 22px : 52px;
                 background: (!pr.is-section && pr-ta.has-hover) ? Backend.hover : transparent;
@@ -1493,12 +1508,12 @@ component CommitsPanel inherits Rectangle {
                 }
             }
         }
-        if Backend.has-bitbucket && !root.sh-prs-collapsed && Backend.loading-prs : Text {
+        if Backend.has-bitbucket && !Backend.pr-list-collapsed && Backend.loading-prs : Text {
             text: "Loading pull requests…";
             color: Backend.gutter-fg;
             font-size: 11px;
         }
-        if Backend.has-bitbucket && !root.sh-prs-collapsed && !Backend.loading-prs && Backend.pull-requests.length == 0 : Text {
+        if Backend.has-bitbucket && !Backend.pr-list-collapsed && !Backend.loading-prs && Backend.pull-requests.length == 0 : Text {
             text: "No open pull requests";
             color: Backend.gutter-fg;
             font-size: 11px;

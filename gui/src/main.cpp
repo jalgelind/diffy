@@ -636,6 +636,9 @@ main(int argc, char** argv) {
         };
         std::unordered_map<std::string, PrDetail> pr_detail_cache;
         std::unordered_map<std::string, std::pair<std::string, std::string>> pr_file_cache;
+        std::string pr_list_key;      // "ws/repo" of the currently shown PR list
+        std::string pr_next_cursor;   // next-page cursor for the PR list ("" = end)
+        bool loading_more_prs = false;
         // Threads for the open PR (all files); relayout interleaves those matching
         // the current file into the diff.
         std::vector<diffy::review::ReviewThread> pr_threads;
@@ -1364,6 +1367,7 @@ main(int argc, char** argv) {
         state.base_ref.clear();
         backend.set_on_working_tree(false);
         backend.set_pr_open(true);
+        backend.set_pr_list_collapsed(true);  // collapse the PR-list shelf inside a PR
         review_pool.clear_prefetch();  // drop a previous PR's speculative blob fetches
 
         const std::string key = parsed->owner + "/" + parsed->repo + "#" + id;
@@ -1643,20 +1647,25 @@ main(int argc, char** argv) {
             diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
             auto prs = client.list_open();
             auto items = std::make_shared<std::vector<diffy::review::PullRequest>>();
+            auto cursor = std::make_shared<std::string>();
             std::string err;
             if (prs) {
                 *items = std::move(prs.value().items);
+                *cursor = prs.value().next_cursor;
             } else {
                 err = prs.error().message;
                 diffy::review::log_line("list_open(" + key + ") failed: " + err);
             }
-            slint::invoke_from_event_loop([&, items, key, gen, err]() {
+            slint::invoke_from_event_loop([&, items, cursor, key, gen, err]() {
                 if (gen != state.load_generation) {
                     return;  // repo switched while listing
                 }
                 backend.set_loading_prs(false);
                 if (err.empty()) {
                     state.pr_list_cache[key] = *items;  // cache + swap in the fresh result
+                    state.pr_list_key = key;
+                    state.pr_next_cursor = *cursor;
+                    backend.set_more_prs(!cursor->empty());
                     show_prs(*items);
                     // Warm each PR's detail in the background so opening any is instant.
                     int pf = 0;
@@ -1741,6 +1750,7 @@ main(int argc, char** argv) {
         state.current_pr.clear();
         state.pr_threads.clear();
         backend.set_pr_open(false);
+        backend.set_pr_list_collapsed(false);  // re-expand the PR-list shelf
         review_pool.clear_prefetch();  // drop speculative work for the previous repo
         // Clear the current view so switching repos feels immediate.
         set_files({});
@@ -2053,12 +2063,47 @@ main(int argc, char** argv) {
     });
 
     backend.on_refresh_prs([&]() { refresh_prs(); });
+    backend.on_load_more_prs([&]() {
+        // Fetch the next page and append to the cached list (lazy pagination).
+        if (state.loading_more_prs || state.pr_next_cursor.empty() || !state.bitbucket_cred ||
+            state.pr_list_key.empty()) {
+            return;
+        }
+        state.loading_more_prs = true;
+        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const std::string cursor = state.pr_next_cursor;
+        const std::string key = state.pr_list_key;
+        const uint64_t gen = state.load_generation;
+        review_pool.submit(ReviewPool::Prio::Interactive,
+                           [&, cred, cursor, key, gen](diffy::review::HttpClient& http) {
+            diffy::review::BitbucketCloudClient client(http, cred, state.pr_ws, state.pr_repo);
+            auto prs = client.list_open(cursor);
+            auto items = std::make_shared<std::vector<diffy::review::PullRequest>>();
+            auto next = std::make_shared<std::string>();
+            if (prs) {
+                *items = std::move(prs.value().items);
+                *next = prs.value().next_cursor;
+            }
+            slint::invoke_from_event_loop([&, items, next, key, gen]() {
+                state.loading_more_prs = false;
+                if (gen != state.load_generation || key != state.pr_list_key) {
+                    return;
+                }
+                auto& cache = state.pr_list_cache[key];
+                cache.insert(cache.end(), items->begin(), items->end());
+                state.pr_next_cursor = *next;
+                backend.set_more_prs(!next->empty());
+                show_prs(cache);
+            });
+        });
+    });
     backend.on_open_pr([&](slint::SharedString id) { open_pr(str(id)); });
     backend.on_close_pr([&]() {
         // Leave PR detail mode and restore the repo view (working tree + local
         // commits + the PR list) by reloading the repo.
         state.current_pr.clear();
         backend.set_pr_open(false);
+        backend.set_pr_list_collapsed(false);  // re-expand the PR-list shelf
         if (!state.repo_path.empty()) {
             load_repo(state.repo_path);
         }
