@@ -1310,6 +1310,26 @@ main(int argc, char** argv) {
     auto apply_pr_detail = [&](const std::string& id, const State::PrDetail& d, bool select_first) {
         state.pr_refs = d.refs;
         state.pr_threads = d.threads;
+        // Flatten threads into the Comments shelf (one row per comment).
+        auto cmodel = std::make_shared<slint::VectorModel<PrComment>>();
+        for (const auto& th : d.threads) {
+            std::string loc = th.outdated ? "outdated"
+                              : th.anchor.new_path.empty()
+                                  ? "general"
+                                  : (th.anchor.new_path + ":" + std::to_string(th.anchor.start.line));
+            for (const auto& cm : th.comments) {
+                PrComment e{};
+                e.author = ss(cm.author);
+                e.location = ss(loc);
+                std::string s = cm.body_md;
+                if (auto nl = s.find('\n'); nl != std::string::npos) {
+                    s = s.substr(0, nl);
+                }
+                e.snippet = ss(s);
+                cmodel->push_back(e);
+            }
+        }
+        backend.set_pr_comments(cmodel);
         backend.set_pr_title(ss("#" + id + "  " + d.title));
         backend.set_pr_subtitle(ss(d.subtitle));
         set_files(d.files);

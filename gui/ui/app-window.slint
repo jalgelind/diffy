@@ -66,6 +66,13 @@ export struct PrEntry {
     is-section: bool,   // a non-clickable group header row (title = section name)
 }
 
+// One comment shown in the PR "Comments" shelf.
+export struct PrComment {
+    author: string,
+    snippet: string,
+    location: string,   // "path:line" or "general"
+}
+
 // ---- option-bar state, shared with C++ -------------------------------------
 
 export global DiffOptions {
@@ -150,6 +157,7 @@ export global Backend {
     in property <bool> pr-open: false;
     in property <string> pr-title;      // "#id  title"
     in property <string> pr-subtitle;   // "src → dst · state"
+    in property <[PrComment]> pr-comments;  // all of the open PR's comments (Comments shelf)
     callback close-pr();
     in-out property <int> tab-width: 4;
     in property <[string]> font-choices;   // curated monospace families (per-OS)
@@ -1326,6 +1334,42 @@ component FilesPanel inherits Rectangle {
     }
 }
 
+// A collapsible "shelf" header: a chevron + title (+ optional count) that toggles
+// the shelf's `collapsed` state. The shelf's content is rendered by the caller,
+// gated on `collapsed`.
+component ShelfHeader inherits Rectangle {
+    in property <string> title;
+    in property <string> count;
+    in-out property <bool> collapsed: false;
+    height: 26px;
+    ta := TouchArea { clicked => { root.collapsed = !root.collapsed; } }
+    HorizontalLayout {
+        padding-left: 2px;
+        padding-right: 4px;
+        spacing: 6px;
+        Text {
+            text: root.collapsed ? "▸" : "▾";
+            color: ta.has-hover ? Backend.accent : Backend.gutter-fg;
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.title;
+            color: ta.has-hover ? Backend.accent : Backend.gutter-fg;
+            font-size: 10px;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+        Rectangle { horizontal-stretch: 1; }
+        if root.count != "" : Text {
+            text: root.count;
+            color: Backend.gutter-fg;
+            font-size: 10px;
+            vertical-alignment: center;
+        }
+    }
+}
+
 // Right sidebar: commit history, lazy-loaded as you scroll.
 component CommitsPanel inherits Rectangle {
     in property <length> panel-width;
@@ -1358,55 +1402,52 @@ component CommitsPanel inherits Rectangle {
         }
     }
 
+    // Per-shelf open/closed state; auto-arranged when entering/leaving PR mode.
+    property <bool> sh-prs-collapsed: false;
+    property <bool> sh-commits-collapsed: false;
+    property <bool> sh-comments-collapsed: false;
+    property <bool> pr-open-tracker: Backend.pr-open;
+    changed pr-open-tracker => {
+        root.sh-prs-collapsed = root.pr-open-tracker;  // collapse the PR list inside a PR
+        root.sh-commits-collapsed = false;
+        root.sh-comments-collapsed = false;
+    }
+
     VerticalLayout {
         padding: 8px;
-        spacing: 6px;
+        spacing: 4px;
 
-        // PR detail: a back row to the PR list, plus the PR header.
-        if Backend.pr-open : VerticalLayout {
-            spacing: 4px;
-            back-ta := TouchArea {
-                height: 20px;
-                clicked => { Backend.close-pr(); }
-                Text {
-                    text: "‹ Pull requests";
-                    color: back-ta.has-hover ? Backend.accent : Backend.gutter-fg;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                }
-            }
+        // PR detail: back row + header (only inside a PR).
+        if Backend.pr-open : back-ta := TouchArea {
+            height: 20px;
+            clicked => { Backend.close-pr(); }
             Text {
-                text: Backend.pr-title;
-                color: Backend.fg;
-                font-size: 13px;
-                font-weight: 600;
-                overflow: elide;
-            }
-            Text {
-                text: Backend.pr-subtitle;
-                color: Backend.gutter-fg;
-                font-size: 10px;
-                overflow: elide;
+                text: "‹ Pull requests";
+                color: back-ta.has-hover ? Backend.accent : Backend.gutter-fg;
+                font-size: 11px;
+                vertical-alignment: center;
             }
         }
-
-        // Pull requests — shown when the repo's origin is a connected Bitbucket
-        // remote (see main.cpp detection). Lists open PRs; clicking one opens it.
-        if !Backend.pr-open && Backend.has-bitbucket : HorizontalLayout {
-            SectionLabel { text: "PULL REQUESTS"; }
-            Rectangle { horizontal-stretch: 1; }
-            pr-refresh := TouchArea {
-                width: 40px;
-                clicked => { Backend.refresh-prs(); }
-                Text {
-                    text: "↻";
-                    color: pr-refresh.has-hover ? Backend.accent : Backend.gutter-fg;
-                    horizontal-alignment: right;
-                    vertical-alignment: center;
-                }
-            }
+        if Backend.pr-open : Text {
+            text: Backend.pr-title;
+            color: Backend.fg;
+            font-size: 13px;
+            font-weight: 600;
+            overflow: elide;
         }
-        if !Backend.pr-open && Backend.has-bitbucket : ListView {
+        if Backend.pr-open : Text {
+            text: Backend.pr-subtitle;
+            color: Backend.gutter-fg;
+            font-size: 10px;
+            overflow: elide;
+        }
+
+        // ---- Shelf: Pull requests (collapses when a PR opens) ----
+        if Backend.has-bitbucket : ShelfHeader {
+            title: "PULL REQUESTS";
+            collapsed <=> root.sh-prs-collapsed;
+        }
+        if Backend.has-bitbucket && !root.sh-prs-collapsed : ListView {
             vertical-stretch: 1;
             horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
             for pr in Backend.pull-requests : Rectangle {
@@ -1452,15 +1493,49 @@ component CommitsPanel inherits Rectangle {
                 }
             }
         }
-        if !Backend.pr-open && Backend.has-bitbucket && Backend.loading-prs : Text {
+        if Backend.has-bitbucket && !root.sh-prs-collapsed && Backend.loading-prs : Text {
             text: "Loading pull requests…";
             color: Backend.gutter-fg;
             font-size: 11px;
         }
-        if !Backend.pr-open && Backend.has-bitbucket && !Backend.loading-prs && Backend.pull-requests.length == 0 : Text {
+        if Backend.has-bitbucket && !root.sh-prs-collapsed && !Backend.loading-prs && Backend.pull-requests.length == 0 : Text {
             text: "No open pull requests";
             color: Backend.gutter-fg;
             font-size: 11px;
+        }
+
+        // ---- Shelf: Comments (inside a PR, when it has any) ----
+        if Backend.pr-open && Backend.pr-comments.length > 0 : ShelfHeader {
+            title: "COMMENTS";
+            count: "\{Backend.pr-comments.length}";
+            collapsed <=> root.sh-comments-collapsed;
+        }
+        if Backend.pr-open && Backend.pr-comments.length > 0 && !root.sh-comments-collapsed : ListView {
+            vertical-stretch: 1;
+            horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+            for cm in Backend.pr-comments : Rectangle {
+                height: 46px;
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    padding-top: 5px;
+                    padding-bottom: 5px;
+                    VerticalLayout {
+                        Text {
+                            text: cm.author + "  ·  " + cm.location;
+                            color: Backend.gutter-fg;
+                            font-size: 10px;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: cm.snippet;
+                            color: Backend.fg;
+                            font-size: 12px;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
         }
 
         // Working-tree entry: selecting it leaves any historical commit and shows
@@ -1505,8 +1580,12 @@ component CommitsPanel inherits Rectangle {
                 }
             }
         }
-        SectionLabel { text: Backend.pr-open ? "COMMITS" : "RECENT COMMITS"; }
-        commits-list := ListView {
+        // ---- Shelf: Commits (PR commits inside a PR, else local history) ----
+        ShelfHeader {
+            title: Backend.pr-open ? "COMMITS" : "RECENT COMMITS";
+            collapsed <=> root.sh-commits-collapsed;
+        }
+        if !root.sh-commits-collapsed : commits-list := ListView {
             vertical-stretch: 1;
             horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
             // Lazy-load: fetch the next page as the list nears the bottom.
