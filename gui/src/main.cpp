@@ -883,8 +883,8 @@ main(int argc, char** argv) {
     slint::Timer wrap_debounce;  // coalesces re-wraps during a live resize
 
     // Pixel offset of a model row, matching the DiffRow height binding in the
-    // .slint (content rows 1.6em, comment rows 2.2em) so jump targets land exactly
-    // even when taller comment rows sit above them.
+    // .slint (content 1.6em, comment header 2.8em, comment body 1.8em) so jump
+    // targets land exactly even when taller comment rows sit above them.
     auto row_pixel_offset = [&](int target) -> float {
         const float fs = static_cast<float>(backend.get_font_size());
         auto rows = backend.get_rows();
@@ -895,7 +895,11 @@ main(int argc, char** argv) {
         const int n = static_cast<int>(rows->row_count());
         for (int r = 0; r < target && r < n; ++r) {
             auto rd = rows->row_data(r);
-            y += (rd && rd->is_comment) ? fs * 2.2f : fs * 1.6f;
+            if (rd && rd->is_comment) {
+                y += rd->comment_is_head ? fs * 2.8f : fs * 1.8f;
+            } else {
+                y += fs * 1.6f;
+            }
         }
         return y;
     };
@@ -1210,7 +1214,7 @@ main(int argc, char** argv) {
         }
 
         auto make_entry = [&](const diffy::gui::FileChange& f, int depth) {
-            FileEntry fe;
+            FileEntry fe{};  // value-init so comment_count et al. aren't garbage
             fe.path = ss(f.path);
             fe.status = ss(f.status);
             fe.staged = f.staged;
@@ -1230,7 +1234,7 @@ main(int argc, char** argv) {
             return fe;
         };
         auto push_section = [&](const std::string& label) {
-            FileEntry fe;
+            FileEntry fe{};
             fe.is_section = true;
             fe.name = ss(label);
             files->push_back(fe);
