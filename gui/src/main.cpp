@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdio>
@@ -269,6 +270,64 @@ avatar_tint(const std::string& name) {
     }
     const uint32_t rgb = palette[hash % (sizeof(palette) / sizeof(palette[0]))];
     return slint::Color::from_rgb_uint8((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+}
+
+// Turn a decoded avatar into a crisp, round `size`x`size` image: center-crop to
+// square, area-average downscale (good minification, unlike the renderer's plain
+// bilinear on a large source), and apply an antialiased circular alpha mask so the
+// edge is smooth regardless of the render backend.
+slint::Image
+process_avatar(const slint::Image& src, uint32_t size) {
+    auto maybe = src.to_rgba8();
+    if (!maybe) {
+        return src;
+    }
+    const auto& in = *maybe;
+    const uint32_t iw = in.width(), ih = in.height();
+    if (iw == 0 || ih == 0 || size == 0) {
+        return src;
+    }
+    const slint::Rgba8Pixel* ip = in.begin();
+    const uint32_t sq = std::min(iw, ih);  // square center-crop (cover)
+    const uint32_t ox = (iw - sq) / 2, oy = (ih - sq) / 2;
+    slint::SharedPixelBuffer<slint::Rgba8Pixel> out(size, size);
+    slint::Rgba8Pixel* op = out.begin();
+    const float scale = static_cast<float>(sq) / static_cast<float>(size);
+    const float c = (size - 1) / 2.0f;
+    const float rad = size / 2.0f;
+    for (uint32_t dy = 0; dy < size; ++dy) {
+        for (uint32_t dx = 0; dx < size; ++dx) {
+            uint32_t sx0 = ox + static_cast<uint32_t>(dx * scale);
+            uint32_t sy0 = oy + static_cast<uint32_t>(dy * scale);
+            uint32_t sx1 = ox + static_cast<uint32_t>((dx + 1) * scale);
+            uint32_t sy1 = oy + static_cast<uint32_t>((dy + 1) * scale);
+            sx1 = std::max(sx1, sx0 + 1);
+            sy1 = std::max(sy1, sy0 + 1);
+            sx1 = std::min(sx1, ox + sq);
+            sy1 = std::min(sy1, oy + sq);
+            uint32_t rs = 0, gs = 0, bs = 0, as = 0, cnt = 0;
+            for (uint32_t sy = sy0; sy < sy1; ++sy) {
+                for (uint32_t sx = sx0; sx < sx1; ++sx) {
+                    const auto& p = ip[sy * iw + sx];
+                    rs += p.r;
+                    gs += p.g;
+                    bs += p.b;
+                    as += p.a;
+                    ++cnt;
+                }
+            }
+            if (cnt == 0) {
+                cnt = 1;
+            }
+            const float ddx = dx - c, ddy = dy - c;
+            const float dist = std::sqrt(ddx * ddx + ddy * ddy);
+            const float m = std::clamp(rad - dist + 0.5f, 0.0f, 1.0f);  // 1px AA edge
+            op[dy * size + dx] = slint::Rgba8Pixel{
+                static_cast<uint8_t>(rs / cnt), static_cast<uint8_t>(gs / cnt),
+                static_cast<uint8_t>(bs / cnt), static_cast<uint8_t>((as / cnt) * m)};
+        }
+    }
+    return slint::Image(out);
 }
 
 // Greedy word-wrap of prose into lines of at most `cols` columns, respecting
@@ -959,7 +1018,9 @@ main(int argc, char** argv) {
                         auto img =
                             slint::Image::load_from_path(slint::SharedString(path.string().c_str()));
                         if (img.size().width > 0) {
-                            (*avatar_cache)[u] = img;
+                            // Pre-size to ~2x the display size + round it ourselves so
+                            // the avatar is crisp and smoothly masked.
+                            (*avatar_cache)[u] = process_avatar(img, 52);
                             if (repaint_diff) {
                                 repaint_diff();
                             }

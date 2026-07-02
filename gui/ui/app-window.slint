@@ -647,21 +647,25 @@ component DiffRow inherits Rectangle {
             // column both ways (a bare child would pin to the top-left).
             Rectangle {
                 width: 34px;
-                if rowdata.comment-is-head : Rectangle {
+                // Real avatar: already center-cropped, downscaled and circle-masked
+                // (with an AA edge) in C++, so we just blit it — no clip needed.
+                if rowdata.comment-is-head && rowdata.comment-avatar.width > 0 : Image {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: 26px;
+                    height: 26px;
+                    image-rendering: smooth;
+                    source: rowdata.comment-avatar;
+                }
+                // Fallback: a tinted initials circle.
+                if rowdata.comment-is-head && rowdata.comment-avatar.width == 0 : Rectangle {
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
                     width: 26px;
                     height: 26px;
                     border-radius: 13px;
-                    clip: true;
                     background: rowdata.comment-tint;
-                    if rowdata.comment-avatar.width > 0 : Image {
-                        width: 26px;
-                        height: 26px;
-                        image-fit: cover;
-                        source: rowdata.comment-avatar;
-                    }
-                    if rowdata.comment-avatar.width == 0 : Text {
+                    Text {
                         width: 100%;
                         height: 100%;
                         text: rowdata.comment-initials;
