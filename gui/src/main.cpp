@@ -1816,38 +1816,82 @@ main(int argc, char** argv) {
     // recording each comment's anchor (path/line/side) so a sidebar ref can jump to
     // the code. Shared by the initial detail apply and the post-a-comment refresh.
     auto rebuild_comment_shelf = [&](const std::vector<diffy::review::ReviewThread>& threads) {
-        auto cmodel = std::make_shared<slint::VectorModel<PrComment>>();
-        for (const auto& th : threads) {
-            // The anchored file (new side, or the pre-rename path if that's all we
-            // have). Empty for general / PR-level comments.
-            std::string apath = th.anchor.new_path;
-            if (apath.empty() && th.anchor.old_path) {
-                apath = *th.anchor.old_path;
+        using diffy::review::ReviewThread;
+        const bool unresolved_only = backend.get_comments_unresolved_only();
+        // Anchored file path for a thread (new side, or the pre-rename path).
+        auto path_of = [](const ReviewThread& th) {
+            std::string p = th.anchor.new_path;
+            if (p.empty() && th.anchor.old_path) {
+                p = *th.anchor.old_path;
             }
-            const bool anchored = !th.outdated && !apath.empty() && th.anchor.start.line >= 1;
-            std::string loc = th.outdated ? "outdated"
-                              : apath.empty()
-                                  ? "general"
-                                  : (apath + ":" + std::to_string(th.anchor.start.line));
-            const bool old_side = th.anchor.side == diffy::review::Side::Old;
-            for (const auto& cm : th.comments) {
-                PrComment e{};
-                e.author = ss(cm.author);
-                e.location = ss(loc);
-                if (anchored) {
-                    e.path = ss(apath);
-                    e.line = th.anchor.start.line;
-                    e.side = ss(old_side ? std::string("old") : std::string("new"));
+            return p;
+        };
+        // Bucket threads by group key: file path, or "\x01" general / "\x02" outdated.
+        std::vector<std::string> order;
+        std::unordered_map<std::string, std::vector<const ReviewThread*>> groups;
+        bool has_any = false;
+        for (const auto& th : threads) {
+            if (!th.comments.empty()) {
+                has_any = true;
+            }
+            if (unresolved_only && th.resolved) {
+                continue;
+            }
+            const std::string p = path_of(th);
+            const std::string key = th.outdated ? "\x02" : (p.empty() ? "\x01" : p);
+            if (!groups.count(key)) {
+                order.push_back(key);
+            }
+            groups[key].push_back(&th);
+        }
+        // Files alphabetically, then General (\x01), then Outdated (\x02).
+        std::sort(order.begin(), order.end());
+        std::stable_partition(order.begin(), order.end(),
+                              [](const std::string& k) { return k[0] != '\x01' && k[0] != '\x02'; });
+
+        auto cmodel = std::make_shared<slint::VectorModel<PrComment>>();
+        int comment_rows = 0;
+        for (const std::string& key : order) {
+            const auto& ths = groups[key];
+            int cnt = 0;
+            for (auto* th : ths) {
+                cnt += static_cast<int>(th->comments.size());
+            }
+            PrComment sec{};
+            sec.is_section = true;
+            sec.location = ss(key == "\x01"  ? std::string("General")
+                              : key == "\x02" ? std::string("Outdated")
+                                              : key);
+            sec.count = cnt;
+            cmodel->push_back(sec);
+            for (auto* th : ths) {
+                const std::string apath = path_of(*th);
+                const bool anchored = !th->outdated && !apath.empty() && th->anchor.start.line >= 1;
+                const bool old_side = th->anchor.side == diffy::review::Side::Old;
+                for (const auto& cm : th->comments) {
+                    PrComment e{};
+                    e.author = ss(cm.author);
+                    e.resolved = th->resolved;
+                    e.location =
+                        ss(anchored ? ("line " + std::to_string(th->anchor.start.line)) : std::string());
+                    if (anchored) {
+                        e.path = ss(apath);
+                        e.line = th->anchor.start.line;
+                        e.side = ss(old_side ? std::string("old") : std::string("new"));
+                    }
+                    std::string s = cm.body_md;
+                    if (auto nl = s.find('\n'); nl != std::string::npos) {
+                        s = s.substr(0, nl);
+                    }
+                    e.snippet = ss(s);
+                    cmodel->push_back(e);
+                    ++comment_rows;
                 }
-                std::string s = cm.body_md;
-                if (auto nl = s.find('\n'); nl != std::string::npos) {
-                    s = s.substr(0, nl);
-                }
-                e.snippet = ss(s);
-                cmodel->push_back(e);
             }
         }
         backend.set_pr_comments(cmodel);
+        backend.set_pr_has_comments(has_any);
+        backend.set_pr_comment_count(comment_rows);
     };
 
     // Apply a fetched-or-cached PR detail to the sidebars. `select_first` opens the
@@ -2751,6 +2795,10 @@ main(int argc, char** argv) {
     });
     backend.on_open_pr([&](slint::SharedString id) { open_pr(str(id)); });
     backend.on_show_pr_aggregate([&]() { exit_pr_commit(); });
+    backend.on_comments_filter_changed([&]() {
+        rebuild_comment_shelf(state.current_pr_commit.empty() ? state.pr_threads
+                                                              : state.pr_commit_threads);
+    });
     backend.on_close_pr([&]() {
         // Leave PR detail mode and restore the repo view (working tree + local
         // commits + the PR list) by reloading the repo.

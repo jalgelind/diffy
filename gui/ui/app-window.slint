@@ -85,10 +85,13 @@ export struct PrEntry {
 export struct PrComment {
     author: string,
     snippet: string,
-    location: string,   // "path:line" or "general"
+    location: string,   // comment: "line N" / "general"; section: the file/group name
     path: string,       // anchored file (empty for general / PR-level comments)
     line: int,          // anchored line on `side` (0 when general)
     side: string,       // "new" | "old" (which gutter `line` refers to)
+    is-section: bool,   // a file/group header row (title = location, count = count)
+    count: int,         // section: number of comments under this group
+    resolved: bool,     // comment: its thread is resolved
 }
 
 // ---- option-bar state, shared with C++ -------------------------------------
@@ -193,7 +196,11 @@ export global Backend {
     in property <string> pr-subtitle;   // "src → dst · state"
     in property <string> pr-stat;       // "N files · +x −y"
     in property <string> pr-url;        // web URL of the PR (quick actions)
-    in property <[PrComment]> pr-comments;  // all of the open PR's comments (Comments shelf)
+    in property <[PrComment]> pr-comments;  // grouped Comments-shelf rows (sections + comments)
+    in property <bool> pr-has-comments;      // PR has >=1 comment (unfiltered) -> show the shelf
+    in property <int> pr-comment-count;      // filtered comment count (excludes section rows)
+    in-out property <bool> comments-unresolved-only: false;  // filter the Comments shelf
+    callback comments-filter-changed();  // rebuild the Comments shelf after a filter toggle
     callback close-pr();
     callback open-url(string);          // open a URL in the system browser
     callback show-pr-aggregate();  // leave a single-commit view, show the full PR diff
@@ -1845,39 +1852,98 @@ component CommitsPanel inherits Rectangle {
         }
 
         // ---- Shelf: Comments (inside a PR, when it has any) ----
-        if Backend.pr-open && Backend.pr-comments.length > 0 : ShelfHeader {
+        if Backend.pr-open && Backend.pr-has-comments : ShelfHeader {
             title: "COMMENTS";
-            count: "\{Backend.pr-comments.length}";
+            count: "\{Backend.pr-comment-count}";
             collapsed <=> root.sh-comments-collapsed;
         }
-        if Backend.pr-open && Backend.pr-comments.length > 0 && !root.sh-comments-collapsed : ListView {
+        // Filter: show only unresolved threads.
+        if Backend.pr-open && Backend.pr-has-comments && !root.sh-comments-collapsed : Rectangle {
+            height: 22px;
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                CheckBox {
+                    text: "Unresolved only";
+                    checked <=> Backend.comments-unresolved-only;
+                    toggled(v) => { Backend.comments-filter-changed(); }
+                }
+            }
+        }
+        if Backend.pr-open && Backend.pr-has-comments && !root.sh-comments-collapsed
+                && Backend.pr-comment-count == 0 : Text {
+            text: "No unresolved comments";
+            color: Backend.gutter-fg;
+            font-size: 11px;
+        }
+        if Backend.pr-open && Backend.pr-has-comments && !root.sh-comments-collapsed
+                && Backend.pr-comment-count > 0 : ListView {
             vertical-stretch: 1;
             horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
             for cm in Backend.pr-comments : Rectangle {
-                height: 46px;
-                border-radius: 5px;
-                background: cm-ta.has-hover && cm.path != "" ? Backend.hover : transparent;
-                cm-ta := TouchArea {
+                height: cm.is-section ? 22px : 46px;
+                // Group header row (file / General / Outdated) with a count.
+                if cm.is-section : HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 8px;
+                    spacing: 6px;
+                    Text {
+                        text: cm.location;
+                        color: Backend.gutter-fg;
+                        font-size: 10px;
+                        font-weight: 700;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: cm.count;
+                        color: Backend.gutter-fg;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                }
+                // Comment row.
+                if !cm.is-section : cm-ta := TouchArea {
                     mouse-cursor: cm.path != "" ? pointer : default;
                     clicked => { Backend.open-comment(cm.path, cm.line, cm.side); }
-                }
-                HorizontalLayout {
-                    padding-left: 6px;
-                    padding-right: 6px;
-                    padding-top: 5px;
-                    padding-bottom: 5px;
-                    VerticalLayout {
-                        Text {
-                            text: cm.author + "  ·  " + cm.location;
-                            color: Backend.gutter-fg;
-                            font-size: 10px;
-                            overflow: elide;
+                    Rectangle {
+                        border-radius: 5px;
+                        background: cm-ta.has-hover && cm.path != "" ? Backend.hover : transparent;
+                    }
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 6px;
+                        padding-top: 5px;
+                        padding-bottom: 5px;
+                        spacing: 6px;
+                        // Resolved/unresolved state dot.
+                        Rectangle {
+                            width: 8px;
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: 7px;
+                                    height: 7px;
+                                    border-radius: 4px;
+                                    background: cm.resolved ? #59a14f : Backend.accent;
+                                }
+                            }
                         }
-                        Text {
-                            text: cm.snippet;
-                            color: Backend.fg;
-                            font-size: 12px;
-                            overflow: elide;
+                        VerticalLayout {
+                            Text {
+                                text: cm.author + (cm.location != "" ? "  ·  " + cm.location : "")
+                                      + (cm.resolved ? "  ·  resolved" : "");
+                                color: Backend.gutter-fg;
+                                font-size: 10px;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: cm.snippet;
+                                color: Backend.fg;
+                                font-size: 12px;
+                                overflow: elide;
+                            }
                         }
                     }
                 }
