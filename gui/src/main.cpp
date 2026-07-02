@@ -583,6 +583,10 @@ main(int argc, char** argv) {
         std::optional<Repo> repo;
         std::vector<RepoEntry> repos;
         std::string current_file;
+        // A jump-to-code request from a sidebar comment ref, applied once the diff
+        // for the target file has been (re)laid out. line <= 0 means "nothing pending".
+        int pending_scroll_line = 0;
+        std::string pending_scroll_side;  // "old" | "new"
         std::string current_commit;  // empty => working-tree diff
         std::string base_ref;        // non-empty => diff working tree vs this ref
         diffy::gui::BlobPair pair;
@@ -787,6 +791,37 @@ main(int argc, char** argv) {
     int wrap_cols = 0;
     slint::Timer wrap_debounce;  // coalesces re-wraps during a live resize
 
+    // Consume a pending jump-to-code request: find the visual row whose gutter
+    // matches the anchored line and scroll+select it. A no-op unless a scroll is
+    // pending and the row is present (call after set_rows / relayout).
+    auto apply_pending_scroll = [&]() {
+        if (state.pending_scroll_line <= 0) {
+            return;
+        }
+        auto rows = backend.get_rows();
+        if (!rows) {
+            return;
+        }
+        const int n = static_cast<int>(rows->row_count());
+        const std::string want = std::to_string(state.pending_scroll_line);
+        const bool old_side = state.pending_scroll_side == "old";
+        for (int i = 0; i < n; ++i) {
+            auto rd = rows->row_data(i);
+            if (!rd || rd->is_header || rd->is_comment) {
+                continue;
+            }
+            if (str(old_side ? rd->old_no : rd->new_no) == want) {
+                backend.set_sel_anchor(i);  // highlight the anchored line
+                backend.set_sel_focus(i);
+                backend.set_diff_scroll_row(-1);  // force a change edge
+                backend.set_diff_scroll_row(i);
+                break;
+            }
+        }
+        state.pending_scroll_line = 0;
+        state.pending_scroll_side.clear();
+    };
+
     // layout-only refresh: reuse the cached annotated hunks
     auto relayout = [&]() {
         auto input = state.computation.input();
@@ -905,6 +940,7 @@ main(int argc, char** argv) {
         state.find_rows.clear();
         state.find_idx = -1;
         backend.set_diff_scroll_row(-1);  // reset so the first n/p always re-fires
+        apply_pending_scroll();  // honour a queued jump-to-code from a comment ref
     };
 
     // full refresh: re-run the diff for the current blob pair, then lay out. Small
@@ -1135,6 +1171,10 @@ main(int argc, char** argv) {
         if (state.current_pr.empty() || !state.bitbucket_cred) {
             return;
         }
+        if (state.current_file != path) {
+            backend.set_sel_anchor(-1);  // drop a stale selection when switching files
+            backend.set_sel_focus(-1);
+        }
         state.current_file = path;
         backend.set_current_file(ss(path));
         backend.set_diff_note(ss(""));
@@ -1194,6 +1234,10 @@ main(int argc, char** argv) {
         if (!state.current_pr.empty()) {
             open_pr_file(path);
             return;
+        }
+        if (state.current_file != path) {
+            backend.set_sel_anchor(-1);  // drop a stale selection when switching files
+            backend.set_sel_focus(-1);
         }
         state.current_file = path;
         std::string ctx;
@@ -1307,23 +1351,33 @@ main(int argc, char** argv) {
         }
     };
 
-    // Apply a fetched-or-cached PR detail to the sidebars. `select_first` opens the
-    // first file — only on the initial display, so a background swap doesn't yank
-    // the user off the file they're reading.
-    auto apply_pr_detail = [&](const std::string& id, const State::PrDetail& d, bool select_first) {
-        state.pr_refs = d.refs;
-        state.pr_threads = d.threads;
-        // Flatten threads into the Comments shelf (one row per comment).
+    // Flatten review threads into the Comments-shelf model (one row per comment),
+    // recording each comment's anchor (path/line/side) so a sidebar ref can jump to
+    // the code. Shared by the initial detail apply and the post-a-comment refresh.
+    auto rebuild_comment_shelf = [&](const std::vector<diffy::review::ReviewThread>& threads) {
         auto cmodel = std::make_shared<slint::VectorModel<PrComment>>();
-        for (const auto& th : d.threads) {
+        for (const auto& th : threads) {
+            // The anchored file (new side, or the pre-rename path if that's all we
+            // have). Empty for general / PR-level comments.
+            std::string apath = th.anchor.new_path;
+            if (apath.empty() && th.anchor.old_path) {
+                apath = *th.anchor.old_path;
+            }
+            const bool anchored = !th.outdated && !apath.empty() && th.anchor.start.line >= 1;
             std::string loc = th.outdated ? "outdated"
-                              : th.anchor.new_path.empty()
+                              : apath.empty()
                                   ? "general"
-                                  : (th.anchor.new_path + ":" + std::to_string(th.anchor.start.line));
+                                  : (apath + ":" + std::to_string(th.anchor.start.line));
+            const bool old_side = th.anchor.side == diffy::review::Side::Old;
             for (const auto& cm : th.comments) {
                 PrComment e{};
                 e.author = ss(cm.author);
                 e.location = ss(loc);
+                if (anchored) {
+                    e.path = ss(apath);
+                    e.line = th.anchor.start.line;
+                    e.side = ss(old_side ? std::string("old") : std::string("new"));
+                }
                 std::string s = cm.body_md;
                 if (auto nl = s.find('\n'); nl != std::string::npos) {
                     s = s.substr(0, nl);
@@ -1333,6 +1387,15 @@ main(int argc, char** argv) {
             }
         }
         backend.set_pr_comments(cmodel);
+    };
+
+    // Apply a fetched-or-cached PR detail to the sidebars. `select_first` opens the
+    // first file — only on the initial display, so a background swap doesn't yank
+    // the user off the file they're reading.
+    auto apply_pr_detail = [&](const std::string& id, const State::PrDetail& d, bool select_first) {
+        state.pr_refs = d.refs;
+        state.pr_threads = d.threads;
+        rebuild_comment_shelf(d.threads);
         backend.set_pr_title(ss("#" + id + "  " + d.title));
         backend.set_pr_subtitle(ss(d.subtitle));
         set_files(d.files);
@@ -2286,6 +2349,184 @@ main(int argc, char** argv) {
             backend.set_status_text(ss("Checkout failed — commit or stash changes first."));
         }
         refresh();
+    });
+    // Copy the current line-range selection (visual rows sel-anchor..sel-focus).
+    // Reconstructs each content row's text from its rendered spans (new side when
+    // present, else old), joining wrapped continuation rows onto the same line.
+    backend.on_copy_selection([&]() {
+        const int a0 = backend.get_sel_anchor(), b0 = backend.get_sel_focus();
+        if (a0 < 0 || b0 < 0) {
+            return;
+        }
+        auto rows = backend.get_rows();
+        if (!rows) {
+            return;
+        }
+        const int n = static_cast<int>(rows->row_count());
+        const int lo = std::min(a0, b0), hi = std::min(std::max(a0, b0), n - 1);
+        std::string out;
+        for (int i = lo; i <= hi; ++i) {
+            auto rd = rows->row_data(i);
+            if (!rd || rd->is_header || rd->is_comment) {
+                continue;
+            }
+            // Wrapped continuation rows carry blank line numbers; append them to the
+            // current physical line rather than starting a new one.
+            const bool cont = str(rd->old_no).empty() && str(rd->new_no).empty();
+            const auto& spans = rd->right_present ? rd->right_spans : rd->left_spans;
+            std::string line;
+            if (spans) {
+                for (size_t s = 0; s < spans->row_count(); ++s) {
+                    if (auto sp = spans->row_data(s)) {
+                        line += str(sp->text);
+                    }
+                }
+            }
+            if (!out.empty() && !cont) {
+                out += "\n";
+            }
+            out += line;
+        }
+        if (!out.empty()) {
+            copy_to_clipboard(out);
+            backend.set_status_text(ss("Copied selection"));
+        }
+    });
+    // Jump from a sidebar comment reference to the anchored code: queue the scroll,
+    // then (re)open the file — relayout() applies the pending scroll once the rows
+    // for the target file exist (works for both the sync and background diff paths).
+    backend.on_open_comment([&](slint::SharedString p, int line, slint::SharedString side) {
+        const std::string path = str(p);
+        if (path.empty() || line <= 0) {
+            return;
+        }
+        state.pending_scroll_line = line;
+        state.pending_scroll_side = str(side);
+        open_file(path);
+    });
+
+    // Resolve the anchor line for the current selection: the first selected content
+    // row that carries a line number, preferring the new side (falling back to the
+    // old side for a pure-deletion selection). Returns false if nothing anchorable.
+    auto selection_anchor = [&](int& line, bool& old_side) -> bool {
+        const int a0 = backend.get_sel_anchor(), b0 = backend.get_sel_focus();
+        if (a0 < 0 || b0 < 0) {
+            return false;
+        }
+        auto rows = backend.get_rows();
+        if (!rows) {
+            return false;
+        }
+        const int n = static_cast<int>(rows->row_count());
+        const int lo = std::min(a0, b0), hi = std::min(std::max(a0, b0), n - 1);
+        for (int i = lo; i <= hi; ++i) {
+            auto rd = rows->row_data(i);
+            if (!rd || rd->is_header || rd->is_comment) {
+                continue;
+            }
+            const std::string nn = str(rd->new_no), on = str(rd->old_no);
+            if (!nn.empty()) {
+                line = std::atoi(nn.c_str());
+                old_side = false;
+                return true;
+            }
+            if (!on.empty()) {
+                line = std::atoi(on.c_str());
+                old_side = true;
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Open the comment composer: resolve the anchor (from the selection, or the whole
+    // PR when `general`) and populate the overlay fields before showing it.
+    backend.on_open_composer([&](bool general) {
+        if (state.current_pr.empty() || !state.bitbucket_cred) {
+            return;
+        }
+        if (general) {
+            backend.set_composer_general(true);
+            backend.set_composer_target(ss("the pull request"));
+            backend.set_composer_open(true);
+            return;
+        }
+        int line = 0;
+        bool old_side = false;
+        if (!selection_anchor(line, old_side)) {
+            backend.set_status_text(ss("Select one or more lines to comment on"));
+            return;
+        }
+        backend.set_composer_general(false);
+        backend.set_composer_target(ss(state.current_file + ":" + std::to_string(line)));
+        backend.set_composer_open(true);
+    });
+
+    // Post the composed comment (inline, anchored to the selection, or whole-PR),
+    // then refetch the PR's threads so it appears inline + in the Comments shelf.
+    backend.on_submit_comment([&](slint::SharedString b) {
+        const std::string body = str(b);
+        if (body.empty() || state.current_pr.empty() || !state.bitbucket_cred) {
+            return;
+        }
+        const bool general = backend.get_composer_general();
+        diffy::review::NewComment nc;
+        nc.body_md = body;
+        nc.general = general;
+        if (!general) {
+            int line = 0;
+            bool old_side = false;
+            if (!selection_anchor(line, old_side)) {
+                backend.set_status_text(ss("No line to anchor the comment to"));
+                return;
+            }
+            nc.anchor.new_path = state.current_file;
+            nc.anchor.side = old_side ? diffy::review::Side::Old : diffy::review::Side::New;
+            nc.anchor.start.line = line;
+            nc.anchor.end.line = line;
+            nc.anchor.ctx.base_sha = state.pr_refs.base_sha;
+            nc.anchor.ctx.head_sha = state.pr_refs.head_sha;
+        }
+        const std::string id = state.current_pr, ws = state.pr_ws, repo = state.pr_repo;
+        const std::string key = ws + "/" + repo + "#" + id;
+        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const uint64_t gen = state.load_generation;
+        backend.set_posting_comment(true);
+        review_pool.submit(
+            ReviewPool::Prio::Interactive,
+            [&, id, ws, repo, cred, nc, key, gen](diffy::review::HttpClient& http) {
+                diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                auto r = client.comment(id, nc);
+                std::string errmsg = r ? std::string{} : r.error().message;
+                std::vector<diffy::review::ReviewThread> threads;
+                if (r) {
+                    if (auto th = client.threads(id)) {
+                        threads = std::move(th.value());
+                    }
+                }
+                slint::invoke_from_event_loop(
+                    [&, id, key, gen, errmsg, threads, ok = static_cast<bool>(r)]() {
+                        backend.set_posting_comment(false);
+                        if (gen != state.load_generation || state.current_pr != id) {
+                            return;
+                        }
+                        if (!ok) {
+                            backend.set_status_text(ss("Comment failed: " + errmsg));
+                            return;
+                        }
+                        state.pr_threads = threads;
+                        if (auto it = state.pr_detail_cache.find(key);
+                            it != state.pr_detail_cache.end()) {
+                            it->second.threads = threads;  // keep the cache coherent
+                        }
+                        rebuild_comment_shelf(threads);
+                        backend.set_composer_open(false);
+                        backend.set_status_text(ss("Comment posted"));
+                        if (!state.current_file.empty() && state.pair.ok) {
+                            relayout();  // re-interleave the new thread inline
+                        }
+                    });
+            });
     });
     // --- context-menu actions ----------------------------------------------
     backend.on_copy_to_clipboard([&](slint::SharedString t) { copy_to_clipboard(str(t)); });

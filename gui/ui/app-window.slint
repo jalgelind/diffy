@@ -71,6 +71,9 @@ export struct PrComment {
     author: string,
     snippet: string,
     location: string,   // "path:line" or "general"
+    path: string,       // anchored file (empty for general / PR-level comments)
+    line: int,          // anchored line on `side` (0 when general)
+    side: string,       // "new" | "old" (which gutter `line` refers to)
 }
 
 // ---- option-bar state, shared with C++ -------------------------------------
@@ -206,6 +209,27 @@ export global Backend {
     // Report the diff cell width and measured monospace advance (both in logical
     // px) so C++ can compute the exact wrap column count and re-wrap the rows.
     callback set-wrap-metrics(float /* cell-px */, float /* advance-px */);
+
+    // Diff text selection (line-range). sel-anchor is where the selection began,
+    // sel-focus is the moving end; both are visual row indices, -1 when there is
+    // no selection. Consumers normalize via min/max.
+    in-out property <int> sel-anchor: -1;
+    in-out property <int> sel-focus: -1;
+    callback copy-selection();      // copy the selected rows' text to the clipboard
+    // Jump from a sidebar comment reference to the anchored code: open the file
+    // (if needed) and scroll/select the anchored line. path == "" is a no-op
+    // (general / PR-level comment).
+    callback open-comment(string /* path */, int /* line */, string /* side */);
+
+    // Comment composer. open-composer asks C++ to resolve the anchor (from the
+    // current selection, or the whole PR when general) and populate the fields
+    // below before showing the overlay. submit-comment posts the body.
+    in-out property <bool> composer-open: false;
+    in-out property <bool> composer-general: false;  // true = whole-PR comment
+    in-out property <string> composer-target: "";    // human label of the anchor
+    in-out property <bool> posting-comment: false;    // in-flight feedback
+    callback open-composer(bool /* general */);
+    callback submit-comment(string /* body */);
 
     // Context-menu actions.
     callback copy-to-clipboard(string);
@@ -480,6 +504,12 @@ component LineNo inherits Rectangle {
 component DiffRow inherits Rectangle {
     in property <DiffRowData> rowdata;
     in property <bool> highlight: false;  // current find match
+    in property <int> index: -1;          // visual row index (for selection)
+    // Within the current line-range selection? (content rows only; headers and
+    // comment bubbles are not selectable.)
+    property <bool> selected: Backend.sel-anchor >= 0 && !rowdata.is-header && !rowdata.is-comment
+        && root.index >= min(Backend.sel-anchor, Backend.sel-focus)
+        && root.index <= max(Backend.sel-anchor, Backend.sel-focus);
     // Explicit per-cell width (one gutter per shown line-number column, minus the
     // 1px divider in side-by-side). Giving cells a definite width is what lets
     // the wrapped Text report a real height-for-width.
@@ -568,11 +598,34 @@ component DiffRow inherits Rectangle {
         }
     }
 
+    // Line-range selection tint (drawn over the cells, under the find outline).
+    if root.selected : Rectangle {
+        background: Backend.accent;
+        opacity: 0.20;
+    }
+
     // Current find match: an accent outline drawn over the row.
     if root.highlight : Rectangle {
         background: transparent;
         border-width: 2px;
         border-color: Backend.accent;
+    }
+
+    // Topmost, transparent hit layer for line selection: click sets the anchor,
+    // Shift+click (or drag) extends the focus end. Disabled on non-content rows.
+    if !rowdata.is-header && !rowdata.is-comment : sel-ta := TouchArea {
+        mouse-cursor: text;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                if (e.modifiers.shift && Backend.sel-anchor >= 0) {
+                    Backend.sel-focus = root.index;
+                } else {
+                    Backend.sel-anchor = root.index;
+                    Backend.sel-focus = root.index;
+                }
+            }
+        }
+        moved => { if (self.pressed) { Backend.sel-focus = root.index; } }
     }
 }
 
@@ -1431,6 +1484,17 @@ component CommitsPanel inherits Rectangle {
                 overflow: elide;
                 horizontal-stretch: 1;
             }
+            comment-ta := TouchArea {
+                width: 68px;
+                clicked => { Backend.open-composer(true); }
+                Text {
+                    text: "Comment";
+                    color: comment-ta.has-hover ? Backend.accent : Backend.gutter-fg;
+                    font-size: 11px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+            }
             close-ta := TouchArea {
                 width: 40px;
                 clicked => { Backend.close-pr(); }
@@ -1530,6 +1594,12 @@ component CommitsPanel inherits Rectangle {
             horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
             for cm in Backend.pr-comments : Rectangle {
                 height: 46px;
+                border-radius: 5px;
+                background: cm-ta.has-hover && cm.path != "" ? Backend.hover : transparent;
+                cm-ta := TouchArea {
+                    mouse-cursor: cm.path != "" ? pointer : default;
+                    clicked => { Backend.open-comment(cm.path, cm.line, cm.side); }
+                }
                 HorizontalLayout {
                     padding-left: 6px;
                     padding-right: 6px;
@@ -1905,6 +1975,25 @@ export component AppWindow inherits Window {
                 Backend.show-find = true;
                 return accept;
             }
+            if ((event.modifiers.control || event.modifiers.meta) && event.text == "c"
+                && Backend.sel-anchor >= 0) {
+                Backend.copy-selection();
+                return accept;
+            }
+            if (event.text == Key.Escape && Backend.composer-open) {
+                Backend.composer-open = false;
+                return accept;
+            }
+            if (event.text == Key.Escape && Backend.sel-anchor >= 0) {
+                Backend.sel-anchor = -1;
+                Backend.sel-focus = -1;
+                return accept;
+            }
+            if (event.text == "c" && Backend.pr-open && Backend.sel-anchor >= 0
+                && !Backend.composer-open) {
+                Backend.open-composer(false);
+                return accept;
+            }
             if (event.text == Key.UpArrow || event.text == "k") {
                 Backend.navigate("up");
                 return accept;
@@ -2089,6 +2178,7 @@ export component AppWindow inherits Window {
                         // spurious horizontal scrollbar + corner box shows at the bottom.
                         width: diff-list.visible-width;
                         rowdata: data;
+                        index: idx;
                         highlight: idx == Backend.find-current-row;
                     }
                 }
@@ -2152,6 +2242,95 @@ export component AppWindow inherits Window {
                             clicked => {
                                 Backend.show-find = false;
                                 Backend.find-close();
+                            }
+                        }
+                    }
+                }
+
+                // Floating affordance: appears when lines are selected inside a PR.
+                // Opens the composer anchored to the selection.
+                if Backend.pr-open && Backend.sel-anchor >= 0 && !Backend.composer-open : Rectangle {
+                    y: parent.height - self.height - 14px;
+                    x: parent.width / 2 - self.width / 2;
+                    width: 190px;
+                    height: 34px;
+                    border-radius: 17px;
+                    background: add-ta.has-hover ? Backend.selection : Backend.accent;
+                    add-ta := TouchArea { clicked => { Backend.open-composer(false); } }
+                    Text {
+                        text: "Comment on selection";
+                        color: Backend.on-accent;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Comment composer overlay (inline or whole-PR).
+                if Backend.composer-open : Rectangle {
+                    y: parent.height - self.height - 14px;
+                    x: parent.width / 2 - self.width / 2;
+                    width: min(560px, parent.width - 24px);
+                    height: 138px;
+                    background: Backend.panel-bg;
+                    border-width: 1px;
+                    border-color: Backend.divider;
+                    border-radius: 8px;
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 8px;
+                        Text {
+                            text: Backend.composer-general
+                                ? "New comment on the pull request"
+                                : "New comment on " + Backend.composer-target;
+                            color: Backend.gutter-fg;
+                            font-size: 11px;
+                            overflow: elide;
+                        }
+                        Rectangle {
+                            vertical-stretch: 1;
+                            background: Backend.bg;
+                            border-width: 1px;
+                            border-color: Backend.divider;
+                            border-radius: 5px;
+                            composer-input := TextInput {
+                                x: 8px;
+                                y: 6px;
+                                width: parent.width - 16px;
+                                height: parent.height - 12px;
+                                color: Backend.fg;
+                                font-family: Backend.mono-font;
+                                font-size: 13px;
+                                wrap: word-wrap;
+                                single-line: false;
+                                init => { self.focus(); }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: end;
+                            Text {
+                                visible: Backend.posting-comment;
+                                text: "Posting…";
+                                color: Backend.gutter-fg;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                            }
+                            Button {
+                                text: "Cancel";
+                                clicked => {
+                                    Backend.composer-open = false;
+                                    composer-input.text = "";
+                                }
+                            }
+                            Button {
+                                text: "Send";
+                                clicked => {
+                                    if (composer-input.text != "" && !Backend.posting-comment) {
+                                        Backend.submit-comment(composer-input.text);
+                                        composer-input.text = "";
+                                    }
+                                }
                             }
                         }
                     }
