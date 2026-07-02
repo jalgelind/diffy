@@ -27,6 +27,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -814,6 +815,7 @@ main(int argc, char** argv) {
         // active pane (0 = changes list, 1 = commits list).
         std::vector<std::string> shown_files;
         std::vector<int> file_model_index;  // model-row of each shown file (rows incl. headers)
+        std::unordered_set<std::string> collapsed_dirs;  // folder paths collapsed in the tree view
         std::vector<std::string> shown_commits;
         int nav_pane = 0;
         std::string refresh_select;  // file to re-open after a refresh, if present
@@ -1400,19 +1402,59 @@ main(int argc, char** argv) {
         }
 
         if (backend.get_group_by_folder()) {
-            // Group by directory, with a header per folder (2d).
-            std::sort(filtered.begin(), filtered.end(),
-                      [](const auto* a, const auto* b) { return a->path < b->path; });
-            std::string cur_dir = "\x01";  // sentinel that no real path equals
+            // Proper nested, collapsible directory tree. Build a folder trie, then
+            // DFS it (folders first, alphabetical, then files) emitting indented
+            // rows. While a filter is active, ignore collapse so matches always show.
+            const bool honour_collapse = needle.empty();
+            struct TNode {
+                std::map<std::string, TNode> dirs;
+                std::vector<const diffy::gui::FileChange*> files;
+            };
+            TNode root;
             for (const auto* f : filtered) {
-                const auto slash = f->path.find_last_of('/');
-                const std::string dir = slash == std::string::npos ? "" : f->path.substr(0, slash);
-                if (dir != cur_dir) {
-                    push_section(dir.empty() ? "(root)" : dir);
-                    cur_dir = dir;
+                TNode* n = &root;
+                const std::string& p = f->path;
+                std::size_t start = 0, slash;
+                while ((slash = p.find('/', start)) != std::string::npos) {
+                    n = &n->dirs[p.substr(start, slash - start)];
+                    start = slash + 1;
                 }
-                push_file(*f, 1);
+                n->files.push_back(f);
             }
+            auto push_dir = [&](const std::string& name, const std::string& dirpath, int depth,
+                                bool expanded) {
+                FileEntry fe{};
+                fe.is_dir = true;
+                fe.name = ss(name);
+                fe.dir_path = ss(dirpath);
+                fe.depth = depth;
+                fe.expanded = expanded;
+                files->push_back(fe);
+            };
+            std::function<void(const TNode&, const std::string&, int)> walk =
+                [&](const TNode& node, const std::string& prefix, int depth) {
+                    for (const auto& [name, child] : node.dirs) {
+                        const std::string dirpath = prefix + name + "/";
+                        const bool collapsed =
+                            honour_collapse && state.collapsed_dirs.count(dirpath) > 0;
+                        push_dir(name, dirpath, depth, !collapsed);
+                        if (!collapsed) {
+                            walk(child, dirpath, depth + 1);
+                        }
+                    }
+                    std::vector<const diffy::gui::FileChange*> fs(node.files.begin(),
+                                                                  node.files.end());
+                    std::sort(fs.begin(), fs.end(),
+                              [](const auto* a, const auto* b) { return a->path < b->path; });
+                    for (const auto* f : fs) {
+                        FileEntry fe = make_entry(*f, depth);
+                        fe.dir = ss("");  // the tree conveys the folder; no inline dir
+                        files->push_back(fe);
+                        state.shown_files.push_back(f->path);
+                        state.file_model_index.push_back(static_cast<int>(files->row_count()) - 1);
+                    }
+                };
+            walk(root, "", 0);
         } else {
             // Staged / unstaged sections (4b). Staged first, header only when both
             // groups are present.
@@ -3241,6 +3283,13 @@ main(int argc, char** argv) {
     // --- context-menu actions ----------------------------------------------
     backend.on_copy_to_clipboard([&](slint::SharedString t) { copy_to_clipboard(str(t)); });
     backend.on_open_url([&](slint::SharedString u) { open_url(str(u)); });
+    backend.on_toggle_dir([&](slint::SharedString p) {
+        const std::string d = str(p);
+        if (!state.collapsed_dirs.erase(d)) {
+            state.collapsed_dirs.insert(d);
+        }
+        render_files();
+    });
     backend.on_open_file([&](slint::SharedString p) {
         if (state.repo) {
             shell_open(join_path(state.repo->workdir(), str(p)));

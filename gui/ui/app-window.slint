@@ -52,8 +52,11 @@ export struct FileEntry {
     dir: string,    // leading directory (elided first)
     staged: bool,
     is-section: bool,  // a non-selectable section/group header row
-    depth: int,        // indent level (folder grouping)
+    depth: int,        // indent level (folder tree)
     comment-count: int,  // review comments anchored to this file (PR mode; 0 otherwise)
+    is-dir: bool,      // a collapsible folder row in the tree view
+    dir-path: string,  // full folder path (toggle key) for is-dir rows
+    expanded: bool,    // is-dir: whether the folder is expanded
 }
 
 export struct CommitEntry {
@@ -280,6 +283,7 @@ export global Backend {
     // Context-menu actions.
     callback copy-to-clipboard(string);
     callback open-file(string);     // repo-relative path
+    callback toggle-dir(string);    // expand/collapse a folder in the tree view
     callback reveal-file(string);   // repo-relative path
     callback checkout-commit(string);          // oid (detached)
     callback create-branch(string, string);    // (oid, branch-name)
@@ -1406,7 +1410,9 @@ component FilesPanel inherits Rectangle {
                         : (!f.is-section && touch.has-hover ? Backend.hover : transparent);
                     touch := TouchArea {
                         clicked => {
-                            if (!f.is-section) {
+                            if (f.is-dir) {
+                                Backend.toggle-dir(f.dir-path);
+                            } else if (!f.is-section) {
                                 Backend.file-sel-index = fidx;
                                 Backend.select-file(f.path);
                             }
@@ -1415,7 +1421,7 @@ component FilesPanel inherits Rectangle {
                         // the cursor (popups can't live inside a `for`, so one menu
                         // per panel is parameterised by the clicked row).
                         pointer-event(e) => {
-                            if (!f.is-section
+                            if (!f.is-section && !f.is-dir
                                 && e.button == PointerEventButton.right
                                 && e.kind == PointerEventKind.down) {
                                 Backend.file-sel-index = fidx;
@@ -1430,7 +1436,7 @@ component FilesPanel inherits Rectangle {
                         }
                     }
 
-                    // Section / group header (staged-unstaged or folder).
+                    // Section / group header (staged-unstaged).
                     if f.is-section : Text {
                         x: 6px;
                         text: f.name;
@@ -1439,8 +1445,40 @@ component FilesPanel inherits Rectangle {
                         vertical-alignment: center;
                     }
 
+                    // Collapsible folder row (tree view): chevron + folder icon + name.
+                    if f.is-dir : HorizontalLayout {
+                        padding-left: 6px + f.depth * 12px;
+                        padding-right: 6px;
+                        spacing: 5px;
+                        VerticalLayout {
+                            alignment: center;
+                            Icon {
+                                size: 10px;
+                                source: @image-url("icons/chevron-down.svg");
+                                rotation: f.expanded ? 0deg : -90deg;
+                                colorize: Backend.gutter-fg;
+                            }
+                        }
+                        Image {
+                            width: 13px;
+                            height: 13px;
+                            y: (parent.height - self.height) / 2;
+                            image-fit: contain;
+                            source: @image-url("icons/folder-open.svg");
+                            colorize: Backend.gutter-fg;
+                        }
+                        Text {
+                            text: f.name;
+                            color: Backend.fg;
+                            font-size: 12px;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                            vertical-alignment: center;
+                        }
+                    }
+
                     // A changed-file row.
-                    if !f.is-section : HorizontalLayout {
+                    if !f.is-section && !f.is-dir : HorizontalLayout {
                         padding-left: 6px + f.depth * 12px;
                         padding-right: 6px;
                         spacing: 6px;
