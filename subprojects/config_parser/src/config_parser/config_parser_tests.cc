@@ -574,8 +574,47 @@ TEST_CASE("parser") {
 // -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 
 TEST_CASE("value-conversion") {
-    SUBCASE("Empty value") {
-        // TODO
+    SUBCASE("typed Value construction and accessors") {
+        REQUIRE(Value{1}.is_int());
+        REQUIRE(Value{1}.as_int() == 1);
+        REQUIRE(Value{true}.is_bool());
+        REQUIRE(Value{true}.as_bool());
+        REQUIRE(Value{std::string("x")}.is_string());
+        REQUIRE(Value{std::string("x")}.as_string() == "x");
+        REQUIRE(Value{2.5f}.is_float());
+        REQUIRE(Value{2.5f}.as_float() == doctest::Approx(2.5f));
+    }
+
+    SUBCASE("empty string value round-trips") {
+        Value root;
+        ParseResult r;
+        REQUIRE(cfg_parse_value_tree("{ k = \"\" }", r, root));
+        REQUIRE(r.is_ok());
+        REQUIRE(root["k"].is_string());
+        REQUIRE(root["k"].as_string() == "");
+    }
+
+    SUBCASE("boolean keywords parse as bool") {
+        Value root;
+        ParseResult r;
+        REQUIRE(cfg_parse_value_tree("{ a = true, b = false, c = on, d = off }", r, root));
+        REQUIRE(r.is_ok());
+        REQUIRE(root["a"].is_bool());
+        REQUIRE(root["a"].as_bool() == true);
+        REQUIRE(root["b"].as_bool() == false);
+        REQUIRE(root["c"].as_bool() == true);
+        REQUIRE(root["d"].as_bool() == false);
+    }
+
+    SUBCASE("a quoted number is a string, not an integer") {
+        Value root;
+        ParseResult r;
+        REQUIRE(cfg_parse_value_tree("{ a = \"123\", b = 123 }", r, root));
+        REQUIRE(r.is_ok());
+        REQUIRE(root["a"].is_string());
+        REQUIRE(root["a"].as_string() == "123");
+        REQUIRE(root["b"].is_int());
+        REQUIRE(root["b"].as_int() == 123);
     }
 }
 

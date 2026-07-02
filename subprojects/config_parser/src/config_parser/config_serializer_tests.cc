@@ -123,9 +123,15 @@ TEST_CASE("serializer") {
         }
         REQUIRE(result.is_ok());
 
-        // fmt::print("\n{}\n", cfg_serialize(value));
-
-        // REQUIRE_EQ(cfg_serialize_obj(value), cfg_text);
+        // The input isn't canonically formatted, so it won't equal its
+        // serialization; instead assert serialization is a fixed point — parsing
+        // the serialized form and re-serializing yields the same text.
+        const std::string once = cfg_serialize(value);
+        diffy::Value reparsed;
+        ParseResult result2;
+        REQUIRE(cfg_parse_value_tree(once, result2, reparsed));
+        REQUIRE(result2.is_ok());
+        REQUIRE_EQ(cfg_serialize(reparsed), once);
     }
 }
 
