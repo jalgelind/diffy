@@ -54,31 +54,40 @@ language_for_path(std::string_view path) {
     static const std::unordered_map<std::string, Language> by_ext = {
         {".c", "c"},
         {".h", "c"},
-        {".cc", "cpp"},   {".cpp", "cpp"}, {".cxx", "cpp"},
-        {".hpp", "cpp"},  {".hh", "cpp"},  {".hxx", "cpp"},
+        {".cc", "cpp"},   {".cpp", "cpp"}, {".cxx", "cpp"}, {".c++", "cpp"},
+        {".hpp", "cpp"},  {".hh", "cpp"},  {".hxx", "cpp"}, {".h++", "cpp"},
+        {".inl", "cpp"},  {".ipp", "cpp"}, {".tpp", "cpp"}, {".tcc", "cpp"},
+        {".ixx", "cpp"},  // C++20 module interface
         {".go", "go"},
         {".rs", "rust"},
         {".java", "java"},
-        {".cs", "c_sharp"},
-        {".py", "python"}, {".pyi", "python"},
-        {".rb", "ruby"},
-        {".sh", "bash"}, {".bash", "bash"},
+        {".cs", "c_sharp"}, {".csx", "c_sharp"},
+        {".py", "python"}, {".pyi", "python"}, {".pyw", "python"},
+        {".rb", "ruby"}, {".rake", "ruby"}, {".gemspec", "ruby"}, {".ru", "ruby"},
+        {".sh", "bash"}, {".bash", "bash"}, {".zsh", "bash"},
         {".js", "javascript"}, {".mjs", "javascript"},
         {".cjs", "javascript"}, {".jsx", "javascript"},
         {".ts", "typescript"}, {".mts", "typescript"},
         {".cts", "typescript"},
         {".tsx", "tsx"},
-        {".html", "html"}, {".htm", "html"},
+        {".html", "html"}, {".htm", "html"}, {".xhtml", "html"},
         {".css", "css"},
         {".lua", "lua"},
         {".toml", "toml"},
         {".cmake", "cmake"},
-        {".md", "markdown"}, {".markdown", "markdown"},
+        {".md", "markdown"}, {".markdown", "markdown"}, {".mdown", "markdown"},
+        {".mkd", "markdown"},
         {".json", "json"},
     };
-    // Languages identified by filename rather than extension.
+    // Languages identified by filename rather than extension. Keys must be
+    // lowercase. Dotfiles like ".bashrc" land here too: std::filesystem treats
+    // the leading dot as part of the stem, not an extension.
     static const std::unordered_map<std::string, Language> by_name = {
         {"cmakelists.txt", "cmake"},
+        {"gemfile", "ruby"},      {"rakefile", "ruby"},
+        {"cargo.lock", "toml"},   {"pipfile", "toml"},
+        {".bashrc", "bash"},      {".bash_profile", "bash"},
+        {".zshrc", "bash"},       {".profile", "bash"},
     };
     namespace fs = std::filesystem;
     const fs::path p{std::string(path)};

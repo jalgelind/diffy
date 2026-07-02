@@ -15,6 +15,15 @@ TEST_CASE("language detection by extension") {
     CHECK(language_for_path("pkg/data.json") == "json");
     CHECK(language_for_path("notes.unknownext") == "");
     CHECK(language_for_path("Makefile") == "");
+    // Filename-based detection, including dotfiles (no extension per
+    // std::filesystem) and lock files.
+    CHECK(language_for_path("api/Gemfile") == "ruby");
+    CHECK(language_for_path("home/.bashrc") == "bash");
+    CHECK(language_for_path("Cargo.lock") == "toml");
+    CHECK(language_for_path("tmpl.tpp") == "cpp");
+    // "foo.profile" has the .profile *extension*; only the exact dotfile
+    // ".profile" is a shell file.
+    CHECK(language_for_path("foo.profile") == "");
 }
 
 TEST_CASE("config extension overrides beat the built-in map, then clear") {
