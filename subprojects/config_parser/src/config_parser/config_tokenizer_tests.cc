@@ -396,6 +396,44 @@ TEST_CASE("escaped strings") {
     }
 }
 
+TEST_CASE("triple-quoted multiline strings") {
+    SUBCASE("''' raw ''' captures newlines and lone quotes, not escaped") {
+        auto line = "'''a\nb'c'''";  // '''a<newline>b'c'''
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        REQUIRE(result.ok);
+        auto a = result.tokens;
+        REQUIRE(a.size() == 3);  // TripleSingle, String, TripleSingle
+        REQUIRE((a[0].id & TokenId_TripleSingle) == TokenId_TripleSingle);
+        REQUIRE((a[1].id & TokenId_String) == TokenId_String);
+        REQUIRE((a[1].id & TokenId_EscapedString) != TokenId_EscapedString);  // raw
+        REQUIRE(a[1].str_from(line) == "a\nb'c");
+        REQUIRE((a[2].id & TokenId_TripleSingle) == TokenId_TripleSingle);
+    }
+
+    SUBCASE("\"\"\" escaped \"\"\" spans newlines and is tagged escaped") {
+        auto line = "\"\"\"a\nb\\\"c\"\"\"";  // """a<newline>b\"c"""
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        REQUIRE(result.ok);
+        auto a = result.tokens;
+        REQUIRE(a.size() == 3);
+        REQUIRE((a[0].id & TokenId_TripleDouble) == TokenId_TripleDouble);
+        REQUIRE((a[1].id & TokenId_EscapedString) == TokenId_EscapedString);
+        REQUIRE(a[1].str_from(line) == "a\nb\\\"c");  // raw text keeps the backslash
+    }
+
+    SUBCASE("an unterminated triple string is an error") {
+        auto line = "'''abc\nno end";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        REQUIRE(result.ok == false);
+    }
+}
+
 TEST_CASE("escape helpers") {
     SUBCASE("escape_string escapes the specials") {
         REQUIRE(escape_string("a\tb\"c\\d\ne") == "a\\tb\\\"c\\\\d\\ne");

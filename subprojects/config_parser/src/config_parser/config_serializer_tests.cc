@@ -172,6 +172,16 @@ TEST_CASE("string escaping") {
     }
     SUBCASE("roundtrip empty") { REQUIRE_EQ(roundtrip(""), ""); }
 
+    SUBCASE("multiline strings serialize as triple-quoted with real newlines") {
+        const std::string s = "first line\nsecond \"line\"\nthird";
+        diffy::Value v;
+        v["k"] = diffy::Value{s};
+        const std::string out = cfg_serialize_obj(v);
+        REQUIRE(out.find("\"\"\"") != std::string::npos);  // used a triple-quoted string
+        REQUIRE(out.find("\\n") == std::string::npos);      // real newlines, not \n escapes
+        REQUIRE_EQ(roundtrip(s), s);
+    }
+
     SUBCASE("double-quote-only strings stay single-quoted literals") {
         // A literal can hold double-quotes fine, so don't needlessly escape.
         diffy::Value v;

@@ -12,6 +12,8 @@ the user's edits.
 [section]
     name    = "escaped\nstring"   # "double" quotes: \\ \" \n \r \t
     path    = 'C:\raw\literal'    # 'single' quotes: raw, no escapes
+    blurb   = """multi-line
+                 escaped"""       # '''raw''' / """escaped""" span newlines
     count   = 42                  # int
     ratio   = 0.5                 # float
     enabled = true                # bool: true/false/on/off
@@ -23,8 +25,9 @@ the user's edits.
 paths). `"double"` = escaped: `\\ \" \n \r \t`. The serializer emits a raw literal
 when a value needs no escaping and switches to a `"double"` string when it contains
 a quote, backslash or newline — so existing files stay byte-identical and arbitrary
-text still round-trips. (Multi-line content round-trips as `\n`; literal
-triple-quoted strings are not yet supported.)
+text still round-trips. Multi-line strings use `'''raw'''` / `"""escaped"""`
+(spanning real newlines); the serializer emits `"""…"""` for any value containing
+a line break.
 
 ## API
 
@@ -50,6 +53,7 @@ std::string out = cfg_serialize(root);  // sections; cfg_serialize_obj for an ob
 
 - Some comments with no logical anchor (trailing, or right of the last value in a
   block) are dropped on re-serialize.
-- No triple-quoted multi-line string literals yet (use `\n` in a `"double"` string).
+- Line numbers in error messages after a multi-line string may be off (newlines
+  inside the string aren't counted).
 
 Tests: `*_tests.cc` (doctest), built into the top-level `diffy-test` target.

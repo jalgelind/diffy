@@ -13,12 +13,19 @@ namespace internal {
 // string. A literal can't contain a single-quote, newline or carriage return.
 static std::string
 serialize_string(const std::string& s) {
+    bool has_newline = false;
     bool needs_escape = false;
     for (char c : s) {
+        if (c == '\n' || c == '\r') {
+            has_newline = true;
+        }
         if (c == '\'' || c == '\n' || c == '\r') {
             needs_escape = true;
-            break;
         }
+    }
+    if (has_newline) {
+        // Multiline: a readable """triple""" string keeping real line breaks.
+        return "\"\"\"" + diffy::config_tokenizer::escape_multiline(s) + "\"\"\"";
     }
     if (!needs_escape) {
         return "'" + s + "'";

@@ -36,6 +36,10 @@ struct TokenDescriptor {
         { "Assign",       TokenId_Assign,        "=" ,          std::nullopt        , std::nullopt    },
         { "OpenCurly",    TokenId_OpenCurly,     "{" ,          std::nullopt        , std::nullopt    },
         { "CloseCurly",   TokenId_CloseCurly,    "}" ,          std::nullopt        , std::nullopt    },
+        // Triple quotes are multiline; they must precede the single-char quotes so
+        // find_token matches """ / ''' before " / '. """ is escaped, ''' is raw.
+        { "TripleDouble", TokenId_TripleDouble,  "\"\"\"",      TokenId_TripleDouble, (TokenId)(TokenId_String | TokenId_EscapedString) },
+        { "TripleSingle", TokenId_TripleSingle,  "'''",         TokenId_TripleSingle, std::nullopt    },
         // Double-quoted strings are escaped (tagged so the parser unescapes them);
         // single-quoted strings are raw literals (backward compatible).
         { "DoubleQuote",  TokenId_DoubleQuote,   "\"",          TokenId_DoubleQuote , (TokenId)(TokenId_String | TokenId_EscapedString) },
@@ -146,6 +150,22 @@ diffy::config_tokenizer::unescape_string(const std::string& s) {
     return out;
 }
 
+std::string
+diffy::config_tokenizer::escape_multiline(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+        if (c == '\\') {
+            out += "\\\\";
+        } else if (c == '"') {
+            out += "\\\"";  // so no literal """ can prematurely close the string
+        } else {
+            out += c;  // newlines/tabs stay verbatim for readability
+        }
+    }
+    return out;
+}
+
 bool
 diffy::config_tokenizer::is_whitespace(char c) {
     const char whitespaces[] = " \t\r\n\f\v";
@@ -248,10 +268,14 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
 
         // inside a quoted string?
         if (capture_string) {
+            const bool multiline = string_terminator == TokenId_TripleSingle ||
+                                   string_terminator == TokenId_TripleDouble;
+            const bool escaped = string_terminator == TokenId_DoubleQuote ||
+                                 string_terminator == TokenId_TripleDouble;
             for (auto i = start_idx; i < text.size(); i++) {
-                // In an escaped ("double") string a backslash escapes the next
-                // character, so it can't terminate the string or be misread.
-                if (string_terminator == TokenId_DoubleQuote && text[i] == '\\') {
+                // In an escaped ("double" / """triple""") string a backslash escapes
+                // the next character, so it can't terminate the string or be misread.
+                if (escaped && text[i] == '\\') {
                     i++;  // skip the escaped char (loop's ++ skips the backslash)
                     continue;
                 }
@@ -266,8 +290,9 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
                         break;
                     }
 
-                    // For non-newline terminated strings
-                    if (tok.id & TokenId_Newline) {
+                    // A newline ends a single-line string with an error; multiline
+                    // ('''/""") strings span newlines, so keep scanning.
+                    if ((tok.id & TokenId_Newline) && !multiline) {
                         result.ok = false;
                         result.error =
                             fmt::format("Unterminated string encountered newline (line {}, col {})",
@@ -342,7 +367,9 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
                 reject_token = true;
             } else if (options.strip_newlines && (tok.id & TokenId_Newline)) {
                 reject_token = true;
-            } else if (options.strip_quotes && (tok.id & (TokenId_DoubleQuote | TokenId_SingleQuote))) {
+            } else if (options.strip_quotes &&
+                       (tok.id & (TokenId_DoubleQuote | TokenId_SingleQuote | TokenId_TripleSingle |
+                                  TokenId_TripleDouble))) {
                 reject_token = true;
             }
 
