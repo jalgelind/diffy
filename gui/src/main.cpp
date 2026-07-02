@@ -16,11 +16,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <condition_variable>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -229,6 +232,97 @@ wrap_text(const std::string& text, int cols) {
     }
     return out;
 }
+
+// A small fixed-size pool of worker threads for review (network) requests, so we
+// can prefetch aggressively without spawning an unbounded number of threads.
+// Each worker owns its own HttpClient (backend-safe). Two priorities: Interactive
+// (a user just clicked) always drains before Prefetch (speculative), so a click
+// never waits behind background work. Tasks do the network call with the worker's
+// client, then post results to the UI thread via slint::invoke_from_event_loop.
+class ReviewPool {
+  public:
+    enum class Prio { Interactive, Prefetch };
+    using Task = std::function<void(diffy::review::HttpClient&)>;
+
+    explicit ReviewPool(int workers) {
+        for (int i = 0; i < workers; ++i) {
+            threads_.emplace_back([this] { run(); });
+        }
+    }
+    ~ReviewPool() { stop(); }
+
+    void
+    submit(Prio p, Task fn) {
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            if (stop_) {
+                return;
+            }
+            (p == Prio::Interactive ? hi_ : lo_).push_back(std::move(fn));
+        }
+        cv_.notify_one();
+    }
+
+    // Drop pending speculative work (e.g. on a repo/PR switch).
+    void
+    clear_prefetch() {
+        std::lock_guard<std::mutex> lk(mu_);
+        lo_.clear();
+    }
+
+    void
+    stop() {
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            if (stop_) {
+                return;
+            }
+            stop_ = true;
+            hi_.clear();
+            lo_.clear();
+        }
+        cv_.notify_all();
+        for (auto& t : threads_) {
+            if (t.joinable()) {
+                t.join();
+            }
+        }
+        threads_.clear();
+    }
+
+  private:
+    void
+    run() {
+        auto client = diffy::review::make_http_client();
+        for (;;) {
+            Task task;
+            {
+                std::unique_lock<std::mutex> lk(mu_);
+                cv_.wait(lk, [this] { return stop_ || !hi_.empty() || !lo_.empty(); });
+                if (stop_) {
+                    return;
+                }
+                if (!hi_.empty()) {
+                    task = std::move(hi_.front());
+                    hi_.pop_front();
+                } else {
+                    task = std::move(lo_.front());
+                    lo_.pop_front();
+                }
+            }
+            if (task && client) {
+                task(*client);
+            }
+        }
+    }
+
+    std::mutex mu_;
+    std::condition_variable cv_;
+    std::deque<Task> hi_;
+    std::deque<Task> lo_;
+    bool stop_ = false;
+    std::vector<std::thread> threads_;
+};
 
 }  // namespace
 
@@ -569,10 +663,10 @@ main(int argc, char** argv) {
     // Outstanding background repo-load threads, joined before libgit2 shuts down.
     std::vector<std::thread> load_threads;
 
-    // One HTTP client for the review layer (WinHTTP/NSURLSession/curl under the
-    // hood). Lives for the whole run; connect/verify calls use it from worker
-    // threads (joined before it is destroyed). See REVIEW-ROADMAP.md.
-    auto review_http = diffy::review::make_http_client();
+    // Bounded worker pool for review (network) requests + prefetching. Each worker
+    // owns its own HttpClient; tasks post results to the UI thread. Stopped (and
+    // joined) at shutdown before state is torn down. See REVIEW-ROADMAP.md.
+    ReviewPool review_pool(4);
 
     // --- typography + initial option-bar state from [gui] -------------------
     // Map a generic/empty (or legacy macOS-only "Menlo") family to a concrete
@@ -1053,8 +1147,9 @@ main(int argc, char** argv) {
         const std::string ws = state.pr_ws, repo = state.pr_repo;
         const std::string base = state.pr_refs.base_sha, head = state.pr_refs.head_sha;
         const uint64_t gen = state.load_generation;
-        load_threads.emplace_back([&, path, ws, repo, cred, base, head, pr, ck, gen]() {
-            diffy::review::BitbucketCloudClient client(*review_http, cred, ws, repo);
+        review_pool.submit(ReviewPool::Prio::Interactive, [&, path, ws, repo, cred, base, head, pr,
+                                                           ck, gen](diffy::review::HttpClient& http) {
+            diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
             std::string oldt, newt;
             if (auto o = client.file_at(base, path)) {
                 oldt = o.value();
@@ -1108,6 +1203,92 @@ main(int argc, char** argv) {
         recompute();
     };
 
+    // Fetch a PR's full detail (header + refs + files + commits + threads) with the
+    // worker's HttpClient. Captureless (results via out params) so both the
+    // interactive open and the background prefetch reuse it.
+    auto fetch_pr_detail = [](diffy::review::HttpClient& http, const diffy::review::Credential& cred,
+                              const std::string& ws, const std::string& repo, const std::string& id,
+                              State::PrDetail& d, std::string& err) {
+        diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+        auto pr = client.get(id);
+        auto refs = client.refs(id);
+        auto files = client.files(id);
+        auto commits = client.commits(id);
+        auto threads = client.threads(id);
+        d.refs = refs ? refs.value() : diffy::review::PrRefs{};
+        if (threads) {
+            d.threads = std::move(threads.value());
+        }
+        if (files) {
+            for (const auto& f : files.value()) {
+                diffy::gui::FileChange c;
+                c.path = f.path;
+                c.status = f.status == "added"     ? "A"
+                           : f.status == "deleted" ? "D"
+                           : f.status == "renamed" ? "R"
+                                                   : "M";
+                d.files.push_back(std::move(c));
+            }
+        }
+        if (commits) {
+            for (const auto& c : commits.value()) {
+                diffy::gui::CommitInfo x;
+                x.oid = c.sha;
+                x.short_oid = c.short_sha;
+                x.summary = c.summary;
+                x.author = c.author;
+                d.commits.push_back(std::move(x));
+            }
+        }
+        d.title = pr ? pr.value().title : ("PR #" + id);
+        d.subtitle = pr ? (pr.value().src_branch + " → " + pr.value().dst_branch + "  ·  " +
+                           approval_str(pr.value().state))
+                        : std::string{};
+        err = files ? std::string{} : files.error().message;
+    };
+
+    // Prefetch (background) a PR's file blobs into pr_file_cache so opening any file
+    // is instant. Runs on the UI thread (reads the cache), submits Prefetch tasks;
+    // capped and skips already-cached files.
+    auto prefetch_pr_blobs = [&](const std::string& id, const State::PrDetail& d) {
+        if (!state.bitbucket_cred) {
+            return;
+        }
+        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const std::string ws = state.pr_ws, repo = state.pr_repo;
+        const std::string base = d.refs.base_sha, head = d.refs.head_sha;
+        const uint64_t gen = state.load_generation;
+        int count = 0;
+        for (const auto& f : d.files) {
+            if (count++ >= 40) {
+                break;  // cap: don't speculatively fetch hundreds of blobs
+            }
+            const std::string path = f.path;
+            const std::string ck = ws + "/" + repo + "#" + id + ":" + path;
+            if (state.pr_file_cache.count(ck)) {
+                continue;
+            }
+            review_pool.submit(
+                ReviewPool::Prio::Prefetch,
+                [&, path, ws, repo, cred, base, head, ck, id, gen](diffy::review::HttpClient& http) {
+                    diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                    std::string oldt, newt;
+                    if (auto o = client.file_at(base, path)) {
+                        oldt = o.value();
+                    }
+                    if (auto n = client.file_at(head, path)) {
+                        newt = n.value();
+                    }
+                    slint::invoke_from_event_loop([&, ck, oldt, newt, id, gen]() {
+                        if (gen != state.load_generation || state.current_pr != id) {
+                            return;
+                        }
+                        state.pr_file_cache[ck] = {oldt, newt};
+                    });
+                });
+        }
+    };
+
     // Apply a fetched-or-cached PR detail to the sidebars. `select_first` opens the
     // first file — only on the initial display, so a background swap doesn't yank
     // the user off the file they're reading.
@@ -1128,6 +1309,7 @@ main(int argc, char** argv) {
         } else if (!state.current_file.empty() && state.pair.ok) {
             relayout();  // background swap: re-render the open file with fresh comments
         }
+        prefetch_pr_blobs(id, d);  // warm the file cache so switching files is instant
     };
 
     // Enter PR detail mode: show the cached detail instantly (if any), then fetch
@@ -1147,6 +1329,7 @@ main(int argc, char** argv) {
         state.base_ref.clear();
         backend.set_on_working_tree(false);
         backend.set_pr_open(true);
+        review_pool.clear_prefetch();  // drop a previous PR's speculative blob fetches
 
         const std::string key = parsed->owner + "/" + parsed->repo + "#" + id;
         auto cit = state.pr_detail_cache.find(key);
@@ -1164,45 +1347,11 @@ main(int argc, char** argv) {
         const std::string ws = parsed->owner, repo = parsed->repo;
         const bool select_first = !had_cache;
         const uint64_t gen = state.load_generation;
-        load_threads.emplace_back([&, id, ws, repo, cred, key, select_first, gen]() {
-            diffy::review::BitbucketCloudClient client(*review_http, cred, ws, repo);
-            auto pr = client.get(id);
-            auto refs = client.refs(id);
-            auto files = client.files(id);
-            auto commits = client.commits(id);
-            auto threads = client.threads(id);
-
+        review_pool.submit(ReviewPool::Prio::Interactive, [&, id, ws, repo, cred, key, select_first,
+                                                           gen](diffy::review::HttpClient& http) {
             State::PrDetail d;
-            d.refs = refs ? refs.value() : diffy::review::PrRefs{};
-            if (threads) {
-                d.threads = std::move(threads.value());
-            }
-            if (files) {
-                for (const auto& f : files.value()) {
-                    diffy::gui::FileChange c;
-                    c.path = f.path;
-                    c.status = f.status == "added"     ? "A"
-                               : f.status == "deleted" ? "D"
-                               : f.status == "renamed" ? "R"
-                                                       : "M";
-                    d.files.push_back(std::move(c));
-                }
-            }
-            if (commits) {
-                for (const auto& c : commits.value()) {
-                    diffy::gui::CommitInfo x;
-                    x.oid = c.sha;
-                    x.short_oid = c.short_sha;
-                    x.summary = c.summary;
-                    x.author = c.author;
-                    d.commits.push_back(std::move(x));
-                }
-            }
-            d.title = pr ? pr.value().title : ("PR #" + id);
-            d.subtitle = pr ? (pr.value().src_branch + " → " + pr.value().dst_branch + "  ·  " +
-                               approval_str(pr.value().state))
-                            : std::string{};
-            const std::string err = files ? std::string{} : files.error().message;
+            std::string err;
+            fetch_pr_detail(http, cred, ws, repo, id, d, err);
 
             slint::invoke_from_event_loop([&, id, d, key, select_first, err, gen]() {
                 if (gen != state.load_generation || state.current_pr != id) {
@@ -1214,6 +1363,40 @@ main(int argc, char** argv) {
                 } else {
                     backend.set_status_text(ss("Couldn't load PR: " + err));
                 }
+            });
+        });
+    };
+
+    // Prefetch (background) a PR's full detail into pr_detail_cache so opening it is
+    // instant. Skips already-cached PRs; cache-only (no UI change).
+    auto prefetch_pr_detail = [&](const std::string& id) {
+        if (!state.repo || !state.bitbucket_cred) {
+            return;
+        }
+        auto parsed = diffy::review::parse_remote_url(state.repo->origin_url());
+        if (!parsed) {
+            return;
+        }
+        const std::string key = parsed->owner + "/" + parsed->repo + "#" + id;
+        if (state.pr_detail_cache.count(key)) {
+            return;
+        }
+        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const std::string ws = parsed->owner, repo = parsed->repo;
+        const uint64_t gen = state.load_generation;
+        review_pool.submit(ReviewPool::Prio::Prefetch,
+                           [&, id, ws, repo, cred, key, gen](diffy::review::HttpClient& http) {
+            State::PrDetail d;
+            std::string err;
+            fetch_pr_detail(http, cred, ws, repo, id, d, err);
+            if (!err.empty()) {
+                return;
+            }
+            slint::invoke_from_event_loop([&, key, d, gen]() {
+                if (gen != state.load_generation) {
+                    return;
+                }
+                state.pr_detail_cache[key] = d;  // cache-only; no UI change
             });
         });
     };
@@ -1304,8 +1487,9 @@ main(int argc, char** argv) {
         backend.set_loading_prs(true);
         const diffy::review::Credential cred = *state.bitbucket_cred;
         const uint64_t gen = state.load_generation;
-        load_threads.emplace_back([&, ws, repo, key, cred, gen]() {
-            diffy::review::BitbucketCloudClient client(*review_http, cred, ws, repo);
+        review_pool.submit(ReviewPool::Prio::Interactive,
+                           [&, ws, repo, key, cred, gen](diffy::review::HttpClient& http) {
+            diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
             auto prs = client.list_open();
             auto items = std::make_shared<std::vector<diffy::review::PullRequest>>();
             std::string err;
@@ -1323,6 +1507,14 @@ main(int argc, char** argv) {
                 if (err.empty()) {
                     state.pr_list_cache[key] = *items;  // cache + swap in the fresh result
                     show_prs(*items);
+                    // Warm each PR's detail in the background so opening any is instant.
+                    int pf = 0;
+                    for (const auto& pr : *items) {
+                        if (pf++ >= 20) {
+                            break;  // cap speculative detail prefetch (rate limits)
+                        }
+                        prefetch_pr_detail(pr.id);
+                    }
                 } else {
                     backend.set_status_text(ss("Couldn't load PRs: " + err));
                 }
@@ -1398,6 +1590,7 @@ main(int argc, char** argv) {
         state.current_pr.clear();
         state.pr_threads.clear();
         backend.set_pr_open(false);
+        review_pool.clear_prefetch();  // drop speculative work for the previous repo
         // Clear the current view so switching repos feels immediate.
         set_files({});
         set_commits({}, false);
@@ -1729,7 +1922,8 @@ main(int argc, char** argv) {
         backend.set_bitbucket_connecting(true);
         backend.set_bitbucket_status(ss("Connecting…"));
         const std::string w = str(ws), rp = str(repo), u = str(user), p = str(pass);
-        load_threads.emplace_back([&, w, rp, u, p]() {
+        review_pool.submit(ReviewPool::Prio::Interactive,
+                           [&, w, rp, u, p](diffy::review::HttpClient& http) {
             namespace rv = diffy::review;
             rv::Credential cred;
             if (u.empty()) {
@@ -1742,7 +1936,7 @@ main(int argc, char** argv) {
                 cred.principal = u;
                 cred.secret = p;
             }
-            rv::BitbucketCloudClient client(*review_http, cred, w, rp);
+            rv::BitbucketCloudClient client(http, cred, w, rp);
             rv::log_line("connect bitbucket: ws='" + w + "' repo='" + rp +
                          "' auth=" + (u.empty() ? "bearer(access-token)" : "basic(email)"));
 
@@ -1988,7 +2182,9 @@ main(int argc, char** argv) {
 
     ui->run();
 
-    // Let any in-flight background loads finish before libgit2 is torn down.
+    // Stop the review pool (join its workers) and let any in-flight background
+    // loads finish before libgit2 is torn down.
+    review_pool.stop();
     for (auto& t : load_threads) {
         if (t.joinable()) {
             t.join();
