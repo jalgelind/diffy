@@ -411,6 +411,11 @@ BitbucketCloudClient::pr_url(const std::string& id) const {
     return base_ + "/repositories/" + ws_ + "/" + repo_ + "/pullrequests/" + id;
 }
 
+std::string
+BitbucketCloudClient::commit_url(const std::string& sha) const {
+    return base_ + "/repositories/" + ws_ + "/" + repo_ + "/commit/" + sha;
+}
+
 Capabilities
 BitbucketCloudClient::capabilities() const {
     Capabilities c;
@@ -421,6 +426,7 @@ BitbucketCloudClient::capabilities() const {
     c.suggestions = false;
     c.thread_resolution = true;
     c.draft_items = true;
+    c.commit_comments = true;  // /commit/{sha}/comments (GET + POST)
     c.merge_strategies = {MergeStrategy::MergeCommit, MergeStrategy::Squash,
                           MergeStrategy::FastForward};
     return c;
@@ -517,14 +523,11 @@ BitbucketCloudClient::commits(const std::string& id) {
     return Result<std::vector<PrCommit>>::ok(std::move(out));
 }
 
-Result<std::vector<ReviewThread>>
-BitbucketCloudClient::threads(const std::string& id) {
-    Result<std::vector<json>> r = collect_all(http_, cred_, pr_url(id) + "/comments");
-    if (!r) {
-        return Result<std::vector<ReviewThread>>::err(r.error());
-    }
-    const std::vector<json>& all = r.value();
-
+// Group a flat comment list (PR or commit) into anchored threads. Bitbucket's PR
+// and commit comment payloads share the same shape (content / inline / parent /
+// user), so both threads() and commit_threads() funnel through here.
+static std::vector<ReviewThread>
+parse_comment_threads(const std::vector<json>& all) {
     // Index comments and their parent links, skipping deleted ones.
     std::unordered_map<std::string, const json*> by_id;
     std::unordered_map<std::string, std::string> parent_of;
@@ -598,7 +601,25 @@ BitbucketCloudClient::threads(const std::string& id) {
     for (const std::string& root : root_order) {
         out.push_back(std::move(threads[root]));
     }
-    return Result<std::vector<ReviewThread>>::ok(std::move(out));
+    return out;
+}
+
+Result<std::vector<ReviewThread>>
+BitbucketCloudClient::threads(const std::string& id) {
+    Result<std::vector<json>> r = collect_all(http_, cred_, pr_url(id) + "/comments");
+    if (!r) {
+        return Result<std::vector<ReviewThread>>::err(r.error());
+    }
+    return Result<std::vector<ReviewThread>>::ok(parse_comment_threads(r.value()));
+}
+
+Result<std::vector<ReviewThread>>
+BitbucketCloudClient::commit_threads(const std::string& sha) {
+    Result<std::vector<json>> r = collect_all(http_, cred_, commit_url(sha) + "/comments");
+    if (!r) {
+        return Result<std::vector<ReviewThread>>::err(r.error());
+    }
+    return Result<std::vector<ReviewThread>>::ok(parse_comment_threads(r.value()));
 }
 
 Result<std::string>
@@ -617,8 +638,13 @@ BitbucketCloudClient::file_at(const std::string& sha, const std::string& path) {
     return Result<std::string>::ok(res.response.body);
 }
 
-Result<Comment>
-BitbucketCloudClient::comment(const std::string& id, const NewComment& nc) {
+// POST a comment (PR or commit) to `comments_url`. The body shape is identical for
+// both endpoints: content.raw, an optional parent (reply), and an optional inline
+// anchor (path + to/from). Inline anchors carry whatever line numbers the caller
+// supplied — for a commit comment those are the commit's own diff lines.
+static Result<Comment>
+post_comment(HttpClient& http, const Credential& cred, const std::string& comments_url,
+             const NewComment& nc) {
     json body;
     body["content"]["raw"] = nc.body_md;
     if (nc.reply_to) {
@@ -635,7 +661,7 @@ BitbucketCloudClient::comment(const std::string& id, const NewComment& nc) {
             body["inline"]["from"] = nc.anchor.start.line;
         }
     }
-    Result<json> r = req_json(http_, cred_, "POST", pr_url(id) + "/comments", body.dump());
+    Result<json> r = req_json(http, cred, "POST", comments_url, body.dump());
     if (!r) {
         return Result<Comment>::err(r.error());
     }
@@ -647,6 +673,16 @@ BitbucketCloudClient::comment(const std::string& id, const NewComment& nc) {
     cm.body_md = comment_body(jchild(j, "content"));
     cm.created = jstr(j, "created_on");
     return Result<Comment>::ok(cm);
+}
+
+Result<Comment>
+BitbucketCloudClient::comment(const std::string& id, const NewComment& nc) {
+    return post_comment(http_, cred_, pr_url(id) + "/comments", nc);
+}
+
+Result<Comment>
+BitbucketCloudClient::comment_on_commit(const std::string& sha, const NewComment& nc) {
+    return post_comment(http_, cred_, commit_url(sha) + "/comments", nc);
 }
 
 Result<void>

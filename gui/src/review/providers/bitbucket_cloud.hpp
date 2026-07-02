@@ -41,8 +41,10 @@ class BitbucketCloudClient : public ReviewProvider {
     Result<std::vector<PrFile>> files(const std::string& id) override;
     Result<std::vector<PrCommit>> commits(const std::string& id) override;
     Result<std::vector<ReviewThread>> threads(const std::string& id) override;
+    Result<std::vector<ReviewThread>> commit_threads(const std::string& sha) override;
     Result<std::string> file_at(const std::string& sha, const std::string& path) override;
     Result<Comment> comment(const std::string& id, const NewComment&) override;
+    Result<Comment> comment_on_commit(const std::string& sha, const NewComment&) override;
     Result<void> approve(const std::string& id) override;
     Result<void> unapprove(const std::string& id) override;
     Result<void> request_changes(const std::string& id) override;
@@ -56,6 +58,7 @@ class BitbucketCloudClient : public ReviewProvider {
     std::string base_;
 
     std::string pr_url(const std::string& id) const;  // {base}/repositories/{ws}/{repo}/pullrequests/{id}
+    std::string commit_url(const std::string& sha) const;  // {base}/repositories/{ws}/{repo}/commit/{sha}
 };
 
 // The registry plugin for Bitbucket Cloud (host match on bitbucket.org + the

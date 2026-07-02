@@ -56,6 +56,11 @@ struct Capabilities {
     // Resolve / unresolve threads.
     bool thread_resolution = false;
 
+    // Backend has a commit-scoped comment API (distinct from PR comments; anchored
+    // to a specific commit's diff). Drives whether selecting a PR commit offers a
+    // commit-level composer instead of a PR-level one.
+    bool commit_comments = false;
+
     // Draft / work-in-progress PRs are a first-class state.
     bool draft_items = false;
 

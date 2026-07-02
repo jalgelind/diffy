@@ -165,6 +165,7 @@ export global Backend {
     in property <string> pr-subtitle;   // "src → dst · state"
     in property <[PrComment]> pr-comments;  // all of the open PR's comments (Comments shelf)
     callback close-pr();
+    callback show-pr-aggregate();  // leave a single-commit view, show the full PR diff
     in-out property <int> tab-width: 4;
     in property <[string]> font-choices;   // curated monospace families (per-OS)
     in property <[string]> theme-names;     // theme .conf files found on disk
@@ -1669,6 +1670,33 @@ component CommitsPanel inherits Rectangle {
         ShelfHeader {
             title: Backend.pr-open ? "COMMITS" : "RECENT COMMITS";
             collapsed <=> root.sh-commits-collapsed;
+        }
+        // "Full diff" row (PR mode): the aggregate PR diff, selected by default.
+        // Selecting a commit below narrows to that commit; this returns here.
+        if Backend.pr-open && !root.sh-commits-collapsed : Rectangle {
+            height: 38px;
+            background: Backend.commit-sel-index == -1
+                        ? Backend.selection
+                        : (fulltouch.has-hover ? Backend.hover : transparent);
+            fulltouch := TouchArea { clicked => { Backend.show-pr-aggregate(); } }
+            HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 6px;
+                VerticalLayout {
+                    alignment: center;
+                    Text {
+                        text: "Full diff";
+                        color: Backend.fg;
+                        font-size: 12px;
+                    }
+                    Text {
+                        text: "all changes in this PR";
+                        color: Backend.gutter-fg;
+                        font-size: 10px;
+                        overflow: elide;
+                    }
+                }
+            }
         }
         if !root.sh-commits-collapsed : commits-list := ListView {
             vertical-stretch: 1;

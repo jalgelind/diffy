@@ -626,6 +626,12 @@ main(int argc, char** argv) {
         diffy::review::PrRefs pr_refs;
         std::string pr_ws;
         std::string pr_repo;
+        // When non-empty, the PR view is narrowed to a single commit's own diff
+        // (base = its parent) instead of the aggregate PR diff ("Full diff"). Its
+        // comments are commit-scoped and kept separate from the PR threads so a
+        // commit-diff comment never mis-anchors on the aggregate diff.
+        std::string current_pr_commit;
+        std::vector<diffy::review::ReviewThread> pr_commit_threads;
         // Caches so lists show instantly from the last result and refresh in the
         // background (swap-in rather than clear+fetch+show). Keys: PR list by
         // "ws/repo"; PR detail + file blobs by "ws/repo#id" (+ ":path").
@@ -839,14 +845,18 @@ main(int argc, char** argv) {
         // In PR mode, interleave review-comment rows beneath their anchor lines for
         // the current file (comments are wrapped into uniform one-line rows in
         // wrap_text). Threads with no usable anchor (outdated/general) are appended.
-        if (state.current_pr.empty() || state.pr_threads.empty()) {
+        // In a commit view, interleave that commit's own threads (their line numbers
+        // are only valid against the commit diff); otherwise the aggregate PR threads.
+        const auto& active_threads =
+            state.current_pr_commit.empty() ? state.pr_threads : state.pr_commit_threads;
+        if (state.current_pr.empty() || active_threads.empty()) {
             backend.set_rows(model.rows);
         } else {
             using diffy::review::ReviewThread;
             using diffy::review::Side;
             std::unordered_map<std::string, std::vector<const ReviewThread*>> by_anchor;
             std::vector<const ReviewThread*> outdated;
-            for (const auto& th : state.pr_threads) {
+            for (const auto& th : active_threads) {
                 if (th.anchor.new_path != state.current_file) {
                     continue;
                 }
@@ -1225,14 +1235,53 @@ main(int argc, char** argv) {
         });
     };
 
-    // Open a file's diff. Honours the current mode: PR (provider-sourced),
-    // working-tree (HEAD vs disk), or a selected commit (commit vs its parent).
+    // Open a file's diff *within a single PR commit* (base = its first parent),
+    // rendered locally from the fetched PR commits. While this view is active the
+    // composer posts commit-scoped comments (see on_submit_comment), so a comment
+    // anchored here never lands on a different line of the aggregate PR diff.
+    auto open_pr_commit_file = [&](const std::string& path) {
+        if (state.current_pr.empty() || state.current_pr_commit.empty() || !state.repo) {
+            return;
+        }
+        if (state.current_file != path) {
+            backend.set_sel_anchor(-1);
+            backend.set_sel_focus(-1);
+        }
+        state.current_file = path;
+        backend.set_current_file(ss(path));
+        const std::string sha = state.current_pr_commit;
+        if (!state.repo->has_commit(sha)) {
+            backend.set_diff_note(ss("This commit isn't available locally — reopen the PR to fetch it."));
+            backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
+            backend.set_status_text(ss("Commit " + sha.substr(0, 8) + " not available locally"));
+            return;
+        }
+        state.pair = state.repo->diff_commit_file(sha, path);
+        if (!state.pair.note.empty()) {
+            state.pair.ok = false;
+            backend.set_diff_note(ss(state.pair.note));
+            backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
+            backend.set_status_text(
+                ss("Commit " + sha.substr(0, 8) + ": " + path + " — " + state.pair.note));
+            return;
+        }
+        backend.set_diff_note(ss(""));
+        backend.set_status_text(ss("Commit " + sha.substr(0, 8) + ": " + path));
+        recompute();
+    };
+
+    // Open a file's diff. Honours the current mode: PR (provider-sourced, aggregate
+    // or a single commit), working-tree (HEAD vs disk), or a selected commit.
     auto open_file = [&](const std::string& path) {
         if (!state.repo) {
             return;
         }
         if (!state.current_pr.empty()) {
-            open_pr_file(path);
+            if (!state.current_pr_commit.empty()) {
+                open_pr_commit_file(path);
+            } else {
+                open_pr_file(path);
+            }
             return;
         }
         if (state.current_file != path) {
@@ -1424,6 +1473,8 @@ main(int argc, char** argv) {
             return;
         }
         state.current_pr = id;
+        state.current_pr_commit.clear();  // start on the aggregate "Full diff"
+        state.pr_commit_threads.clear();
         state.pr_ws = parsed->owner;
         state.pr_repo = parsed->repo;
         state.current_commit.clear();
@@ -1811,7 +1862,9 @@ main(int argc, char** argv) {
         backend.set_status_text(ss("Opening " + path + " …"));
         // Leave any PR detail mode when (re)opening a repo.
         state.current_pr.clear();
+        state.current_pr_commit.clear();
         state.pr_threads.clear();
+        state.pr_commit_threads.clear();
         backend.set_pr_open(false);
         backend.set_pr_list_collapsed(false);  // re-expand the PR-list shelf
         review_pool.clear_prefetch();  // drop speculative work for the previous repo
@@ -1859,12 +1912,97 @@ main(int argc, char** argv) {
         });
     };
 
+    // Narrow the PR view to a single commit: show that commit's own diff (base =
+    // its first parent, rendered locally from the fetched PR commits) and fetch its
+    // commit-scoped comments. Kept wholly separate from the aggregate PR threads.
+    auto enter_pr_commit = [&](const std::string& sha) {
+        if (!state.repo || state.current_pr.empty() || sha.empty()) {
+            return;
+        }
+        state.current_pr_commit = sha;
+        state.pr_commit_threads.clear();
+        backend.set_sel_anchor(-1);
+        backend.set_sel_focus(-1);
+        int idx = -1;
+        for (size_t i = 0; i < state.shown_commits.size(); ++i) {
+            if (state.shown_commits[i] == sha) {
+                idx = static_cast<int>(i);
+                break;
+            }
+        }
+        backend.set_commit_sel_index(idx);
+        if (!state.repo->has_commit(sha)) {
+            backend.set_status_text(ss("Commit " + sha.substr(0, 8) + " isn't available locally"));
+            set_files({});
+            backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
+            backend.set_current_file(ss(""));
+            return;
+        }
+        auto changes = state.repo->commit_files(sha);
+        set_files(changes);
+        backend.set_status_text(ss("Commit " + sha.substr(0, 8) + " — " +
+                                   std::to_string(changes.size()) + " file(s)"));
+        if (!changes.empty()) {
+            open_file(changes.front().path);
+        } else {
+            backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
+            backend.set_current_file(ss(""));
+        }
+        // Commit-scoped comment threads (background); swap in once they arrive.
+        if (state.bitbucket_cred) {
+            const diffy::review::Credential cred = *state.bitbucket_cred;
+            const std::string ws = state.pr_ws, repo = state.pr_repo, csha = sha;
+            const uint64_t gen = state.load_generation;
+            review_pool.submit(
+                ReviewPool::Prio::Interactive,
+                [&, cred, ws, repo, csha, gen](diffy::review::HttpClient& http) {
+                    diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                    std::vector<diffy::review::ReviewThread> threads;
+                    if (auto t = client.commit_threads(csha)) {
+                        threads = std::move(t.value());
+                    }
+                    slint::invoke_from_event_loop([&, csha, gen, threads]() {
+                        if (gen != state.load_generation || state.current_pr_commit != csha) {
+                            return;
+                        }
+                        state.pr_commit_threads = threads;
+                        rebuild_comment_shelf(threads);
+                        if (!state.current_file.empty() && state.pair.ok) {
+                            relayout();  // interleave the commit's threads inline
+                        }
+                    });
+                });
+        }
+        state.nav_pane = 0;
+    };
+
+    // Return from a single-commit view to the aggregate PR diff ("Full diff"),
+    // restoring the PR's files + threads from the cached detail.
+    auto exit_pr_commit = [&]() {
+        if (state.current_pr.empty() || state.current_pr_commit.empty()) {
+            return;
+        }
+        state.current_pr_commit.clear();
+        state.pr_commit_threads.clear();
+        backend.set_sel_anchor(-1);
+        backend.set_sel_focus(-1);
+        backend.set_commit_sel_index(-1);  // the "Full diff" row reads as selected
+        const std::string key = state.pr_ws + "/" + state.pr_repo + "#" + state.current_pr;
+        if (auto it = state.pr_detail_cache.find(key); it != state.pr_detail_cache.end()) {
+            apply_pr_detail(state.current_pr, it->second, /*select_first=*/true);
+        }
+    };
+
     // Browse a commit: list its files and diff the first. Shared by the click
     // handler and keyboard activation. Leaves the keyboard focus on the file
     // list so the arrows then browse the commit's files.
     auto select_commit = [&](const std::string& oid) {
-        if (!state.repo || !state.current_pr.empty()) {
-            return;  // in PR detail mode the commits list is read-only for now
+        if (!state.repo) {
+            return;
+        }
+        if (!state.current_pr.empty()) {
+            enter_pr_commit(oid);  // PR mode: narrow to this commit (was read-only)
+            return;
         }
         state.current_commit = oid;
         backend.set_on_working_tree(false);
@@ -2161,10 +2299,12 @@ main(int argc, char** argv) {
         });
     });
     backend.on_open_pr([&](slint::SharedString id) { open_pr(str(id)); });
+    backend.on_show_pr_aggregate([&]() { exit_pr_commit(); });
     backend.on_close_pr([&]() {
         // Leave PR detail mode and restore the repo view (working tree + local
         // commits + the PR list) by reloading the repo.
         state.current_pr.clear();
+        state.current_pr_commit.clear();
         backend.set_pr_open(false);
         backend.set_pr_list_collapsed(false);  // re-expand the PR-list shelf
         if (!state.repo_path.empty()) {
@@ -2440,7 +2580,8 @@ main(int argc, char** argv) {
     };
 
     // Open the comment composer: resolve the anchor (from the selection, or the whole
-    // PR when `general`) and populate the overlay fields before showing it.
+    // PR when `general`) and populate the overlay fields before showing it. The label
+    // names the commit when we're in a single-commit view (that's where it posts).
     backend.on_open_composer([&](bool general) {
         if (state.current_pr.empty() || !state.bitbucket_cred) {
             return;
@@ -2458,18 +2599,26 @@ main(int argc, char** argv) {
             return;
         }
         backend.set_composer_general(false);
-        backend.set_composer_target(ss(state.current_file + ":" + std::to_string(line)));
+        const std::string at = state.current_file + ":" + std::to_string(line);
+        backend.set_composer_target(
+            ss(state.current_pr_commit.empty()
+                   ? at
+                   : ("commit " + state.current_pr_commit.substr(0, 8) + "  ·  " + at)));
         backend.set_composer_open(true);
     });
 
-    // Post the composed comment (inline, anchored to the selection, or whole-PR),
-    // then refetch the PR's threads so it appears inline + in the Comments shelf.
+    // Post the composed comment, then refetch threads so it appears inline + in the
+    // Comments shelf. An inline comment made while viewing a single commit is posted
+    // to THAT commit (with the commit diff's line numbers) and refreshes only the
+    // commit threads — so it never resurfaces mis-anchored on the aggregate PR diff.
+    // General comments always stay PR-level.
     backend.on_submit_comment([&](slint::SharedString b) {
         const std::string body = str(b);
         if (body.empty() || state.current_pr.empty() || !state.bitbucket_cred) {
             return;
         }
         const bool general = backend.get_composer_general();
+        const bool commit_scope = !general && !state.current_pr_commit.empty();
         diffy::review::NewComment nc;
         nc.body_md = body;
         nc.general = general;
@@ -2489,43 +2638,53 @@ main(int argc, char** argv) {
         }
         const std::string id = state.current_pr, ws = state.pr_ws, repo = state.pr_repo;
         const std::string key = ws + "/" + repo + "#" + id;
+        const std::string csha = state.current_pr_commit;
         const diffy::review::Credential cred = *state.bitbucket_cred;
         const uint64_t gen = state.load_generation;
         backend.set_posting_comment(true);
         review_pool.submit(
             ReviewPool::Prio::Interactive,
-            [&, id, ws, repo, cred, nc, key, gen](diffy::review::HttpClient& http) {
+            [&, id, ws, repo, cred, nc, key, csha, commit_scope, gen](
+                diffy::review::HttpClient& http) {
                 diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
-                auto r = client.comment(id, nc);
+                auto r = commit_scope ? client.comment_on_commit(csha, nc) : client.comment(id, nc);
                 std::string errmsg = r ? std::string{} : r.error().message;
                 std::vector<diffy::review::ReviewThread> threads;
                 if (r) {
-                    if (auto th = client.threads(id)) {
-                        threads = std::move(th.value());
+                    auto t = commit_scope ? client.commit_threads(csha) : client.threads(id);
+                    if (t) {
+                        threads = std::move(t.value());
                     }
                 }
-                slint::invoke_from_event_loop(
-                    [&, id, key, gen, errmsg, threads, ok = static_cast<bool>(r)]() {
-                        backend.set_posting_comment(false);
-                        if (gen != state.load_generation || state.current_pr != id) {
-                            return;
+                slint::invoke_from_event_loop([&, id, key, csha, commit_scope, gen, errmsg, threads,
+                                               ok = static_cast<bool>(r)]() {
+                    backend.set_posting_comment(false);
+                    if (gen != state.load_generation || state.current_pr != id) {
+                        return;
+                    }
+                    if (!ok) {
+                        backend.set_status_text(ss("Comment failed: " + errmsg));
+                        return;
+                    }
+                    if (commit_scope) {
+                        if (state.current_pr_commit != csha) {
+                            return;  // user left the commit view; leave its rows alone
                         }
-                        if (!ok) {
-                            backend.set_status_text(ss("Comment failed: " + errmsg));
-                            return;
-                        }
+                        state.pr_commit_threads = threads;
+                    } else {
                         state.pr_threads = threads;
                         if (auto it = state.pr_detail_cache.find(key);
                             it != state.pr_detail_cache.end()) {
                             it->second.threads = threads;  // keep the cache coherent
                         }
-                        rebuild_comment_shelf(threads);
-                        backend.set_composer_open(false);
-                        backend.set_status_text(ss("Comment posted"));
-                        if (!state.current_file.empty() && state.pair.ok) {
-                            relayout();  // re-interleave the new thread inline
-                        }
-                    });
+                    }
+                    rebuild_comment_shelf(threads);
+                    backend.set_composer_open(false);
+                    backend.set_status_text(ss("Comment posted"));
+                    if (!state.current_file.empty() && state.pair.ok) {
+                        relayout();  // re-interleave the new thread inline
+                    }
+                });
             });
     });
     // --- context-menu actions ----------------------------------------------

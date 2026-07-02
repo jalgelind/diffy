@@ -54,12 +54,23 @@ struct ReviewProvider {
     // Inline + general comment threads, already anchored.
     virtual Result<std::vector<ReviewThread>> threads(const std::string& id) = 0;
 
+    // Comment threads scoped to a specific commit (distinct from PR threads;
+    // anchored to that commit's own diff, so their line numbers are only valid in
+    // the commit view, never the PR aggregate). Backends without a commit-comment
+    // API (Capabilities::commit_comments == false) return Unsupported.
+    virtual Result<std::vector<ReviewThread>> commit_threads(const std::string& sha) = 0;
+
     // Fallback content source when the commits can't be fetched locally.
     virtual Result<std::string> file_at(const std::string& sha, const std::string& path) = 0;
 
     // --- write: capability-gated (return Unsupported when the flag is off) --
 
     virtual Result<Comment> comment(const std::string& id, const NewComment&) = 0;
+
+    // Post a comment scoped to a commit. Inline anchors use that commit's own line
+    // numbers (valid only against the commit's diff), so this never mis-anchors on
+    // the PR head. Unsupported when Capabilities::commit_comments is false.
+    virtual Result<Comment> comment_on_commit(const std::string& sha, const NewComment&) = 0;
     virtual Result<void> approve(const std::string& id) = 0;
     virtual Result<void> unapprove(const std::string& id) = 0;
     virtual Result<void> request_changes(const std::string& id) = 0;

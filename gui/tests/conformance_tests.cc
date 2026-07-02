@@ -124,6 +124,21 @@ struct FakeProvider : ReviewProvider {
         return Result<Comment>::ok(c);
     }
 
+    Result<std::vector<ReviewThread>>
+    commit_threads(const std::string& /*sha*/) override {
+        return Result<std::vector<ReviewThread>>::ok({});
+    }
+
+    Result<Comment>
+    comment_on_commit(const std::string& /*sha*/, const NewComment&) override {
+        Comment c;
+        c.id = "cc-new";
+        c.author = "reviewer";
+        c.body_md = "posted on commit";
+        c.created = "2026-06-29T10:07:00Z";
+        return Result<Comment>::ok(c);
+    }
+
     Result<void>
     approve(const std::string& /*id*/) override {
         return Result<void>::ok();
