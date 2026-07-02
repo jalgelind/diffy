@@ -132,7 +132,8 @@ struct PrFile {
 struct PrCommit {
     std::string sha;
     std::string short_sha;
-    std::string summary;
+    std::string summary;  // first line
+    std::string message;  // full commit message (summary + body)
     std::string author;
     std::string when;
 };

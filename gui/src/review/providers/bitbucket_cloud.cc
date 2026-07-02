@@ -384,6 +384,7 @@ to_commit(const json& j) {
     c.sha = jstr(j, "hash");
     c.short_sha = c.sha.substr(0, std::min<std::size_t>(8, c.sha.size()));
     const std::string msg = jstr(j, "message");
+    c.message = msg;
     c.summary = msg.substr(0, msg.find('\n'));
     const json& au = jchild(j, "author");
     c.author = jstr(jchild(au, "user"), "display_name");

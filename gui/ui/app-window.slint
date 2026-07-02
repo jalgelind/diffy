@@ -136,7 +136,11 @@ export global Backend {
     in-out property <int> find-current-row: -1;  // model row to highlight
     in property <string> branch: "";
     in property <string> status-text: "Open a repository to begin.";
-    in property <int> net-inflight: 0;  // in-flight network requests (status bar)
+    // Network activity for the status bar: foreground (interactive) vs background
+    // (prefetch) request counts, plus a label of what the foreground is doing.
+    in property <int> net-active: 0;
+    in property <int> net-prefetch: 0;
+    in property <string> net-label;
 
     // Diff overview header: PR description (Full diff) or commit message (commit
     // view). Shown above the diff when there's content; user-collapsible.
@@ -2317,6 +2321,7 @@ export component AppWindow inherits Window {
                 // non-layout child's `width` fills the parent, which would make the
                 // advance scale with the pane and the wrap column count constant.
                 property <length> advance: calib.preferred-width / 40;
+                property <length> overview-body-h: 120px;  // user-resizable overview height
                 property <length> gut: DiffOptions.show-line-numbers ? 48px : 0px;
                 // One diff cell's width at the *visible* pane width (mirrors
                 // DiffRow.cellw). Pushed to C++ to derive the wrap column count.
@@ -2385,7 +2390,7 @@ export component AppWindow inherits Window {
                             }
                         }
                         if !Backend.overview-collapsed && Backend.overview-body != "" : ov-scroll := ScrollView {
-                            height: min(150px, ov-body.preferred-height + 2px);
+                            height: diff-area.overview-body-h;
                             ov-body := Text {
                                 width: ov-scroll.width - 14px;
                                 text: Backend.overview-body;
@@ -2393,6 +2398,38 @@ export component AppWindow inherits Window {
                                 font-size: 12px;
                                 wrap: word-wrap;
                             }
+                        }
+                    }
+                    // Drag the bottom edge to resize the overview body.
+                    if !Backend.overview-collapsed && Backend.overview-body != "" : Rectangle {
+                        height: 6px;
+                        property <length> start-h;
+                        property <length> start-y;
+                        ovresize := TouchArea {
+                            mouse-cursor: ns-resize;
+                            pointer-event(e) => {
+                                if (e.kind == PointerEventKind.down) {
+                                    parent.start-h = diff-area.overview-body-h;
+                                    parent.start-y = self.absolute-position.y + self.mouse-y;
+                                }
+                            }
+                            moved => {
+                                if (self.pressed) {
+                                    diff-area.overview-body-h = clamp(
+                                        parent.start-h + self.absolute-position.y + self.mouse-y
+                                            - parent.start-y,
+                                        40px, 480px);
+                                }
+                            }
+                        }
+                        Rectangle {
+                            y: 2px;
+                            height: 2px;
+                            width: 40px;
+                            x: (parent.width - self.width) / 2;
+                            border-radius: 1px;
+                            background: ovresize.pressed || ovresize.has-hover
+                                        ? Backend.accent : Backend.divider;
                         }
                     }
                 }
@@ -2606,9 +2643,10 @@ export component AppWindow inherits Window {
                         overflow: elide;
                     }
                     Rectangle { width: 1px; background: Backend.divider; }
-                    // Network section (right-aligned).
+                    // Network section (right-aligned): activity dot + label + counts.
                     HorizontalLayout {
                         spacing: 6px;
+                        property <bool> busy: Backend.net-active > 0 || Backend.net-prefetch > 0;
                         Rectangle {
                             width: 8px;
                             VerticalLayout {
@@ -2617,19 +2655,23 @@ export component AppWindow inherits Window {
                                     width: 7px;
                                     height: 7px;
                                     border-radius: 4px;
-                                    background: Backend.net-inflight > 0
-                                        ? Backend.accent
-                                        : Backend.divider;
+                                    background: Backend.net-active > 0 ? Backend.accent
+                                        : (Backend.net-prefetch > 0 ? Backend.gutter-fg
+                                                                    : Backend.divider);
                                 }
                             }
                         }
                         Text {
-                            text: Backend.net-inflight > 0
-                                ? (Backend.net-inflight == 1
-                                    ? "1 request…"
-                                    : "\{Backend.net-inflight} requests…")
-                                : "idle";
-                            color: Backend.net-inflight > 0 ? Backend.accent : Backend.gutter-fg;
+                            // Foreground: "<label> (N)"; background-only: "Prefetching N";
+                            // otherwise idle.
+                            text: Backend.net-active > 0
+                                ? ((Backend.net-label != "" ? Backend.net-label : "Working")
+                                    + " (\{Backend.net-active})"
+                                    + (Backend.net-prefetch > 0 ? " · \{Backend.net-prefetch} queued" : ""))
+                                : (Backend.net-prefetch > 0
+                                    ? "Prefetching \{Backend.net-prefetch}…"
+                                    : "idle");
+                            color: parent.busy ? Backend.accent : Backend.gutter-fg;
                             font-size: 11px;
                             vertical-alignment: center;
                         }

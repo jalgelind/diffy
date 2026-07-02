@@ -417,8 +417,11 @@ class ReviewPool {
     // Set a callback invoked (possibly from a worker thread) whenever the in-flight
     // count changes, with the new total. The callback must marshal to the UI thread
     // itself. Set once before submitting work.
+    // Invoked (possibly from a worker thread) whenever the in-flight counts change,
+    // with (foreground/interactive, background/prefetch) totals. The callback must
+    // marshal to the UI thread itself. Set once before submitting work.
     void
-    set_activity_callback(std::function<void(int)> cb) {
+    set_activity_callback(std::function<void(int, int)> cb) {
         on_activity_ = std::move(cb);
     }
 
@@ -431,7 +434,7 @@ class ReviewPool {
             }
             (p == Prio::Interactive ? hi_ : lo_).push_back(std::move(fn));
         }
-        inflight_.fetch_add(1);
+        (p == Prio::Interactive ? inflight_hi_ : inflight_lo_).fetch_add(1);
         notify_activity();
         cv_.notify_one();
     }
@@ -446,7 +449,7 @@ class ReviewPool {
             lo_.clear();
         }
         if (dropped > 0) {
-            inflight_.fetch_sub(dropped);
+            inflight_lo_.fetch_sub(dropped);
             notify_activity();
         }
     }
@@ -462,7 +465,8 @@ class ReviewPool {
             hi_.clear();
             lo_.clear();
         }
-        inflight_.store(0);
+        inflight_hi_.store(0);
+        inflight_lo_.store(0);
         cv_.notify_all();
         for (auto& t : threads_) {
             if (t.joinable()) {
@@ -478,6 +482,7 @@ class ReviewPool {
         auto client = diffy::review::make_http_client();
         for (;;) {
             Task task;
+            bool interactive = false;  // which queue this task came from (per worker)
             {
                 std::unique_lock<std::mutex> lk(mu_);
                 cv_.wait(lk, [this] { return stop_ || !hi_.empty() || !lo_.empty(); });
@@ -487,6 +492,7 @@ class ReviewPool {
                 if (!hi_.empty()) {
                     task = std::move(hi_.front());
                     hi_.pop_front();
+                    interactive = true;
                 } else {
                     task = std::move(lo_.front());
                     lo_.pop_front();
@@ -496,7 +502,7 @@ class ReviewPool {
                 task(*client);
             }
             if (task) {
-                inflight_.fetch_sub(1);
+                (interactive ? inflight_hi_ : inflight_lo_).fetch_sub(1);
                 notify_activity();
             }
         }
@@ -505,7 +511,7 @@ class ReviewPool {
     void
     notify_activity() {
         if (on_activity_) {
-            on_activity_(inflight_.load());
+            on_activity_(inflight_hi_.load(), inflight_lo_.load());
         }
     }
 
@@ -514,8 +520,9 @@ class ReviewPool {
     std::deque<Task> hi_;
     std::deque<Task> lo_;
     bool stop_ = false;
-    std::atomic<int> inflight_{0};  // queued + running
-    std::function<void(int)> on_activity_;
+    std::atomic<int> inflight_hi_{0};  // interactive: queued + running
+    std::atomic<int> inflight_lo_{0};  // prefetch: queued + running
+    std::function<void(int, int)> on_activity_;
     std::vector<std::thread> threads_;
 };
 
@@ -827,6 +834,9 @@ main(int argc, char** argv) {
         // commit-diff comment never mis-anchors on the aggregate diff.
         std::string current_pr_commit;
         std::vector<diffy::review::ReviewThread> pr_commit_threads;
+        // PR commits keyed by sha (carries the full message for the overview header,
+        // API-sourced so it works even when the commit isn't present locally).
+        std::unordered_map<std::string, diffy::review::PrCommit> pr_commits_by_sha;
         // Caches so lists show instantly from the last result and refresh in the
         // background (swap-in rather than clear+fetch+show). Keys: PR list by
         // "ws/repo"; PR detail + file blobs by "ws/repo#id" (+ ":path").
@@ -836,6 +846,7 @@ main(int argc, char** argv) {
             std::vector<diffy::gui::FileChange> files;
             std::vector<diffy::gui::CommitInfo> commits;
             std::vector<diffy::review::ReviewThread> threads;
+            std::vector<diffy::review::PrCommit> pr_commits;  // raw (carries full message)
             std::string title;
             std::string subtitle;
             std::string description;  // PR body (markdown) for the overview header
@@ -879,8 +890,14 @@ main(int argc, char** argv) {
     // joined) at shutdown before state is torn down. See REVIEW-ROADMAP.md.
     ReviewPool review_pool(4);
     // Surface network activity in the status bar (marshalled to the UI thread).
-    review_pool.set_activity_callback([&](int n) {
-        slint::invoke_from_event_loop([&, n]() { backend.set_net_inflight(n); });
+    review_pool.set_activity_callback([&](int active, int prefetch) {
+        slint::invoke_from_event_loop([&, active, prefetch]() {
+            backend.set_net_active(active);
+            backend.set_net_prefetch(prefetch);
+            if (active == 0 && prefetch == 0) {
+                backend.set_net_label(ss(""));  // reset the label when fully idle
+            }
+        });
     });
 
     // --- typography + initial option-bar state from [gui] -------------------
@@ -1437,8 +1454,22 @@ main(int argc, char** argv) {
         backend.set_overview_subtitle(ss(""));
         backend.set_overview_body(ss(""));
     };
-    // Populate the overview from a commit's local git object (PR commit or local).
+    // Populate the overview from a commit's message. Prefer the API-sourced PR
+    // commit (works even when the commit isn't present locally); fall back to the
+    // local git object for non-PR commits.
     auto set_commit_overview = [&](const std::string& sha) {
+        if (auto it = state.pr_commits_by_sha.find(sha); it != state.pr_commits_by_sha.end()) {
+            const auto& c = it->second;
+            std::string sub = c.short_sha;
+            if (!c.author.empty()) {
+                sub += "  ·  " + c.author;
+            }
+            if (c.when.size() >= 10) {
+                sub += "  ·  " + c.when.substr(0, 10);
+            }
+            set_overview(c.summary, sub, c.message.empty() ? c.summary : c.message);
+            return;
+        }
         if (state.repo) {
             auto ct = state.repo->commit_text(sha);
             if (ct.ok) {
@@ -1454,7 +1485,7 @@ main(int argc, char** argv) {
             }
         }
         set_overview("Commit " + sha.substr(0, std::min<size_t>(sha.size(), 8)),
-                     "commit message unavailable locally", "");
+                     "commit message unavailable", "");
     };
 
     auto commit_entry = [&](const diffy::gui::CommitInfo& c) {
@@ -1574,6 +1605,7 @@ main(int argc, char** argv) {
             return;
         }
         backend.set_status_text(ss("PR #" + pr + ": " + path + " …"));
+        backend.set_net_label(ss("Loading file"));
         const diffy::review::Credential cred = *state.bitbucket_cred;
         const std::string ws = state.pr_ws, repo = state.pr_repo;
         const std::string base = state.pr_refs.base_sha, head = state.pr_refs.head_sha;
@@ -1713,6 +1745,7 @@ main(int argc, char** argv) {
                 x.author = c.author;
                 d.commits.push_back(std::move(x));
             }
+            d.pr_commits = std::move(commits.value());  // raw (carries full message)
         }
         d.title = pr ? pr.value().title : ("PR #" + id);
         d.subtitle = pr ? (pr.value().src_branch + " → " + pr.value().dst_branch + "  ·  " +
@@ -1809,6 +1842,10 @@ main(int argc, char** argv) {
     auto apply_pr_detail = [&](const std::string& id, const State::PrDetail& d, bool select_first) {
         state.pr_refs = d.refs;
         state.pr_threads = d.threads;
+        state.pr_commits_by_sha.clear();
+        for (const auto& c : d.pr_commits) {
+            state.pr_commits_by_sha[c.sha] = c;
+        }
         rebuild_comment_shelf(d.threads);
         backend.set_pr_title(ss("#" + id + "  " + d.title));
         backend.set_pr_subtitle(ss(d.subtitle));
@@ -1875,6 +1912,7 @@ main(int argc, char** argv) {
         const std::string ws = parsed->owner, repo = parsed->repo;
         const bool select_first = !had_cache;
         const uint64_t gen = state.load_generation;
+        backend.set_net_label(ss("Loading pull request"));
         review_pool.submit(ReviewPool::Prio::Interactive, [&, id, ws, repo, cred, key, select_first,
                                                            gen](diffy::review::HttpClient& http) {
             State::PrDetail d;
@@ -2129,6 +2167,7 @@ main(int argc, char** argv) {
             backend.set_pull_requests(std::make_shared<slint::VectorModel<PrEntry>>());
         }
         backend.set_loading_prs(true);
+        backend.set_net_label(ss("Loading pull requests"));
         const diffy::review::Credential cred = *state.bitbucket_cred;
         const uint64_t gen = state.load_generation;
         review_pool.submit(ReviewPool::Prio::Interactive,
@@ -2240,6 +2279,7 @@ main(int argc, char** argv) {
         state.current_pr_commit.clear();
         state.pr_threads.clear();
         state.pr_commit_threads.clear();
+        state.pr_commits_by_sha.clear();
         clear_overview();
         backend.set_pr_open(false);
         backend.set_pr_list_collapsed(false);  // re-expand the PR-list shelf
@@ -2699,6 +2739,7 @@ main(int argc, char** argv) {
                                      slint::SharedString user, slint::SharedString pass) {
         backend.set_bitbucket_connecting(true);
         backend.set_bitbucket_status(ss("Connecting…"));
+        backend.set_net_label(ss("Connecting"));
         const std::string w = str(ws), rp = str(repo), u = str(user), p = str(pass);
         review_pool.submit(ReviewPool::Prio::Interactive,
                            [&, w, rp, u, p](diffy::review::HttpClient& http) {
@@ -3071,6 +3112,7 @@ main(int argc, char** argv) {
         const diffy::review::Credential cred = *state.bitbucket_cred;
         const uint64_t gen = state.load_generation;
         backend.set_posting_comment(true);
+        backend.set_net_label(ss("Posting comment"));
         review_pool.submit(
             ReviewPool::Prio::Interactive,
             [&, id, ws, repo, cred, nc, key, csha, commit_scope, gen](
