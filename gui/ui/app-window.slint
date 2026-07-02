@@ -2492,6 +2492,11 @@ export component AppWindow inherits Window {
                         }
                         if !Backend.overview-collapsed && Backend.overview-body != "" : ov-scroll := ScrollView {
                             height: diff-area.overview-body-h;
+                            // The viewport must be as tall as the (wrapped) text for
+                            // vertical scrolling; otherwise it defaults to the view
+                            // height and the text is clipped instead of scrolled.
+                            viewport-width: ov-scroll.width - 14px;
+                            viewport-height: ov-body.preferred-height;
                             ov-body := Text {
                                 width: ov-scroll.width - 14px;
                                 text: Backend.overview-body;
