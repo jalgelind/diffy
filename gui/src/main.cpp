@@ -1878,9 +1878,9 @@ main(int argc, char** argv) {
             }
             return p;
         };
-        // Bucket threads by group key: file path, or "\x01" general / "\x02" outdated.
-        std::vector<std::string> order;
-        std::unordered_map<std::string, std::vector<const ReviewThread*>> groups;
+        // Bucket threads: by file path, plus general (PR-level) and outdated.
+        std::unordered_map<std::string, std::vector<const ReviewThread*>> by_file;
+        std::vector<const ReviewThread*> general, outdated;
         bool has_any = false;
         for (const auto& th : threads) {
             if (!th.comments.empty()) {
@@ -1889,33 +1889,26 @@ main(int argc, char** argv) {
             if (unresolved_only && th.resolved) {
                 continue;
             }
-            const std::string p = path_of(th);
-            const std::string key = th.outdated ? "\x02" : (p.empty() ? "\x01" : p);
-            if (!groups.count(key)) {
-                order.push_back(key);
+            if (th.outdated) {
+                outdated.push_back(&th);
+                continue;
             }
-            groups[key].push_back(&th);
+            const std::string p = path_of(th);
+            (p.empty() ? general : by_file[p]).push_back(&th);
         }
-        // Files alphabetically, then General (\x01), then Outdated (\x02).
-        std::sort(order.begin(), order.end());
-        std::stable_partition(order.begin(), order.end(),
-                              [](const std::string& k) { return k[0] != '\x01' && k[0] != '\x02'; });
 
         auto cmodel = std::make_shared<slint::VectorModel<PrComment>>();
         int comment_rows = 0;
-        for (const std::string& key : order) {
-            const auto& ths = groups[key];
-            int cnt = 0;
-            for (auto* th : ths) {
-                cnt += static_cast<int>(th->comments.size());
-            }
+        auto push_section = [&](const std::string& label, bool is_dir, int count, int depth) {
             PrComment sec{};
             sec.is_section = true;
-            sec.location = ss(key == "\x01"  ? std::string("General")
-                              : key == "\x02" ? std::string("Outdated")
-                                              : key);
-            sec.count = cnt;
+            sec.is_dir = is_dir;
+            sec.location = ss(label);
+            sec.count = count;
+            sec.depth = depth;
             cmodel->push_back(sec);
+        };
+        auto emit_comments = [&](const std::vector<const ReviewThread*>& ths, int depth) {
             for (auto* th : ths) {
                 const std::string apath = path_of(*th);
                 const bool anchored = !th->outdated && !apath.empty() && th->anchor.start.line >= 1;
@@ -1924,8 +1917,9 @@ main(int argc, char** argv) {
                     PrComment e{};
                     e.author = ss(cm.author);
                     e.resolved = th->resolved;
-                    e.location =
-                        ss(anchored ? ("line " + std::to_string(th->anchor.start.line)) : std::string());
+                    e.depth = depth;
+                    e.location = ss(anchored ? ("line " + std::to_string(th->anchor.start.line))
+                                             : std::string());
                     if (anchored) {
                         e.path = ss(apath);
                         e.line = th->anchor.start.line;
@@ -1940,6 +1934,64 @@ main(int argc, char** argv) {
                     ++comment_rows;
                 }
             }
+        };
+
+        // Compact folder tree over the commented files: folder rows then file rows
+        // (with comments beneath), single-child folder chains merged to save space.
+        struct CNode {
+            std::map<std::string, CNode> dirs;
+            std::vector<std::string> files;  // full paths at this node
+        };
+        CNode root;
+        for (const auto& kv : by_file) {
+            const std::string& path = kv.first;
+            CNode* n = &root;
+            std::size_t start = 0, slash;
+            while ((slash = path.find('/', start)) != std::string::npos) {
+                n = &n->dirs[path.substr(start, slash - start)];
+                start = slash + 1;
+            }
+            n->files.push_back(path);
+        }
+        std::function<void(const CNode&, int)> walk = [&](const CNode& node, int depth) {
+            for (const auto& d : node.dirs) {
+                std::string name = d.first;
+                const CNode* child = &d.second;
+                while (child->files.empty() && child->dirs.size() == 1) {
+                    name += "/" + child->dirs.begin()->first;
+                    child = &child->dirs.begin()->second;
+                }
+                push_section(name, /*is_dir=*/true, 0, depth);
+                walk(*child, depth + 1);
+            }
+            std::vector<std::string> fs = node.files;
+            std::sort(fs.begin(), fs.end());
+            for (const std::string& path : fs) {
+                const std::string base = path.substr(path.find_last_of('/') + 1);
+                int cnt = 0;
+                for (auto* th : by_file[path]) {
+                    cnt += static_cast<int>(th->comments.size());
+                }
+                push_section(base, /*is_dir=*/false, cnt, depth);
+                emit_comments(by_file[path], depth + 1);
+            }
+        };
+        walk(root, 0);
+        if (!general.empty()) {
+            int c = 0;
+            for (auto* th : general) {
+                c += static_cast<int>(th->comments.size());
+            }
+            push_section("General", false, c, 0);
+            emit_comments(general, 1);
+        }
+        if (!outdated.empty()) {
+            int c = 0;
+            for (auto* th : outdated) {
+                c += static_cast<int>(th->comments.size());
+            }
+            push_section("Outdated", false, c, 0);
+            emit_comments(outdated, 1);
         }
         backend.set_pr_comments(cmodel);
         backend.set_pr_has_comments(has_any);

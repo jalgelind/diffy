@@ -101,8 +101,10 @@ export struct PrComment {
     path: string,       // anchored file (empty for general / PR-level comments)
     line: int,          // anchored line on `side` (0 when general)
     side: string,       // "new" | "old" (which gutter `line` refers to)
-    is-section: bool,   // a file/group header row (title = location, count = count)
+    is-section: bool,   // a folder/file/group header row (title = location, count = count)
+    is-dir: bool,       // section is a folder (vs a file/group) — dimmer styling
     count: int,         // section: number of comments under this group
+    depth: int,         // tree indent level
     resolved: bool,     // comment: its thread is resolved
 }
 
@@ -2041,21 +2043,22 @@ component CommitsPanel inherits Rectangle {
             horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
             for cm in Backend.pr-comments : Rectangle {
                 height: cm.is-section ? 22px : 46px;
-                // Group header row (file / General / Outdated) with a count.
+                // Tree header row: a folder (dimmer) or a file/group (with a count),
+                // indented by depth. Small indent keeps horizontal space in check.
                 if cm.is-section : HorizontalLayout {
-                    padding-left: 6px;
+                    padding-left: 6px + cm.depth * 10px;
                     padding-right: 8px;
                     spacing: 6px;
                     Text {
                         text: cm.location;
-                        color: Backend.gutter-fg;
+                        color: cm.is-dir ? Backend.gutter-fg : Backend.fg;
                         font-size: 10px;
-                        font-weight: 700;
+                        font-weight: cm.is-dir ? 400 : 700;
                         overflow: elide;
                         horizontal-stretch: 1;
                         vertical-alignment: center;
                     }
-                    Text {
+                    if cm.count > 0 : Text {
                         text: cm.count;
                         color: Backend.gutter-fg;
                         font-size: 10px;
@@ -2071,7 +2074,7 @@ component CommitsPanel inherits Rectangle {
                         background: cm-ta.has-hover && cm.path != "" ? Backend.hover : transparent;
                     }
                     HorizontalLayout {
-                        padding-left: 8px;
+                        padding-left: 8px + cm.depth * 10px;
                         padding-right: 6px;
                         padding-top: 5px;
                         padding-bottom: 5px;
