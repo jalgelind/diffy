@@ -20,7 +20,8 @@ struct GuiSettings {
     std::string default_view = "side-by-side";  // "side-by-side" | "unified"
     std::string theme = "theme_default";        // theme file to load (shared with CLI)
     std::string theme_variant = "dark";         // "dark" | "light" | "system"
-    std::string font_family = "monospace";  // generic; the GUI maps it to a real per-OS family
+    std::string font_family = "monospace";  // diff (monospace); GUI maps to a per-OS family
+    std::string ui_font;                     // chrome/sidebar font ("" -> per-OS default, e.g. Segoe UI)
     int64_t font_size = 13;
     bool word_wrap = false;  // off by default so syntax/token colours always show
     bool show_line_numbers = true;

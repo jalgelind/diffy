@@ -176,6 +176,7 @@ export global Backend {
     in property <int> max-cols: 0;  // longest line in chars, for horizontal scroll
 
     in-out property <string> mono-font: "Menlo";
+    in-out property <string> ui-font;   // chrome/sidebar font (per-OS default, e.g. Segoe UI)
     in-out property <int> font-size: 13;
     // Settings panel state + values it edits.
     in-out property <bool> show-settings: false;
@@ -225,6 +226,7 @@ export global Backend {
     callback show-pr-aggregate();  // leave a single-commit view, show the full PR diff
     in-out property <int> tab-width: 4;
     in property <[string]> font-choices;   // curated monospace families (per-OS)
+    in property <[string]> ui-font-choices; // curated UI (sans) families (per-OS)
     in property <[string]> theme-names;     // theme .conf files found on disk
     in-out property <string> theme-name;    // currently applied theme
     in property <color> bg: #1e1e1e;
@@ -2313,10 +2315,26 @@ component SettingsPanel inherits Rectangle {
                 }
             }
 
-            // Font size stepper (tab width moved to the toolbar's diff-options popup).
+            // UI font: the chrome/sidebar family (defaults to the OS UI font).
+            VerticalLayout {
+                spacing: 6px;
+                Text { text: "UI FONT"; color: Backend.gutter-fg; font-size: 11px; }
+                ThemedCombo {
+                    model: Backend.ui-font-choices;
+                    current-value: Backend.ui-font;
+                    selected(v) => { Backend.ui-font = v; }
+                }
+                LineEdit {
+                    placeholder-text: "or type any installed family…";
+                    text: Backend.ui-font;
+                    edited => { Backend.ui-font = self.text; }
+                }
+            }
+
+            // Diff font size stepper (tab width moved to the toolbar's diff-options popup).
             HorizontalLayout {
                 spacing: 8px;
-                Text { text: "Size"; color: Backend.fg; vertical-alignment: center; }
+                Text { text: "Diff size"; color: Backend.fg; vertical-alignment: center; }
                 Button { text: "-"; clicked => { Backend.font-size = max(8, Backend.font-size - 1); } }
                 Text {
                     text: "\{Backend.font-size}";
@@ -2459,6 +2477,9 @@ component BitbucketPanel inherits Rectangle {
 export component AppWindow inherits Window {
     title: "diffy";
     icon: @image-url("icons/app-icon.svg");
+    // Chrome/sidebar text (anything not explicitly monospace) inherits this — a
+    // native UI font (e.g. Segoe UI on Windows) instead of Slint's bundled default.
+    default-font-family: Backend.ui-font;
     // Drive the std-widgets palette (scrollbars etc.) from the active theme's
     // light/darkness so they stop looking dark on a light theme.
     property <bool> is-dark: Backend.dark;

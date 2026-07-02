@@ -80,6 +80,7 @@ diffy::gui_settings_load(GuiSettings& settings) {
     sync_str("gui.theme", settings.theme);
     sync_str("gui.theme_variant", settings.theme_variant);
     sync_str("gui.font_family", settings.font_family);
+    sync_str("gui.ui_font", settings.ui_font);
     sync_int("gui.font_size", settings.font_size);
     sync_bool("gui.word_wrap", settings.word_wrap);
     sync_bool("gui.show_line_numbers", settings.show_line_numbers);
@@ -125,6 +126,7 @@ diffy::gui_settings_save(const GuiSettings& settings) {
     table.set_value_at("gui.theme", Value{settings.theme});
     table.set_value_at("gui.theme_variant", Value{settings.theme_variant});
     table.set_value_at("gui.font_family", Value{settings.font_family});
+    table.set_value_at("gui.ui_font", Value{settings.ui_font});
     table.set_value_at("gui.font_size", Value{static_cast<int>(settings.font_size)});
     table.set_value_at("gui.word_wrap", Value{settings.word_wrap});
     table.set_value_at("gui.show_line_numbers", Value{settings.show_line_numbers});

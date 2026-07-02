@@ -566,6 +566,33 @@ mono_font_choices() {
     return fonts;
 }
 
+// UI (sans/proportional) families for the settings dropdown — the OS-native one
+// first. The empty first entry means "system default".
+const std::vector<std::string>&
+ui_font_choices() {
+    static const std::vector<std::string> fonts = {
+        "",  // system default
+#if defined(_WIN32)
+        "Segoe UI", "Tahoma", "Verdana", "Arial",
+#elif defined(__APPLE__)
+        "SF Pro Text", "Helvetica Neue", "Helvetica",
+#else
+        "Cantarell", "Ubuntu", "Noto Sans", "DejaVu Sans",
+#endif
+    };
+    return fonts;
+}
+
+// The OS-native UI font, used when the user hasn't chosen one.
+const char*
+default_ui_font() {
+#if defined(_WIN32)
+    return "Segoe UI";  // the Windows system UI font
+#else
+    return "";  // macOS/Linux: let Slint use the platform default
+#endif
+}
+
 // Theme names available for the settings dropdown: every <name>.conf in the
 // config directory except the app's own diffy.conf / repos.conf.
 std::vector<std::string>
@@ -938,6 +965,7 @@ main(int argc, char** argv) {
     }
 #endif
     backend.set_mono_font(ss(mono));
+    backend.set_ui_font(ss(settings.ui_font.empty() ? default_ui_font() : settings.ui_font));
     backend.set_font_size(static_cast<int>(settings.font_size));
 
     // Colours come from the same theme .conf the CLI uses ([gui] theme), so the
@@ -976,6 +1004,11 @@ main(int argc, char** argv) {
             fonts->push_back(ss(f));
         }
         backend.set_font_choices(fonts);
+        auto ui_fonts = std::make_shared<slint::VectorModel<slint::SharedString>>();
+        for (const auto& f : ui_font_choices()) {
+            ui_fonts->push_back(ss(f));
+        }
+        backend.set_ui_font_choices(ui_fonts);
         auto themes = std::make_shared<slint::VectorModel<slint::SharedString>>();
         for (const auto& name : list_theme_names()) {
             themes->push_back(ss(name));
@@ -3123,6 +3156,7 @@ main(int argc, char** argv) {
         state.settings.algorithm = options.get_algorithm();
         state.settings.group_by_folder = backend.get_group_by_folder();
         state.settings.font_family = str(backend.get_mono_font());
+        state.settings.ui_font = str(backend.get_ui_font());
         state.settings.font_size = backend.get_font_size();
         state.settings.tab_width = backend.get_tab_width();
         state.settings.theme = str(backend.get_theme_name());
