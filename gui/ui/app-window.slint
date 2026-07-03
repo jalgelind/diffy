@@ -3103,24 +3103,6 @@ export component AppWindow inherits Window {
                                 : (files-ta.has-hover ? Backend.accent : Backend.fg);
                         }
                     }
-                    // Toggle the overview fly-out (PR description / commit message).
-                    if Backend.overview-visible : Rectangle {
-                        width: 30px;
-                        border-radius: 4px;
-                        background: Backend.overview-open
-                            ? Backend.selection
-                            : (ovtgl-ta.has-hover ? Backend.hover : transparent);
-                        ovtgl-ta := TouchArea {
-                            clicked => { Backend.overview-open = !Backend.overview-open; }
-                        }
-                        Text {
-                            text: "Desc";
-                            color: Backend.overview-open ? Backend.accent : Backend.gutter-fg;
-                            font-size: Type.meta;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
                     Text {
                         text: Backend.current-file == "" ? "No file selected" : Backend.current-file;
                         color: Backend.current-file == "" ? Backend.gutter-fg : Backend.fg;
@@ -3194,98 +3176,43 @@ export component AppWindow inherits Window {
                 // Diff column: an optional overview header (PR description in Full
                 // diff, or the commit message in a commit view) above the diff.
                 VerticalLayout {
-                if Backend.overview-visible && Backend.overview-open : Rectangle {
+                // Compact PR/commit header bar — always shown when there's overview
+                // content. The chevron floats the full description over the diff.
+                if Backend.overview-visible : Rectangle {
+                    height: 30px;
                     background: Backend.panel-bg;
                     Rectangle { y: parent.height - 1px; height: 1px; background: Backend.divider; }
-                    VerticalLayout {
-                        padding: 8px;
-                        spacing: 5px;
-                        Rectangle {
-                            height: 20px;
-                            ovhdr := TouchArea {
-                                clicked => { Backend.overview-open = false; }  // click header to dismiss
-                            }
-                            HorizontalLayout {
-                                spacing: 6px;
-                                VerticalLayout {
-                                    alignment: center;
-                                    Icon {
-                                        size: 11px;
-                                        source: @image-url("icons/chevron-down.svg");
-                                        rotation: Backend.overview-collapsed ? -90deg : 0deg;
-                                        colorize: ovhdr.has-hover ? Backend.accent : Backend.gutter-fg;
-                                    }
-                                }
-                                Text {
-                                    text: Backend.overview-title;
-                                    color: Backend.fg;
-                                    font-size: Type.body;
-                                    font-weight: 700;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                }
-                                Text {
-                                    text: Backend.overview-subtitle;
-                                    color: Backend.gutter-fg;
-                                    font-size: Type.label;
-                                    vertical-alignment: center;
-                                    horizontal-stretch: 1;
-                                    overflow: elide;
-                                }
-                            }
-                        }
-                        if Backend.overview-body != "" : ov-scroll := ScrollView {
-                            height: diff-area.overview-body-h;
-                            // The viewport must be as tall as the (wrapped) text for
-                            // vertical scrolling; otherwise it defaults to the view
-                            // height and the text is clipped instead of scrolled.
-                            viewport-width: ov-scroll.width - 14px;
-                            viewport-height: ov-body.preferred-height;
-                            // Read-only TextInput (not Text) so the description /
-                            // commit message can be selected and copied (Ctrl/Cmd+C).
-                            ov-body := TextInput {
-                                width: ov-scroll.width - 14px;
-                                text: Backend.overview-body;
-                                color: Backend.fg;
-                                font-size: Type.body;
-                                wrap: word-wrap;
-                                single-line: false;
-                                read-only: true;
-                            }
-                        }
+                    ovhdr := TouchArea {
+                        clicked => { Backend.overview-open = !Backend.overview-open; }
                     }
-                    // Drag the bottom edge to resize the overview body. Anchored to
-                    // the band's bottom (a bare child would sit at y:0, over the header).
-                    if !Backend.overview-collapsed && Backend.overview-body != "" : Rectangle {
-                        height: 7px;
-                        y: parent.height - self.height;
-                        property <length> start-h;
-                        property <length> start-y;
-                        ovresize := TouchArea {
-                            mouse-cursor: ns-resize;
-                            pointer-event(e) => {
-                                if (e.kind == PointerEventKind.down) {
-                                    parent.start-h = diff-area.overview-body-h;
-                                    parent.start-y = self.absolute-position.y + self.mouse-y;
-                                }
-                            }
-                            moved => {
-                                if (self.pressed) {
-                                    diff-area.overview-body-h = clamp(
-                                        parent.start-h + self.absolute-position.y + self.mouse-y
-                                            - parent.start-y,
-                                        40px, 480px);
-                                }
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 6px;
+                        VerticalLayout {
+                            alignment: center;
+                            Icon {
+                                size: 11px;
+                                source: @image-url("icons/chevron-down.svg");
+                                rotation: Backend.overview-open ? 0deg : -90deg;
+                                colorize: ovhdr.has-hover ? Backend.accent : Backend.gutter-fg;
                             }
                         }
-                        Rectangle {
-                            y: (parent.height - self.height) / 2;
-                            height: 3px;
-                            width: 40px;
-                            x: (parent.width - self.width) / 2;
-                            border-radius: 1px;
-                            background: ovresize.pressed || ovresize.has-hover
-                                        ? Backend.accent : Backend.divider;
+                        Text {
+                            text: Backend.overview-title;
+                            color: Backend.fg;
+                            font-size: Type.body;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: Backend.overview-subtitle;
+                            color: Backend.gutter-fg;
+                            font-size: Type.label;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            overflow: elide;
                         }
                     }
                 }
@@ -3383,6 +3310,60 @@ export component AppWindow inherits Window {
                             clicked => {
                                 Backend.show-find = false;
                                 Backend.find-close();
+                            }
+                        }
+                    }
+                }
+
+                // Overview fly-out: the full description/message floats over the top
+                // of the diff (doesn't push it) when the header chevron is expanded.
+                if Backend.overview-visible && Backend.overview-open && Backend.overview-body != ""
+                        : Rectangle {
+                    y: 0;
+                    x: 0;
+                    width: 100%;
+                    height: min(parent.height - 8px, ovfly.preferred-height);
+                    background: Backend.panel-bg;
+                    border-width: 1px;
+                    border-color: Backend.divider;
+                    ovfly := VerticalLayout {
+                        padding: 10px;
+                        spacing: 6px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Text {
+                                text: Backend.overview-title;
+                                color: Backend.fg;
+                                font-size: Type.body;
+                                font-weight: 700;
+                                horizontal-stretch: 1;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            ovclose := TouchArea {
+                                width: 20px;
+                                clicked => { Backend.overview-open = false; }
+                                Text {
+                                    text: "✕";
+                                    color: ovclose.has-hover ? Backend.accent : Backend.gutter-fg;
+                                    font-size: Type.body;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                        ovf-scroll := ScrollView {
+                            height: min(320px, ovf-body.preferred-height);
+                            viewport-width: ovf-scroll.width - 14px;
+                            viewport-height: ovf-body.preferred-height;
+                            ovf-body := TextInput {
+                                width: ovf-scroll.width - 14px;
+                                text: Backend.overview-body;
+                                color: Backend.fg;
+                                font-size: Type.body;
+                                wrap: word-wrap;
+                                single-line: false;
+                                read-only: true;
                             }
                         }
                     }
