@@ -396,37 +396,31 @@ TEST_CASE("escaped strings") {
     }
 }
 
-TEST_CASE("triple-quoted multiline strings") {
-    SUBCASE("''' raw ''' captures newlines and lone quotes, not escaped") {
-        auto line = "'''a\nb'c'''";  // '''a<newline>b'c'''
+TEST_CASE("adjacent quoted literals (multi-line strings)") {
+    // Multi-line string values are written as one quoted literal per line; the
+    // tokenizer emits each as its own String token and flags the continuation as
+    // first-on-line, which the parser uses to concatenate them with '\n'.
+    SUBCASE("two literals on separate lines are two string tokens") {
+        auto line = "'first'\n'second'";
         ParseResult result;
         ParseOptions options;
         tokenize(line, options, result);
         REQUIRE(result.ok);
-        auto a = result.tokens;
-        REQUIRE(a.size() == 3);  // TripleSingle, String, TripleSingle
-        REQUIRE((a[0].id & TokenId_TripleSingle) == TokenId_TripleSingle);
-        REQUIRE((a[1].id & TokenId_String) == TokenId_String);
-        REQUIRE((a[1].id & TokenId_EscapedString) != TokenId_EscapedString);  // raw
-        REQUIRE(a[1].str_from(line) == "a\nb'c");
-        REQUIRE((a[2].id & TokenId_TripleSingle) == TokenId_TripleSingle);
+        std::vector<Token> strings;
+        for (auto& t : result.tokens) {
+            if (t.id & TokenId_String) {
+                strings.push_back(t);
+            }
+        }
+        REQUIRE(strings.size() == 2);
+        REQUIRE(strings[0].str_from(line) == "first");
+        REQUIRE(strings[1].str_from(line) == "second");
+        // The continuation begins its own line.
+        REQUIRE((strings[1].id & TokenId_FirstOnLine) == TokenId_FirstOnLine);
     }
 
-    SUBCASE("\"\"\" escaped \"\"\" spans newlines and is tagged escaped") {
-        auto line = "\"\"\"a\nb\\\"c\"\"\"";  // """a<newline>b\"c"""
-        ParseResult result;
-        ParseOptions options;
-        tokenize(line, options, result);
-        REQUIRE(result.ok);
-        auto a = result.tokens;
-        REQUIRE(a.size() == 3);
-        REQUIRE((a[0].id & TokenId_TripleDouble) == TokenId_TripleDouble);
-        REQUIRE((a[1].id & TokenId_EscapedString) == TokenId_EscapedString);
-        REQUIRE(a[1].str_from(line) == "a\nb\\\"c");  // raw text keeps the backslash
-    }
-
-    SUBCASE("an unterminated triple string is an error") {
-        auto line = "'''abc\nno end";
+    SUBCASE("a newline inside a single-quoted string is an error") {
+        auto line = "'abc\ndef'";
         ParseResult result;
         ParseOptions options;
         tokenize(line, options, result);

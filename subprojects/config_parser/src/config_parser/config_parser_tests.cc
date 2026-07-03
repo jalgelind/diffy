@@ -620,6 +620,60 @@ TEST_CASE("value-conversion") {
 
 // -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 
+TEST_CASE("multi-line string concatenation") {
+    // A value written as adjacent quoted literals (one per line) parses as a
+    // single string with '\n' between the lines.
+    SUBCASE("aligned literals in a section join with newlines") {
+        const char* text =
+            "[s]\n"
+            "    k = 'first line'\n"
+            "        'second line'\n"
+            "        'third'\n";
+        Value root;
+        ParseResult r;
+        REQUIRE(cfg_parse_value_tree(text, r, root));
+        REQUIRE(r.is_ok());
+        auto v = root.lookup_value_by_path("s.k");
+        REQUIRE(v);
+        REQUIRE(v->get().is_string());
+        REQUIRE_EQ(v->get().as_string(), "first line\nsecond line\nthird");
+    }
+
+    SUBCASE("continuation lines mix raw and escaped quoting") {
+        const char* text =
+            "[s]\n"
+            "    k = 'plain'\n"
+            "        \"has \\\"quote\\\" and \\ttab\"\n";
+        Value root;
+        ParseResult r;
+        REQUIRE(cfg_parse_value_tree(text, r, root));
+        REQUIRE(r.is_ok());
+        REQUIRE_EQ(root.lookup_value_by_path("s.k")->get().as_string(),
+                   "plain\nhas \"quote\" and \ttab");
+    }
+
+    SUBCASE("concatenation works inside an inline table nested in an array") {
+        const char* text =
+            "{ arr = [ { d = 'a'\n"
+            "                'b' } ] }";
+        Value root;
+        ParseResult r;
+        REQUIRE(cfg_parse_value_tree(text, r, root));
+        REQUIRE(r.is_ok());
+        REQUIRE_EQ(root["arr"][0]["d"].as_string(), "a\nb");
+    }
+
+    SUBCASE("two literals on the same line do NOT concatenate (parse error)") {
+        // 'b' is not first-on-line, so it isn't a continuation; two adjacent
+        // values with no separator is a parse error.
+        Value root;
+        ParseResult r;
+        REQUIRE(cfg_parse_value_tree("{ k = 'a' 'b' }", r, root) == false);
+    }
+}
+
+// -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+
 TEST_CASE("value-lookup") {
     SUBCASE("empty root") {
         Value root;

@@ -8,29 +8,60 @@ using namespace diffy;
 
 namespace internal {
 
-// Emit a string value: a raw 'single'-quoted literal when it needs no escaping
-// (keeps existing configs byte-identical), otherwise an escaped "double"-quoted
-// string. A literal can't contain a single-quote, newline or carriage return.
+// Emit a single line of a string value: a raw 'single'-quoted literal when it
+// needs no escaping (keeps existing configs byte-identical), otherwise an escaped
+// "double"-quoted string. A literal can't contain a single-quote or carriage
+// return (the caller has already split on newlines).
 static std::string
-serialize_string(const std::string& s) {
-    bool has_newline = false;
+quote_line(const std::string& line) {
     bool needs_escape = false;
-    for (char c : s) {
-        if (c == '\n' || c == '\r') {
-            has_newline = true;
-        }
-        if (c == '\'' || c == '\n' || c == '\r') {
+    for (char c : line) {
+        if (c == '\'' || c == '\r') {
             needs_escape = true;
+            break;
         }
-    }
-    if (has_newline) {
-        // Multiline: a readable """triple""" string keeping real line breaks.
-        return "\"\"\"" + diffy::config_tokenizer::escape_multiline(s) + "\"\"\"";
     }
     if (!needs_escape) {
-        return "'" + s + "'";
+        return "'" + line + "'";
     }
-    return "\"" + diffy::config_tokenizer::escape_string(s) + "\"";
+    return "\"" + diffy::config_tokenizer::escape_string(line) + "\"";
+}
+
+// Emit a string value. A single-line value is one quoted literal. A value with
+// newlines is written as one quoted literal per line, each continuation aligned
+// under the first line's opening quote (at column `align_col`) and joined by real
+// newlines — the parser concatenates such adjacent literals back with '\n'.
+static std::string
+serialize_string(const std::string& s, std::size_t align_col) {
+    if (s.find('\n') == std::string::npos) {
+        return quote_line(s);
+    }
+    const std::string pad(align_col, ' ');
+    std::string out;
+    std::size_t start = 0;
+    bool first = true;
+    while (true) {
+        auto nl = s.find('\n', start);
+        std::string line = s.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
+        if (!first) {
+            out += "\n" + pad;
+        }
+        out += quote_line(line);
+        first = false;
+        if (nl == std::string::npos) {
+            break;
+        }
+        start = nl + 1;
+    }
+    return out;
+}
+
+// Current column in `output` (chars since the last newline) — where the next
+// emitted token will start.
+static std::size_t
+current_column(const std::string& output) {
+    auto nl = output.rfind('\n');
+    return output.size() - (nl == std::string::npos ? 0 : nl + 1);
 }
 
 static std::string
@@ -131,7 +162,7 @@ serialize_obj(Value& value, int depth, std::string& output, bool is_last_element
             output += " " + comment + "\n";
         }
     } else if (value.is_string()) {
-        output += serialize_string(value.as_string());
+        output += serialize_string(value.as_string(), current_column(output));
         if (!is_last_element)
             output += ", ";
         for (auto& comment : value.value_comments) {

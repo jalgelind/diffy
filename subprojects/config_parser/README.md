@@ -12,8 +12,8 @@ the user's edits.
 [section]
     name    = "escaped\nstring"   # "double" quotes: \\ \" \n \r \t
     path    = 'C:\raw\literal'    # 'single' quotes: raw, no escapes
-    blurb   = """multi-line
-                 escaped"""       # '''raw''' / """escaped""" span newlines
+    blurb   = 'first line'        # multi-line: one quoted literal per line,
+              'second line'       #   aligned; parsed as "first line\nsecond line"
     count   = 42                  # int
     ratio   = 0.5                 # float
     enabled = true                # bool: true/false/on/off
@@ -24,10 +24,13 @@ the user's edits.
 **Strings.** `'single'` = raw literal (verbatim, no escapes — safe for Windows
 paths). `"double"` = escaped: `\\ \" \n \r \t`. The serializer emits a raw literal
 when a value needs no escaping and switches to a `"double"` string when it contains
-a quote, backslash or newline — so existing files stay byte-identical and arbitrary
-text still round-trips. Multi-line strings use `'''raw'''` / `"""escaped"""`
-(spanning real newlines); the serializer emits `"""…"""` for any value containing
-a line break.
+a single-quote or carriage return — so existing files stay byte-identical and
+arbitrary text still round-trips.
+
+**Multi-line strings** are written as one quoted literal per line, each aligned
+under the first line's opening quote; the parser concatenates adjacent quoted
+literals (each beginning its own line) with `\n`. Keys are always bare
+identifiers, never quoted, so a leading quote is unambiguously a value.
 
 ## API
 
@@ -53,7 +56,7 @@ std::string out = cfg_serialize(root);  // sections; cfg_serialize_obj for an ob
 
 - Some comments with no logical anchor (trailing, or right of the last value in a
   block) are dropped on re-serialize.
-- Line numbers in error messages after a multi-line string may be off (newlines
-  inside the string aren't counted).
+- A comment placed between the lines of a multi-line string breaks the
+  concatenation (put comments after the value, not inside it).
 
 Tests: `*_tests.cc` (doctest), built into the top-level `diffy-test` target.

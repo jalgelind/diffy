@@ -172,14 +172,33 @@ TEST_CASE("string escaping") {
     }
     SUBCASE("roundtrip empty") { REQUIRE_EQ(roundtrip(""), ""); }
 
-    SUBCASE("multiline strings serialize as triple-quoted with real newlines") {
+    SUBCASE("multiline strings serialize as adjacent quoted literals, not triple quotes") {
         const std::string s = "first line\nsecond \"line\"\nthird";
         diffy::Value v;
         v["k"] = diffy::Value{s};
         const std::string out = cfg_serialize_obj(v);
-        REQUIRE(out.find("\"\"\"") != std::string::npos);  // used a triple-quoted string
-        REQUIRE(out.find("\\n") == std::string::npos);      // real newlines, not \n escapes
+        REQUIRE(out.find("\"\"\"") == std::string::npos);       // no triple-quoted strings
+        REQUIRE(out.find("'first line'") != std::string::npos);  // one quoted literal per line
+        REQUIRE(out.find("\\n") == std::string::npos);           // real newlines, not \n escapes
         REQUIRE_EQ(roundtrip(s), s);
+    }
+
+    SUBCASE("multiline continuation lines align under the opening quote") {
+        diffy::Value v;
+        v["k"] = diffy::Value{std::string("a\nb")};
+        const std::string out = cfg_serialize_obj(v);
+        const auto q1 = out.find("'a'");
+        REQUIRE(q1 != std::string::npos);
+        const auto nl = out.find('\n', q1);
+        REQUIRE(nl != std::string::npos);
+        // The first quote's column, and the padding before the continuation quote.
+        const std::size_t first_col = q1 - (out.rfind('\n', q1) + 1);
+        std::size_t pad = 0;
+        while (out[nl + 1 + pad] == ' ') {
+            pad++;
+        }
+        REQUIRE_EQ(pad, first_col);                         // aligned under the opening quote
+        REQUIRE_EQ(out.compare(nl + 1 + pad, 3, "'b'"), 0);  // then the next line's literal
     }
 
     SUBCASE("double-quote-only strings stay single-quoted literals") {
