@@ -3302,17 +3302,6 @@ main(int argc, char** argv) {
 
     backend.on_refresh_prs([&]() { refresh_prs(); });
 
-    // Pick which configured backend's PRs to show (sidebar provider chips). Keeps the
-    // selection for this repo (refresh_prs only re-defaults when the repo changes).
-    backend.on_select_provider([&](slint::SharedString prov) {
-        const std::string pid = str(prov);
-        if (pid == state.provider_id) {
-            return;
-        }
-        state.provider_id = pid;
-        backend.set_active_provider(prov);
-        refresh_prs();
-    });
     backend.on_load_more_prs([&]() {
         // Fetch the next page and append to the cached list (lazy pagination).
         if (state.loading_more_prs || state.pr_next_cursor.empty() || !state.review_cred() ||

@@ -178,10 +178,12 @@ export global Backend {
     in property <int> net-prefetch: 0;
     in property <string> net-label;
 
-    // Diff overview header: PR description (Full diff) or commit message (commit
-    // view). Shown above the diff when there's content; user-collapsible.
-    in property <bool> overview-visible: false;
-    in-out property <bool> overview-collapsed: false;
+    // Diff overview: PR description (Full diff) or commit message (commit view).
+    // Shown as a dismissible fly-out over the top of the diff (toggled from the file
+    // header) rather than an always-on band, so it never eats diff space.
+    in property <bool> overview-visible: false;   // there IS overview content
+    in-out property <bool> overview-open: false;  // the fly-out is showing
+    in-out property <bool> overview-collapsed: false;  // (legacy; unused by the fly-out)
     in property <string> overview-title;
     in property <string> overview-subtitle;
     in property <string> overview-body;
@@ -225,7 +227,6 @@ export global Backend {
     // The active review backend — which provider's PRs the sidebar shows. Defaults
     // to the repo's detected host; the sidebar provider chips select/override it.
     in property <string> active-provider: "";
-    callback select-provider(string /* provider */);
     // Inject text into the focused field via a synthetic (modifier-free) key
     // event — a workaround for the upstream Slint/winit stuck-modifier bug that
     // drops AltGr characters like "@" (Slint #6263). See main.cpp.
@@ -251,6 +252,7 @@ export global Backend {
     in property <[PrReviewer]> pr-reviewers;  // the open PR's reviewers (Reviewers shelf)
     in property <bool> pr-approved-by-me;      // the connected account has approved this PR
     in property <bool> pr-approving;           // approve/unapprove request in flight
+    in-out property <bool> approve-confirm-open: false;  // approve confirm dialog
     callback approve-pr();
     callback unapprove-pr();
     // Request-changes: only offered where the backend has an explicit
@@ -979,6 +981,27 @@ component BarToggle inherits Rectangle {
 component Divider inherits Rectangle {
     width: 1px;
     background: Backend.divider;
+}
+
+// A single hoverable menu row (used by the PR review-actions popup).
+component MenuRow inherits Rectangle {
+    in property <string> label;
+    in property <color> tint: Backend.fg;
+    callback clicked();
+    width: 172px;
+    height: 28px;
+    border-radius: 4px;
+    background: mr-ta.has-hover ? Backend.hover : transparent;
+    mr-ta := TouchArea { clicked => { root.clicked(); } }
+    HorizontalLayout {
+        padding-left: 10px;
+        Text {
+            text: root.label;
+            color: root.tint;
+            font-size: Type.body;
+            vertical-alignment: center;
+        }
+    }
 }
 
 // A provider selector chip for the right-sidebar toolbar: the backend's brand icon,
@@ -1906,102 +1929,41 @@ component CommitsPanel inherits Rectangle {
         padding: 8px;
         spacing: 4px;
 
-        // Provider toolbar (browse view only): pick which configured backend's PRs
-        // to show (click a chip); click the active chip to configure it; "+" adds an
-        // unconfigured provider.
-        if !Backend.pr-open : HorizontalLayout {
+        // Provider (browse view only): the one backend that owns this repo's origin.
+        // Configured -> a chip that opens its config; not yet -> a "Connect" button.
+        // There's exactly one provider per repo, so there's nothing to "select".
+        if !Backend.pr-open && Backend.active-provider != "" : provbar := HorizontalLayout {
+            property <bool> connected: Backend.active-provider == "github"
+                ? Backend.github-connected : Backend.bitbucket-connected;
+            property <string> pname: Backend.active-provider == "github" ? "GitHub" : "Bitbucket";
+            property <image> picon: Backend.active-provider == "github"
+                ? @image-url("icons/github.svg") : @image-url("icons/bitbucket.svg");
             spacing: 4px;
             alignment: start;
-            if Backend.github-connected : ProviderChip {
-                icon: @image-url("icons/github.svg");
-                name: "GitHub";
-                active: Backend.active-provider == "github";
-                clicked => {
-                    if (Backend.active-provider == "github") { Backend.prepare-connect("github"); }
-                    else { Backend.select-provider("github"); }
-                }
+            if provbar.connected : ProviderChip {
+                icon: provbar.picon;
+                name: provbar.pname;
+                active: true;
+                clicked => { Backend.prepare-connect(Backend.active-provider); }
             }
-            if Backend.bitbucket-connected : ProviderChip {
-                icon: @image-url("icons/bitbucket.svg");
-                name: "Bitbucket";
-                active: Backend.active-provider == "bitbucket-cloud";
-                clicked => {
-                    if (Backend.active-provider == "bitbucket-cloud") {
-                        Backend.prepare-connect("bitbucket-cloud");
-                    } else {
-                        Backend.select-provider("bitbucket-cloud");
-                    }
-                }
-            }
-            // "+" — add a provider that isn't configured yet.
-            if !Backend.github-connected || !Backend.bitbucket-connected : Rectangle {
-                width: 26px;
-                height: 26px;
+            if !provbar.connected : Rectangle {
+                height: 28px;
                 border-radius: 5px;
                 border-width: 1px;
-                border-color: Backend.divider;
-                background: add-ta.has-hover ? Backend.hover : transparent;
-                add-ta := TouchArea { clicked => { addmenu.show(); } }
-                Text {
-                    text: "+";
-                    color: Backend.gutter-fg;
-                    font-size: Type.body;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-                addmenu := PopupWindow {
-                    x: 0;
-                    y: parent.height + 4px;
-                    Rectangle {
-                        background: Backend.panel-bg;
-                        border-width: 1px;
-                        border-color: Backend.divider;
-                        border-radius: 6px;
-                        VerticalLayout {
-                            padding: 4px;
-                            spacing: 2px;
-                            if !Backend.github-connected : Rectangle {
-                                width: 150px;
-                                height: 28px;
-                                border-radius: 4px;
-                                background: gh-add.has-hover ? Backend.hover : transparent;
-                                gh-add := TouchArea {
-                                    clicked => { addmenu.close(); Backend.prepare-connect("github"); }
-                                }
-                                HorizontalLayout {
-                                    padding-left: 8px;
-                                    spacing: 8px;
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Image { width: 14px; height: 14px; image-fit: contain;
-                                                source: @image-url("icons/github.svg"); colorize: Backend.fg; }
-                                    }
-                                    Text { text: "Add GitHub"; color: Backend.fg; font-size: Type.body;
-                                           vertical-alignment: center; }
-                                }
-                            }
-                            if !Backend.bitbucket-connected : Rectangle {
-                                width: 150px;
-                                height: 28px;
-                                border-radius: 4px;
-                                background: bb-add.has-hover ? Backend.hover : transparent;
-                                bb-add := TouchArea {
-                                    clicked => { addmenu.close(); Backend.prepare-connect("bitbucket-cloud"); }
-                                }
-                                HorizontalLayout {
-                                    padding-left: 8px;
-                                    spacing: 8px;
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Image { width: 14px; height: 14px; image-fit: contain;
-                                                source: @image-url("icons/bitbucket.svg"); colorize: Backend.fg; }
-                                    }
-                                    Text { text: "Add Bitbucket"; color: Backend.fg; font-size: Type.body;
-                                           vertical-alignment: center; }
-                                }
-                            }
-                        }
+                border-color: Backend.accent;
+                background: conn-ta.has-hover ? Backend.selection : Backend.panel-bg;
+                conn-ta := TouchArea { clicked => { Backend.prepare-connect(Backend.active-provider); } }
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 6px;
+                    VerticalLayout {
+                        alignment: center;
+                        Image { width: 14px; height: 14px; image-fit: contain;
+                                source: provbar.picon; colorize: Backend.fg; }
                     }
+                    Text { text: "Connect " + provbar.pname + "…"; color: Backend.fg;
+                           font-size: Type.label; vertical-alignment: center; }
                 }
             }
         }
@@ -2220,92 +2182,82 @@ component CommitsPanel inherits Rectangle {
         }
         if Backend.pr-open && Backend.pr-reviewers.length > 0 && !root.sh-reviewers-collapsed
                 : VerticalLayout {
-            // Approve / remove-approval toggle for the connected account.
+            // PR write actions live behind a "Review ▾" menu so a stray click can't
+            // approve, request-changes, or merge by accident — each is a deliberate
+            // menu pick. The button just reflects whether you've approved.
             Rectangle {
-                height: 30px;
-                appr-ta := TouchArea {
-                    clicked => {
-                        if (!Backend.pr-approving) {
-                            if (Backend.pr-approved-by-me) { Backend.unapprove-pr(); }
-                            else { Backend.approve-pr(); }
-                        }
-                    }
-                }
-                HorizontalLayout {
-                    padding: 4px;
-                    Rectangle {
-                        border-radius: 5px;
-                        background: Backend.pr-approved-by-me
-                            ? Backend.selection
-                            : (appr-ta.has-hover ? Backend.selection : Backend.accent);
-                        HorizontalLayout {
-                            alignment: center;
-                            Text {
-                                text: Backend.pr-approving
-                                    ? "Working…"
-                                    : (Backend.pr-approved-by-me ? "Approved — click to undo"
-                                                                 : "Approve");
-                                color: Backend.pr-approved-by-me ? Backend.fg : Backend.on-accent;
-                                font-size: Type.label;
-                                font-weight: 600;
-                                vertical-alignment: center;
-                            }
-                        }
-                    }
-                }
-            }
-            // Request changes — only where the backend supports the state.
-            if Backend.pr-can-request-changes : Rectangle {
-                height: 30px;
-                rc-ta := TouchArea {
-                    clicked => {
-                        if (!Backend.pr-requesting-changes) { Backend.request-changes-pr(); }
-                    }
-                }
+                height: 34px;
                 HorizontalLayout {
                     padding: 4px;
                     Rectangle {
                         border-radius: 5px;
                         border-width: 1px;
-                        border-color: Backend.divider;
-                        background: rc-ta.has-hover ? Backend.selection : Backend.panel-bg;
+                        border-color: Backend.pr-approved-by-me ? #59a14f : Backend.divider;
+                        background: ra-ta.has-hover ? Backend.selection : Backend.panel-bg;
+                        ra-ta := TouchArea { clicked => { reviewpop.show(); } }
                         HorizontalLayout {
                             alignment: center;
+                            spacing: 6px;
                             Text {
-                                text: Backend.pr-requesting-changes ? "Working…" : "Request changes";
-                                color: Backend.fg;
+                                text: (Backend.pr-approving || Backend.pr-requesting-changes
+                                       || Backend.pr-merging)
+                                    ? "Working…"
+                                    : (Backend.pr-approved-by-me ? "Approved ✓" : "Review");
+                                color: Backend.pr-approved-by-me ? #59a14f : Backend.fg;
                                 font-size: Type.label;
                                 font-weight: 600;
                                 vertical-alignment: center;
                             }
-                        }
-                    }
-                }
-            }
-            // Merge — opens the confirm + strategy-pick dialog (write-safety).
-            if Backend.pr-can-merge : Rectangle {
-                height: 30px;
-                mg-ta := TouchArea {
-                    clicked => {
-                        if (!Backend.pr-merging) {
-                            Backend.merge-strategy-index = 0;
-                            Backend.merge-dialog-open = true;
-                        }
-                    }
-                }
-                HorizontalLayout {
-                    padding: 4px;
-                    Rectangle {
-                        border-radius: 5px;
-                        background: mg-ta.has-hover ? Backend.selection : Backend.accent;
-                        HorizontalLayout {
-                            alignment: center;
                             Text {
-                                text: Backend.pr-merging ? "Merging…" : "Merge";
-                                color: Backend.on-accent;
+                                text: "▾";
+                                color: Backend.gutter-fg;
                                 font-size: Type.label;
-                                font-weight: 600;
                                 vertical-alignment: center;
+                            }
+                        }
+                        reviewpop := PopupWindow {
+                            x: 0;
+                            y: parent.height + 4px;
+                            Rectangle {
+                                background: Backend.panel-bg;
+                                border-width: 1px;
+                                border-color: Backend.divider;
+                                border-radius: 6px;
+                                VerticalLayout {
+                                    padding: 4px;
+                                    spacing: 2px;
+                                    MenuRow {
+                                        label: Backend.pr-approved-by-me ? "Remove approval" : "Approve";
+                                        clicked => {
+                                            reviewpop.close();
+                                            if (Backend.pr-approved-by-me) {
+                                                if (!Backend.pr-approving) { Backend.unapprove-pr(); }
+                                            } else {
+                                                Backend.approve-confirm-open = true;  // confirm first
+                                            }
+                                        }
+                                    }
+                                    if Backend.pr-can-request-changes : MenuRow {
+                                        label: "Request changes";
+                                        clicked => {
+                                            reviewpop.close();
+                                            if (!Backend.pr-requesting-changes) {
+                                                Backend.request-changes-pr();
+                                            }
+                                        }
+                                    }
+                                    if Backend.pr-can-merge : MenuRow {
+                                        label: "Merge…";
+                                        tint: Backend.accent;
+                                        clicked => {
+                                            reviewpop.close();
+                                            if (!Backend.pr-merging) {
+                                                Backend.merge-strategy-index = 0;
+                                                Backend.merge-dialog-open = true;
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -3151,6 +3103,24 @@ export component AppWindow inherits Window {
                                 : (files-ta.has-hover ? Backend.accent : Backend.fg);
                         }
                     }
+                    // Toggle the overview fly-out (PR description / commit message).
+                    if Backend.overview-visible : Rectangle {
+                        width: 30px;
+                        border-radius: 4px;
+                        background: Backend.overview-open
+                            ? Backend.selection
+                            : (ovtgl-ta.has-hover ? Backend.hover : transparent);
+                        ovtgl-ta := TouchArea {
+                            clicked => { Backend.overview-open = !Backend.overview-open; }
+                        }
+                        Text {
+                            text: "Desc";
+                            color: Backend.overview-open ? Backend.accent : Backend.gutter-fg;
+                            font-size: Type.meta;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
                     Text {
                         text: Backend.current-file == "" ? "No file selected" : Backend.current-file;
                         color: Backend.current-file == "" ? Backend.gutter-fg : Backend.fg;
@@ -3224,7 +3194,7 @@ export component AppWindow inherits Window {
                 // Diff column: an optional overview header (PR description in Full
                 // diff, or the commit message in a commit view) above the diff.
                 VerticalLayout {
-                if Backend.overview-visible : Rectangle {
+                if Backend.overview-visible && Backend.overview-open : Rectangle {
                     background: Backend.panel-bg;
                     Rectangle { y: parent.height - 1px; height: 1px; background: Backend.divider; }
                     VerticalLayout {
@@ -3233,7 +3203,7 @@ export component AppWindow inherits Window {
                         Rectangle {
                             height: 20px;
                             ovhdr := TouchArea {
-                                clicked => { Backend.overview-collapsed = !Backend.overview-collapsed; }
+                                clicked => { Backend.overview-open = false; }  // click header to dismiss
                             }
                             HorizontalLayout {
                                 spacing: 6px;
@@ -3264,7 +3234,7 @@ export component AppWindow inherits Window {
                                 }
                             }
                         }
-                        if !Backend.overview-collapsed && Backend.overview-body != "" : ov-scroll := ScrollView {
+                        if Backend.overview-body != "" : ov-scroll := ScrollView {
                             height: diff-area.overview-body-h;
                             // The viewport must be as tall as the (wrapped) text for
                             // vertical scrolling; otherwise it defaults to the view
@@ -3766,6 +3736,51 @@ export component AppWindow inherits Window {
     // Settings overlay sits above everything.
     SettingsPanel {}
     ConnectPanel {}
+
+    // Approve confirmation (outward-facing — always confirm; merge has its own).
+    if Backend.approve-confirm-open : Rectangle {
+        background: #00000073;
+        ac-bg := TouchArea { clicked => { Backend.approve-confirm-open = false; } }
+        Rectangle {
+            x: parent.width / 2 - self.width / 2;
+            y: parent.height / 2 - self.height / 2;
+            width: min(380px, parent.width - 24px);
+            height: ac-col.preferred-height;
+            background: Backend.panel-bg;
+            border-width: 1px;
+            border-color: Backend.divider;
+            border-radius: 8px;
+            TouchArea {}  // swallow clicks inside the card
+            ac-col := VerticalLayout {
+                padding: 16px;
+                spacing: 10px;
+                Text {
+                    text: "Approve this pull request?";
+                    color: Backend.fg;
+                    font-size: Type.title;
+                    font-weight: 700;
+                }
+                Text {
+                    text: "This submits your approval to the provider.";
+                    color: Backend.gutter-fg;
+                    font-size: Type.label;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+                    Button { text: "Cancel"; clicked => { Backend.approve-confirm-open = false; } }
+                    Button {
+                        text: "Approve";
+                        clicked => {
+                            if (!Backend.pr-approving) { Backend.approve-pr(); }
+                            Backend.approve-confirm-open = false;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Single toolbar tooltip overlay: positioned from the hovered button's
     // window-absolute position (published to Backend.tooltip-*). A plain Rectangle
