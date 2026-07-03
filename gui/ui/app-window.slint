@@ -893,21 +893,26 @@ component SegToggle inherits Rectangle {
     TouchArea { clicked => { root.clicked(); } }
 }
 
-// A compact toolbar toggle: an icon over a tiny caption, tinted when active.
+// A compact toolbar button: just an icon (tinted + pill-filled when active), with
+// its label shown as a hover tooltip rather than an always-on caption.
 component BarToggle inherits Rectangle {
     in property <image> icon;
-    in property <string> caption;
+    in property <string> caption;  // shown on hover as a tooltip
     in property <bool> active;
     callback clicked();
-    width: 42px;
-    // Active toggles get a filled pill so on/off reads at a glance, not just a tint.
+    width: 34px;
     border-radius: 5px;
     background: root.active ? Backend.selection : (ta.has-hover ? Backend.hover : transparent);
-    ta := TouchArea { clicked => { root.clicked(); } }
-    VerticalLayout {
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+        // No public ToolTip in this Slint, so drive a small PopupWindow on hover.
+        changed has-hover => {
+            if (self.has-hover) { tip.show(); } else { tip.close(); }
+        }
+    }
+    HorizontalLayout {
         alignment: center;
-        spacing: 1px;
-        HorizontalLayout {
+        VerticalLayout {
             alignment: center;
             Image {
                 width: 16px;
@@ -917,45 +922,23 @@ component BarToggle inherits Rectangle {
                 colorize: root.active ? Backend.accent : Backend.gutter-fg;
             }
         }
-        Text {
-            text: root.caption;
-            font-size: Type.meta;
-            horizontal-alignment: center;
-            color: root.active ? Backend.accent : Backend.gutter-fg;
-        }
     }
-}
-
-// A toolbar button for a review provider: its name over a connect/connected
-// caption, tinted (filled pill + accent) when the provider is configured. Clicking
-// opens the shared Connect dialog for this provider.
-component ProviderButton inherits Rectangle {
-    in property <image> icon;
-    in property <string> label;
-    in property <bool> connected;
-    callback clicked();
-    width: 58px;
-    border-radius: 5px;
-    background: root.connected ? Backend.selection : (pb-ta.has-hover ? Backend.hover : transparent);
-    pb-ta := TouchArea { clicked => { root.clicked(); } }
-    VerticalLayout {
-        alignment: center;
-        spacing: 1px;
-        HorizontalLayout {
-            alignment: center;
-            Image {
-                width: 16px;
-                height: 16px;
-                image-fit: contain;
-                source: root.icon;
-                colorize: root.connected ? Backend.accent : Backend.gutter-fg;
+    tip := PopupWindow {
+        x: 0;
+        y: root.height + 4px;
+        close-policy: PopupClosePolicy.no-auto-close;
+        Rectangle {
+            background: Backend.header-bg;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: Backend.divider;
+            HorizontalLayout {
+                padding-left: 7px;
+                padding-right: 7px;
+                padding-top: 4px;
+                padding-bottom: 4px;
+                Text { text: root.caption; color: Backend.fg; font-size: Type.meta; }
             }
-        }
-        Text {
-            text: root.label;
-            font-size: Type.meta;
-            horizontal-alignment: center;
-            color: root.connected ? Backend.accent : Backend.gutter-fg;
         }
     }
 }
@@ -1117,16 +1100,16 @@ component OptionBar inherits Rectangle {
 
         // Review providers: configure GitHub / Bitbucket. Tinted when connected;
         // click opens the shared Connect dialog for that backend.
-        ProviderButton {
+        BarToggle {
             icon: @image-url("icons/github.svg");
-            label: "GitHub";
-            connected: Backend.github-connected;
+            caption: Backend.github-connected ? "GitHub — connected" : "Connect GitHub";
+            active: Backend.github-connected;
             clicked => { Backend.prepare-connect("github"); }
         }
-        ProviderButton {
+        BarToggle {
             icon: @image-url("icons/bitbucket.svg");
-            label: "Bitbucket";
-            connected: Backend.bitbucket-connected;
+            caption: Backend.bitbucket-connected ? "Bitbucket — connected" : "Connect Bitbucket";
+            active: Backend.bitbucket-connected;
             clicked => { Backend.prepare-connect("bitbucket-cloud"); }
         }
 
@@ -1134,12 +1117,18 @@ component OptionBar inherits Rectangle {
 
         // Less-frequent diff settings (context, algorithm, base ref) in a pop-out.
         more-btn := Rectangle {
-            width: 42px;
-            more-ta := TouchArea { clicked => { more-popup.show(); } }
-            VerticalLayout {
+            width: 34px;
+            border-radius: 5px;
+            background: more-ta.has-hover ? Backend.hover : transparent;
+            more-ta := TouchArea {
+                clicked => { more-tip.close(); more-popup.show(); }
+                changed has-hover => {
+                    if (self.has-hover) { more-tip.show(); } else { more-tip.close(); }
+                }
+            }
+            HorizontalLayout {
                 alignment: center;
-                spacing: 1px;
-                HorizontalLayout {
+                VerticalLayout {
                     alignment: center;
                     Image {
                         width: 16px;
@@ -1149,11 +1138,23 @@ component OptionBar inherits Rectangle {
                         colorize: more-ta.has-hover ? Backend.fg : Backend.gutter-fg;
                     }
                 }
-                Text {
-                    text: "More";
-                    font-size: Type.meta;
-                    horizontal-alignment: center;
-                    color: Backend.gutter-fg;
+            }
+            more-tip := PopupWindow {
+                x: 0;
+                y: parent.height + 4px;
+                close-policy: PopupClosePolicy.no-auto-close;
+                Rectangle {
+                    background: Backend.header-bg;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: Backend.divider;
+                    HorizontalLayout {
+                        padding-left: 7px;
+                        padding-right: 7px;
+                        padding-top: 4px;
+                        padding-bottom: 4px;
+                        Text { text: "More diff settings"; color: Backend.fg; font-size: Type.meta; }
+                    }
                 }
             }
             more-popup := PopupWindow {
