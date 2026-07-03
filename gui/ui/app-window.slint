@@ -886,7 +886,16 @@ component SegToggle inherits Rectangle {
         alignment: center;
         VerticalLayout {
             alignment: center;
-            Icon { size: 15px; source: root.icon; colorize: active ? Backend.on-accent : Backend.fg; }
+            // A plain 16px Image (like the other toolbar buttons) rather than the Icon
+            // component: Icon applies a rotation-angle transform (even at 0deg) and an
+            // odd 15px size, which pushed these icons through a blurry raster path.
+            Image {
+                width: 16px;
+                height: 16px;
+                image-fit: contain;
+                source: root.icon;
+                colorize: active ? Backend.on-accent : Backend.fg;
+            }
         }
     }
     sta := TouchArea {
