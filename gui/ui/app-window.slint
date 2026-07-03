@@ -227,6 +227,20 @@ export global Backend {
     in property <bool> pr-approving;           // approve/unapprove request in flight
     callback approve-pr();
     callback unapprove-pr();
+    // Request-changes: only offered where the backend has an explicit
+    // changes-requested state (Capabilities.request_changes_state).
+    in property <bool> pr-can-request-changes;
+    in property <bool> pr-requesting-changes;    // request in flight
+    callback request-changes-pr();
+    // Merge: offered when the PR is open and the backend advertises strategies.
+    // merge-strategies holds the human labels; the chosen index maps back to the
+    // provider's strategy list. Always confirmed via the merge dialog first.
+    in property <bool> pr-can-merge;
+    in property <[string]> merge-strategies;
+    in property <bool> pr-merging;               // merge request in flight
+    in-out property <bool> merge-dialog-open: false;
+    in-out property <int> merge-strategy-index: 0;
+    callback merge-pr(int /* strategy index */, string /* message */);
     in property <[PrComment]> pr-comments;  // grouped Comments-shelf rows (sections + comments)
     in property <bool> pr-has-comments;      // PR has >=1 comment (unfiltered) -> show the shelf
     in property <int> pr-comment-count;      // filtered comment count (excludes section rows)
@@ -1974,6 +1988,63 @@ component CommitsPanel inherits Rectangle {
                     }
                 }
             }
+            // Request changes — only where the backend supports the state.
+            if Backend.pr-can-request-changes : Rectangle {
+                height: 30px;
+                rc-ta := TouchArea {
+                    clicked => {
+                        if (!Backend.pr-requesting-changes) { Backend.request-changes-pr(); }
+                    }
+                }
+                HorizontalLayout {
+                    padding: 4px;
+                    Rectangle {
+                        border-radius: 5px;
+                        border-width: 1px;
+                        border-color: Backend.divider;
+                        background: rc-ta.has-hover ? Backend.selection : Backend.panel-bg;
+                        HorizontalLayout {
+                            alignment: center;
+                            Text {
+                                text: Backend.pr-requesting-changes ? "Working…" : "Request changes";
+                                color: Backend.fg;
+                                font-size: Type.label;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+            // Merge — opens the confirm + strategy-pick dialog (write-safety).
+            if Backend.pr-can-merge : Rectangle {
+                height: 30px;
+                mg-ta := TouchArea {
+                    clicked => {
+                        if (!Backend.pr-merging) {
+                            Backend.merge-strategy-index = 0;
+                            Backend.merge-dialog-open = true;
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    padding: 4px;
+                    Rectangle {
+                        border-radius: 5px;
+                        background: mg-ta.has-hover ? Backend.selection : Backend.accent;
+                        HorizontalLayout {
+                            alignment: center;
+                            Text {
+                                text: Backend.pr-merging ? "Merging…" : "Merge";
+                                color: Backend.on-accent;
+                                font-size: Type.label;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
             for rv in Backend.pr-reviewers : Rectangle {
                 height: 30px;
                 HorizontalLayout {
@@ -2998,6 +3069,99 @@ export component AppWindow inherits Window {
                                     if (composer-input.text != "" && !Backend.posting-comment) {
                                         Backend.submit-comment(composer-input.text);
                                         composer-input.text = "";
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Merge confirm + strategy-pick dialog. Merge is outward-facing and
+                // irreversible, so it always routes through this modal (write-safety).
+                if Backend.merge-dialog-open : Rectangle {
+                    background: #00000073;  // dim backdrop; click outside cancels
+                    md-bg := TouchArea { clicked => { Backend.merge-dialog-open = false; } }
+                    Rectangle {
+                        x: parent.width / 2 - self.width / 2;
+                        y: parent.height / 2 - self.height / 2;
+                        width: min(400px, parent.width - 24px);
+                        height: md-col.preferred-height;
+                        background: Backend.panel-bg;
+                        border-width: 1px;
+                        border-color: Backend.divider;
+                        border-radius: 8px;
+                        TouchArea {}  // swallow clicks so they don't dismiss the dialog
+                        md-col := VerticalLayout {
+                            padding: 16px;
+                            spacing: 10px;
+                            Text {
+                                text: "Merge pull request";
+                                color: Backend.fg;
+                                font-size: Type.title;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "Choose how to merge. This can't be undone.";
+                                color: Backend.gutter-fg;
+                                font-size: Type.label;
+                                wrap: word-wrap;
+                            }
+                            for label[i] in Backend.merge-strategies : Rectangle {
+                                height: 30px;
+                                border-radius: 5px;
+                                border-width: 1px;
+                                border-color: Backend.merge-strategy-index == i
+                                    ? Backend.accent : Backend.divider;
+                                background: Backend.merge-strategy-index == i
+                                    ? Backend.selection : transparent;
+                                st-ta := TouchArea { clicked => { Backend.merge-strategy-index = i; } }
+                                HorizontalLayout {
+                                    padding-left: 10px;
+                                    Text {
+                                        text: label;
+                                        color: Backend.fg;
+                                        font-size: Type.body;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                height: 30px;
+                                background: Backend.bg;
+                                border-width: 1px;
+                                border-color: Backend.divider;
+                                border-radius: 5px;
+                                merge-msg := TextInput {
+                                    x: 8px;
+                                    width: parent.width - 16px;
+                                    height: parent.height;
+                                    color: Backend.fg;
+                                    font-size: Type.body;
+                                    vertical-alignment: center;
+                                    single-line: true;
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: end;
+                                Text {
+                                    visible: Backend.pr-merging;
+                                    text: "Merging…";
+                                    color: Backend.gutter-fg;
+                                    font-size: Type.label;
+                                    vertical-alignment: center;
+                                }
+                                Button {
+                                    text: "Cancel";
+                                    clicked => { Backend.merge-dialog-open = false; }
+                                }
+                                Button {
+                                    text: "Merge";
+                                    clicked => {
+                                        if (!Backend.pr-merging) {
+                                            Backend.merge-pr(Backend.merge-strategy-index,
+                                                             merge-msg.text);
+                                        }
                                     }
                                 }
                             }

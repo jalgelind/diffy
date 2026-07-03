@@ -200,6 +200,18 @@ approval_str(diffy::review::ApprovalState s) {
     }
 }
 
+// User-facing label for a merge strategy (shown in the merge dialog's picker).
+const char*
+merge_strategy_label(diffy::review::MergeStrategy s) {
+    using M = diffy::review::MergeStrategy;
+    switch (s) {
+        case M::Squash: return "Squash";
+        case M::FastForward: return "Fast-forward";
+        case M::Rebase: return "Rebase";
+        default: return "Merge commit";
+    }
+}
+
 // A short relative time ("just now", "5m", "3h", "6d", "2w") from an ISO-8601
 // UTC timestamp like "2026-06-20T10:00:00.000000+00:00". Falls back to the date
 // portion if parsing fails.
@@ -874,6 +886,9 @@ main(int argc, char** argv) {
         // API-sourced so it works even when the commit isn't present locally).
         std::unordered_map<std::string, diffy::review::PrCommit> pr_commits_by_sha;
         std::vector<diffy::review::Reviewer> pr_reviewers;  // open PR's reviewers (Reviewers shelf)
+        // The open PR's merge strategies (from Capabilities), in the same order as the
+        // labels shown in the merge dialog — the dialog's strategy index maps here.
+        std::vector<diffy::review::MergeStrategy> pr_merge_strategies;
         // Caches so lists show instantly from the last result and refresh in the
         // background (swap-in rather than clear+fetch+show). Keys: PR list by
         // "ws/repo"; PR detail + file blobs by "ws/repo#id" (+ ":path").
@@ -891,6 +906,11 @@ main(int argc, char** argv) {
             std::string author;
             int total_adds = 0;  // summed diffstat across files
             int total_dels = 0;
+            // The PR's normalized state and the provider's capabilities, captured at
+            // fetch time so the PR toolbar can gate approve/request-changes/merge
+            // without a live provider handle (capabilities are provider-static).
+            diffy::review::ApprovalState pr_state = diffy::review::ApprovalState::Open;
+            diffy::review::Capabilities caps;
         };
         std::unordered_map<std::string, PrDetail> pr_detail_cache;
         std::unordered_map<std::string, std::pair<std::string, std::string>> pr_file_cache;
@@ -1860,7 +1880,9 @@ main(int argc, char** argv) {
         d.author = pr ? pr.value().author : std::string{};
         if (pr) {
             d.reviewers = pr.value().reviewers;
+            d.pr_state = pr.value().state;
         }
+        d.caps = client.capabilities();  // provider-static; drives the PR toolbar gating
         err = files ? std::string{} : files.error().message;
     };
 
@@ -2076,6 +2098,21 @@ main(int argc, char** argv) {
         state.pr_reviewers = d.reviewers;
         rebuild_reviewers();
         rebuild_comment_shelf(d.threads);
+        // Gate the PR toolbar from capabilities (gate, don't branch): request-changes
+        // only where the backend has that state; merge only when the PR is open and
+        // the backend offers strategies. The strategy picker is filled in the same
+        // order as state.pr_merge_strategies so the dialog index maps straight back.
+        state.pr_merge_strategies = d.caps.merge_strategies;
+        backend.set_pr_can_request_changes(d.caps.request_changes_state);
+        {
+            auto sm = std::make_shared<slint::VectorModel<slint::SharedString>>();
+            for (auto strat : d.caps.merge_strategies) {
+                sm->push_back(ss(merge_strategy_label(strat)));
+            }
+            backend.set_merge_strategies(sm);
+        }
+        backend.set_pr_can_merge(!d.caps.merge_strategies.empty() &&
+                                 d.pr_state == diffy::review::ApprovalState::Open);
         backend.set_pr_title(ss("#" + id + "  " + d.title));
         backend.set_pr_subtitle(ss(d.subtitle));
         backend.set_pr_stat(ss(std::to_string(d.files.size()) + " files  ·  +" +
@@ -3019,6 +3056,78 @@ main(int argc, char** argv) {
     };
     backend.on_approve_pr([&]() { set_approval(true); });
     backend.on_unapprove_pr([&]() { set_approval(false); });
+
+    // Request changes (only wired-through where the backend has the state; the
+    // button is hidden otherwise, so this is a no-op for Bitbucket Cloud).
+    backend.on_request_changes_pr([&]() {
+        if (state.current_pr.empty() || !state.bitbucket_cred) {
+            return;
+        }
+        const std::string id = state.current_pr, ws = state.pr_ws, repo = state.pr_repo;
+        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const uint64_t gen = state.load_generation;
+        backend.set_pr_requesting_changes(true);
+        backend.set_net_label(ss("Requesting changes"));
+        review_pool.submit(ReviewPool::Prio::Interactive,
+                           [&, id, ws, repo, cred, gen](diffy::review::HttpClient& http) {
+                               diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                               auto r = client.request_changes(id);
+                               const bool ok = static_cast<bool>(r);
+                               std::string err = ok ? std::string{} : r.error().message;
+                               slint::invoke_from_event_loop([&, id, gen, ok, err]() {
+                                   backend.set_pr_requesting_changes(false);
+                                   if (gen != state.load_generation || state.current_pr != id) {
+                                       return;
+                                   }
+                                   backend.set_status_text(ss(
+                                       ok ? "Changes requested" : ("Request changes failed: " + err)));
+                               });
+                           });
+    });
+
+    // Merge the open PR with the chosen strategy (index into pr_merge_strategies).
+    // On success, leave PR detail and reload the repo so the list reflects it.
+    backend.on_merge_pr([&](int strat_idx, slint::SharedString message) {
+        if (state.current_pr.empty() || !state.bitbucket_cred) {
+            return;
+        }
+        if (strat_idx < 0 || strat_idx >= static_cast<int>(state.pr_merge_strategies.size())) {
+            return;
+        }
+        const std::string id = state.current_pr, ws = state.pr_ws, repo = state.pr_repo;
+        const std::string msg = str(message);
+        const diffy::review::MergeStrategy strategy = state.pr_merge_strategies[strat_idx];
+        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const uint64_t gen = state.load_generation;
+        backend.set_pr_merging(true);
+        backend.set_net_label(ss("Merging"));
+        review_pool.submit(ReviewPool::Prio::Interactive,
+                           [&, id, ws, repo, cred, strategy, msg, gen](diffy::review::HttpClient& http) {
+                               diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                               auto r = client.merge(id, strategy, msg);
+                               const bool ok = static_cast<bool>(r);
+                               std::string err = ok ? std::string{} : r.error().message;
+                               slint::invoke_from_event_loop([&, id, gen, ok, err]() {
+                                   backend.set_pr_merging(false);
+                                   if (gen != state.load_generation || state.current_pr != id) {
+                                       return;
+                                   }
+                                   backend.set_merge_dialog_open(false);
+                                   if (!ok) {
+                                       backend.set_status_text(ss("Merge failed: " + err));
+                                       return;
+                                   }
+                                   backend.set_status_text(ss("Pull request merged"));
+                                   state.current_pr.clear();
+                                   state.current_pr_commit.clear();
+                                   backend.set_pr_open(false);
+                                   backend.set_pr_list_collapsed(false);
+                                   if (!state.repo_path.empty()) {
+                                       load_repo(state.repo_path);
+                                   }
+                               });
+                           });
+    });
     backend.on_close_pr([&]() {
         // Leave PR detail mode and restore the repo view (working tree + local
         // commits + the PR list) by reloading the repo.
