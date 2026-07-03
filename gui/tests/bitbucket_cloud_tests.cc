@@ -235,3 +235,82 @@ TEST_CASE("Bitbucket Cloud normalizes HTTP + transport errors") {
         CHECK(who.error().kind == ErrorKind::Network);
     }
 }
+
+TEST_CASE("Bitbucket Cloud write operations issue the right requests") {
+    SUBCASE("reply posts a comment carrying a parent id") {
+        MockHttpClient mock;
+        mock.on("POST", "/pullrequests/1/comments",
+                ok_json(R"({"id":200,"content":{"raw":"me too"},"user":{"display_name":"Alice A"},
+                            "created_on":"2026-06-01T12:00:00Z","parent":{"id":100}})"));
+        BitbucketCloudClient client(mock, basic_cred(), "ws", "repo");
+
+        NewComment nc;
+        nc.body_md = "me too";
+        nc.reply_to = "100";
+        auto r = client.comment("1", nc);
+        REQUIRE(r.has_value());
+        CHECK(r.value().id == "200");
+        CHECK(r.value().parent_id == "100");
+        const HttpRequest& req = mock.sent.back();
+        CHECK(req.method == "POST");
+        CHECK(req.body.find("\"parent\"") != std::string::npos);
+        CHECK(req.body.find("100") != std::string::npos);
+        // A reply must NOT also carry an inline anchor.
+        CHECK(req.body.find("\"inline\"") == std::string::npos);
+    }
+
+    SUBCASE("edit_comment PUTs the new body and returns the updated comment") {
+        MockHttpClient mock;
+        mock.on("PUT", "/pullrequests/1/comments/100",
+                ok_json(R"({"id":100,"content":{"raw":"edited body"},"user":{"display_name":"Alice A"},
+                            "created_on":"2026-06-01T11:00:00Z"})"));
+        BitbucketCloudClient client(mock, basic_cred(), "ws", "repo");
+
+        auto r = client.edit_comment("1", "100", "edited body");
+        REQUIRE(r.has_value());
+        CHECK(r.value().id == "100");
+        CHECK(r.value().body_md == "edited body");
+        const HttpRequest& req = mock.sent.back();
+        CHECK(req.method == "PUT");
+        CHECK(req.url.find("/pullrequests/1/comments/100") != std::string::npos);
+        CHECK(req.body.find("edited body") != std::string::npos);
+    }
+
+    SUBCASE("delete_comment issues a DELETE to the comment url") {
+        MockHttpClient mock;
+        HttpResponse gone;
+        gone.status = 204;
+        mock.on("DELETE", "/pullrequests/1/comments/100", gone);
+        BitbucketCloudClient client(mock, basic_cred(), "ws", "repo");
+
+        auto r = client.delete_comment("1", "100");
+        CHECK(r.has_value());
+        const HttpRequest& req = mock.sent.back();
+        CHECK(req.method == "DELETE");
+        CHECK(req.url.find("/pullrequests/1/comments/100") != std::string::npos);
+    }
+
+    SUBCASE("merge POSTs the selected strategy and message") {
+        MockHttpClient mock;
+        mock.on("POST", "/pullrequests/1/merge", ok_json(R"({"id":1,"state":"MERGED"})"));
+        BitbucketCloudClient client(mock, basic_cred(), "ws", "repo");
+
+        auto r = client.merge("1", MergeStrategy::Squash, "Merge PR #1");
+        CHECK(r.has_value());
+        const HttpRequest& req = mock.sent.back();
+        CHECK(req.method == "POST");
+        CHECK(req.url.find("/pullrequests/1/merge") != std::string::npos);
+        CHECK(req.body.find("squash") != std::string::npos);
+        CHECK(req.body.find("Merge PR #1") != std::string::npos);
+    }
+
+    SUBCASE("request_changes stays unsupported (no request-changes state)") {
+        MockHttpClient mock;
+        BitbucketCloudClient client(mock, basic_cred(), "ws", "repo");
+        auto r = client.request_changes("1");
+        REQUIRE_FALSE(r.has_value());
+        CHECK(r.error().kind == ErrorKind::Unsupported);
+        // A gated call must not hit the network.
+        CHECK(mock.sent.empty());
+    }
+}

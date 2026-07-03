@@ -45,10 +45,15 @@ class BitbucketCloudClient : public ReviewProvider {
     Result<std::string> file_at(const std::string& sha, const std::string& path) override;
     Result<Comment> comment(const std::string& id, const NewComment&) override;
     Result<Comment> comment_on_commit(const std::string& sha, const NewComment&) override;
+    Result<Comment> edit_comment(const std::string& id, const std::string& comment_id,
+                                 const std::string& body_md) override;
+    Result<void> delete_comment(const std::string& id, const std::string& comment_id) override;
     Result<void> approve(const std::string& id) override;
     Result<void> unapprove(const std::string& id) override;
     Result<void> request_changes(const std::string& id) override;
     Result<void> submit_review(const std::string& id, const Review&) override;
+    Result<void> merge(const std::string& id, MergeStrategy strategy,
+                       const std::string& message = "") override;
 
   private:
     HttpClient& http_;

@@ -685,6 +685,19 @@ BitbucketCloudClient::file_at(const std::string& sha, const std::string& path) {
     return Result<std::string>::ok(res.response.body);
 }
 
+// Map a Bitbucket comment JSON object onto the neutral Comment.
+static Comment
+parse_comment(const json& j) {
+    Comment cm;
+    cm.id = jid(j);
+    cm.parent_id = jid(jchild(j, "parent"));
+    cm.author = jstr(jchild(j, "user"), "display_name");
+    cm.author_avatar = avatar_href(jchild(j, "user"));
+    cm.body_md = comment_body(jchild(j, "content"));
+    cm.created = jstr(j, "created_on");
+    return cm;
+}
+
 // POST a comment (PR or commit) to `comments_url`. The body shape is identical for
 // both endpoints: content.raw, an optional parent (reply), and an optional inline
 // anchor (path + to/from). Inline anchors carry whatever line numbers the caller
@@ -712,15 +725,7 @@ post_comment(HttpClient& http, const Credential& cred, const std::string& commen
     if (!r) {
         return Result<Comment>::err(r.error());
     }
-    const json& j = r.value();
-    Comment cm;
-    cm.id = jid(j);
-    cm.parent_id = jid(jchild(j, "parent"));
-    cm.author = jstr(jchild(j, "user"), "display_name");
-    cm.author_avatar = avatar_href(jchild(j, "user"));
-    cm.body_md = comment_body(jchild(j, "content"));
-    cm.created = jstr(j, "created_on");
-    return Result<Comment>::ok(cm);
+    return Result<Comment>::ok(parse_comment(r.value()));
 }
 
 Result<Comment>
@@ -731,6 +736,28 @@ BitbucketCloudClient::comment(const std::string& id, const NewComment& nc) {
 Result<Comment>
 BitbucketCloudClient::comment_on_commit(const std::string& sha, const NewComment& nc) {
     return post_comment(http_, cred_, commit_url(sha) + "/comments", nc);
+}
+
+Result<Comment>
+BitbucketCloudClient::edit_comment(const std::string& id, const std::string& comment_id,
+                                   const std::string& body_md) {
+    json body;
+    body["content"]["raw"] = body_md;
+    Result<json> r =
+        req_json(http_, cred_, "PUT", pr_url(id) + "/comments/" + comment_id, body.dump());
+    if (!r) {
+        return Result<Comment>::err(r.error());
+    }
+    return Result<Comment>::ok(parse_comment(r.value()));
+}
+
+Result<void>
+BitbucketCloudClient::delete_comment(const std::string& id, const std::string& comment_id) {
+    const HttpResult res = send(http_, cred_, "DELETE", pr_url(id) + "/comments/" + comment_id, "");
+    if (auto e = http_error(res)) {
+        return Result<void>::err(*e);
+    }
+    return Result<void>::ok();
 }
 
 Result<void>
@@ -761,6 +788,37 @@ Result<void>
 BitbucketCloudClient::submit_review(const std::string&, const Review&) {
     // No batched-review API (capabilities().pending_review_batch == false).
     return Result<void>::err({ErrorKind::Unsupported, 0, "Bitbucket Cloud has no batched review submit"});
+}
+
+// Bitbucket's wire names for the merge strategies it offers. Rebase isn't offered
+// (not in capabilities().merge_strategies); fall back to a merge commit.
+static std::string
+merge_strategy_wire(MergeStrategy s) {
+    switch (s) {
+        case MergeStrategy::Squash:
+            return "squash";
+        case MergeStrategy::FastForward:
+            return "fast_forward";
+        case MergeStrategy::MergeCommit:
+        case MergeStrategy::Rebase:
+        default:
+            return "merge_commit";
+    }
+}
+
+Result<void>
+BitbucketCloudClient::merge(const std::string& id, MergeStrategy strategy,
+                            const std::string& message) {
+    json body;
+    body["merge_strategy"] = merge_strategy_wire(strategy);
+    if (!message.empty()) {
+        body["message"] = message;
+    }
+    const HttpResult res = send(http_, cred_, "POST", pr_url(id) + "/merge", body.dump());
+    if (auto e = http_error(res)) {
+        return Result<void>::err(*e);
+    }
+    return Result<void>::ok();
 }
 
 ProviderPlugin

@@ -139,6 +139,22 @@ struct FakeProvider : ReviewProvider {
         return Result<Comment>::ok(c);
     }
 
+    Result<Comment>
+    edit_comment(const std::string& /*id*/, const std::string& comment_id,
+                 const std::string& body_md) override {
+        Comment c;
+        c.id = comment_id;
+        c.author = "reviewer";
+        c.body_md = body_md;
+        c.created = "2026-06-29T10:08:00Z";
+        return Result<Comment>::ok(c);
+    }
+
+    Result<void>
+    delete_comment(const std::string& /*id*/, const std::string& /*comment_id*/) override {
+        return Result<void>::ok();
+    }
+
     Result<void>
     approve(const std::string& /*id*/) override {
         return Result<void>::ok();
@@ -159,6 +175,12 @@ struct FakeProvider : ReviewProvider {
     submit_review(const std::string& /*id*/, const Review&) override {
         // Gated: capabilities().pending_review_batch == false.
         return Result<void>::err(Error{ErrorKind::Unsupported, 0, "batched review not supported", {}});
+    }
+
+    Result<void>
+    merge(const std::string& /*id*/, MergeStrategy /*strategy*/,
+          const std::string& /*message*/ = "") override {
+        return Result<void>::ok();
     }
 
   protected:

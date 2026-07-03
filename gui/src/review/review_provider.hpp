@@ -65,16 +65,36 @@ struct ReviewProvider {
 
     // --- write: capability-gated (return Unsupported when the flag is off) --
 
+    // Post a comment. A reply is just a NewComment with `reply_to` set to the
+    // parent comment id; an inline comment carries an anchor; a PR-level comment
+    // sets `general`.
     virtual Result<Comment> comment(const std::string& id, const NewComment&) = 0;
 
     // Post a comment scoped to a commit. Inline anchors use that commit's own line
     // numbers (valid only against the commit's diff), so this never mis-anchors on
     // the PR head. Unsupported when Capabilities::commit_comments is false.
     virtual Result<Comment> comment_on_commit(const std::string& sha, const NewComment&) = 0;
+
+    // Edit an existing comment's body. `id` is the PR id, `comment_id` the target
+    // comment; returns the updated comment. (Authorization — you can only edit your
+    // own — is enforced by the backend; a forbidden edit returns Error, not a crash.)
+    virtual Result<Comment> edit_comment(const std::string& id, const std::string& comment_id,
+                                         const std::string& body_md) = 0;
+
+    // Delete an existing comment. `id` is the PR id, `comment_id` the target.
+    virtual Result<void> delete_comment(const std::string& id, const std::string& comment_id) = 0;
+
     virtual Result<void> approve(const std::string& id) = 0;
     virtual Result<void> unapprove(const std::string& id) = 0;
     virtual Result<void> request_changes(const std::string& id) = 0;
     virtual Result<void> submit_review(const std::string& id, const Review&) = 0;
+
+    // Merge the PR with one of Capabilities::merge_strategies. Outward-facing and
+    // irreversible, so the UI always confirms first (§7 write-safety). `message` is
+    // an optional merge-commit message (ignored by fast-forward). Unsupported when
+    // merge_strategies is empty.
+    virtual Result<void> merge(const std::string& id, MergeStrategy strategy,
+                               const std::string& message = "") = 0;
 };
 
 }  // namespace diffy::review
