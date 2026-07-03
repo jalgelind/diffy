@@ -240,7 +240,8 @@ TEST_CASE("Bitbucket Cloud write operations issue the right requests") {
     SUBCASE("reply posts a comment carrying a parent id") {
         MockHttpClient mock;
         mock.on("POST", "/pullrequests/1/comments",
-                ok_json(R"({"id":200,"content":{"raw":"me too"},"user":{"display_name":"Alice A"},
+                ok_json(R"({"id":200,"content":{"raw":"me too"},
+                            "user":{"display_name":"Alice A","account_id":"acc-1"},
                             "created_on":"2026-06-01T12:00:00Z","parent":{"id":100}})"));
         BitbucketCloudClient client(mock, basic_cred(), "ws", "repo");
 
@@ -251,6 +252,7 @@ TEST_CASE("Bitbucket Cloud write operations issue the right requests") {
         REQUIRE(r.has_value());
         CHECK(r.value().id == "200");
         CHECK(r.value().parent_id == "100");
+        CHECK(r.value().author_id == "acc-1");  // drives "mine" for edit/delete gating
         const HttpRequest& req = mock.sent.back();
         CHECK(req.method == "POST");
         CHECK(req.body.find("\"parent\"") != std::string::npos);

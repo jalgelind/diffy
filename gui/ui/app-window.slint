@@ -96,6 +96,8 @@ export struct PrReviewer {
 
 // One comment shown in the PR "Comments" shelf.
 export struct PrComment {
+    id: string,         // provider comment id (for reply / edit / delete)
+    mine: bool,         // authored by the connected account (gates edit/delete)
     author: string,
     snippet: string,
     location: string,   // comment: "line N" / "general"; section: the file/group name
@@ -322,6 +324,19 @@ export global Backend {
     in-out property <bool> posting-comment: false;    // in-flight feedback
     callback open-composer(bool /* general */);
     callback submit-comment(string /* body */);
+    // Composer mode: "new" | "reply" | "edit". reply/edit reuse the same overlay;
+    // both carry composer-comment-id, and edit seeds composer-prefill with the
+    // existing body. submit-comment reads composer-mode to pick the provider call.
+    in-out property <string> composer-mode: "new";
+    in-out property <string> composer-comment-id: "";
+    in-out property <string> composer-prefill: "";
+    callback reply-to-comment(string /* comment-id */, string /* author */);
+    callback edit-comment(string /* comment-id */);  // C++ resolves the full body to prefill
+    // Delete a comment. pending-delete-id (non-empty) drives the confirm dialog;
+    // confirm-delete-comment performs it (write-safety: destructive, confirm first).
+    in-out property <string> pending-delete-id: "";
+    in property <bool> deleting-comment: false;  // delete request in flight
+    callback confirm-delete-comment(string /* comment-id */);
 
     // Context-menu actions.
     callback copy-to-clipboard(string);
@@ -2190,6 +2205,7 @@ component CommitsPanel inherits Rectangle {
                             }
                         }
                         VerticalLayout {
+                            horizontal-stretch: 1;
                             Text {
                                 text: cm.author + (cm.location != "" ? "  ·  " + cm.location : "");
                                 color: Backend.gutter-fg;
@@ -2201,6 +2217,69 @@ component CommitsPanel inherits Rectangle {
                                 color: Backend.fg;
                                 font-size: Type.body;
                                 overflow: elide;
+                            }
+                        }
+                        // Reply / edit / delete, revealed on hover. Reply on any
+                        // comment; edit/delete only on your own.
+                        if cm-ta.has-hover : HorizontalLayout {
+                            spacing: 2px;
+                            alignment: end;
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: 38px;
+                                    height: 20px;
+                                    border-radius: 4px;
+                                    background: rpl-ta.has-hover ? Backend.hover : transparent;
+                                    rpl-ta := TouchArea {
+                                        clicked => { Backend.reply-to-comment(cm.id, cm.author); }
+                                    }
+                                    Text {
+                                        text: "Reply";
+                                        color: Backend.header-fg;
+                                        font-size: Type.meta;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                            if cm.mine : VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: 30px;
+                                    height: 20px;
+                                    border-radius: 4px;
+                                    background: edt-ta.has-hover ? Backend.hover : transparent;
+                                    edt-ta := TouchArea {
+                                        clicked => { Backend.edit-comment(cm.id); }
+                                    }
+                                    Text {
+                                        text: "Edit";
+                                        color: Backend.fg;
+                                        font-size: Type.meta;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                            if cm.mine : VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: 40px;
+                                    height: 20px;
+                                    border-radius: 4px;
+                                    background: del-ta.has-hover ? Backend.hover : transparent;
+                                    del-ta := TouchArea {
+                                        clicked => { Backend.pending-delete-id = cm.id; }
+                                    }
+                                    Text {
+                                        text: "Delete";
+                                        color: #e06c75;
+                                        font-size: Type.meta;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
                             }
                         }
                     }
@@ -3020,9 +3099,13 @@ export component AppWindow inherits Window {
                         padding: 10px;
                         spacing: 8px;
                         Text {
-                            text: Backend.composer-general
-                                ? "New comment on the pull request"
-                                : "New comment on " + Backend.composer-target;
+                            text: Backend.composer-mode == "edit"
+                                ? "Edit comment"
+                                : (Backend.composer-mode == "reply"
+                                    ? "Reply to " + Backend.composer-target
+                                    : (Backend.composer-general
+                                        ? "New comment on the pull request"
+                                        : "New comment on " + Backend.composer-target));
                             color: Backend.gutter-fg;
                             font-size: Type.label;
                             overflow: elide;
@@ -3043,7 +3126,7 @@ export component AppWindow inherits Window {
                                 font-size: Type.body;
                                 wrap: word-wrap;
                                 single-line: false;
-                                init => { self.focus(); }
+                                init => { self.text = Backend.composer-prefill; self.focus(); }
                             }
                         }
                         HorizontalLayout {
@@ -3064,7 +3147,8 @@ export component AppWindow inherits Window {
                                 }
                             }
                             Button {
-                                text: "Send";
+                                text: Backend.composer-mode == "edit" ? "Save"
+                                    : (Backend.composer-mode == "reply" ? "Reply" : "Send");
                                 clicked => {
                                     if (composer-input.text != "" && !Backend.posting-comment) {
                                         Backend.submit-comment(composer-input.text);
@@ -3161,6 +3245,62 @@ export component AppWindow inherits Window {
                                         if (!Backend.pr-merging) {
                                             Backend.merge-pr(Backend.merge-strategy-index,
                                                              merge-msg.text);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Delete-comment confirm (destructive: always confirm first).
+                if Backend.pending-delete-id != "" : Rectangle {
+                    background: #00000073;
+                    dd-bg := TouchArea { clicked => { Backend.pending-delete-id = ""; } }
+                    Rectangle {
+                        x: parent.width / 2 - self.width / 2;
+                        y: parent.height / 2 - self.height / 2;
+                        width: min(360px, parent.width - 24px);
+                        height: dd-col.preferred-height;
+                        background: Backend.panel-bg;
+                        border-width: 1px;
+                        border-color: Backend.divider;
+                        border-radius: 8px;
+                        TouchArea {}  // swallow clicks inside the card
+                        dd-col := VerticalLayout {
+                            padding: 16px;
+                            spacing: 10px;
+                            Text {
+                                text: "Delete comment?";
+                                color: Backend.fg;
+                                font-size: Type.title;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "This can't be undone.";
+                                color: Backend.gutter-fg;
+                                font-size: Type.label;
+                                wrap: word-wrap;
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: end;
+                                Text {
+                                    visible: Backend.deleting-comment;
+                                    text: "Deleting…";
+                                    color: Backend.gutter-fg;
+                                    font-size: Type.label;
+                                    vertical-alignment: center;
+                                }
+                                Button {
+                                    text: "Cancel";
+                                    clicked => { Backend.pending-delete-id = ""; }
+                                }
+                                Button {
+                                    text: "Delete";
+                                    clicked => {
+                                        if (!Backend.deleting-comment) {
+                                            Backend.confirm-delete-comment(Backend.pending-delete-id);
                                         }
                                     }
                                 }

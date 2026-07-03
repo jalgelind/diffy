@@ -1979,6 +1979,8 @@ main(int argc, char** argv) {
                 const bool old_side = th->anchor.side == diffy::review::Side::Old;
                 for (const auto& cm : th->comments) {
                     PrComment e{};
+                    e.id = ss(cm.id);
+                    e.mine = !cm.author_id.empty() && cm.author_id == state.account_id;
                     e.author = ss(cm.author);
                     e.resolved = th->resolved;
                     e.depth = depth;
@@ -3497,6 +3499,9 @@ main(int argc, char** argv) {
         if (state.current_pr.empty() || !state.bitbucket_cred) {
             return;
         }
+        backend.set_composer_mode(ss("new"));
+        backend.set_composer_comment_id(ss(""));
+        backend.set_composer_prefill(ss(""));
         if (general) {
             backend.set_composer_general(true);
             backend.set_composer_target(ss("the pull request"));
@@ -3526,6 +3531,83 @@ main(int argc, char** argv) {
     backend.on_submit_comment([&](slint::SharedString b) {
         const std::string body = str(b);
         if (body.empty() || state.current_pr.empty() || !state.bitbucket_cred) {
+            return;
+        }
+        // Reply / edit reuse this composer. Both work off a comment id and don't need
+        // a fresh anchor (a reply inherits its parent's; an edit keeps the original).
+        const std::string mode = str(backend.get_composer_mode());
+        if (mode == "edit" || mode == "reply") {
+            const std::string cid = str(backend.get_composer_comment_id());
+            const std::string id = state.current_pr, ws = state.pr_ws, repo = state.pr_repo;
+            const std::string key = ws + "/" + repo + "#" + id;
+            const std::string csha = state.current_pr_commit;
+            const diffy::review::Credential cred = *state.bitbucket_cred;
+            const uint64_t gen = state.load_generation;
+            const bool is_edit = mode == "edit";
+            backend.set_posting_comment(true);
+            backend.set_net_label(ss(is_edit ? "Saving comment" : "Posting reply"));
+            review_pool.submit(
+                ReviewPool::Prio::Interactive,
+                [&, id, ws, repo, cred, key, csha, cid, body, is_edit, gen](
+                    diffy::review::HttpClient& http) {
+                    diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                    bool ok = false;
+                    std::string errmsg;
+                    if (is_edit) {
+                        // edit/delete target PR-level comments (the aggregate view).
+                        auto r = client.edit_comment(id, cid, body);
+                        ok = static_cast<bool>(r);
+                        if (!ok) {
+                            errmsg = r.error().message;
+                        }
+                    } else {
+                        diffy::review::NewComment nc;
+                        nc.body_md = body;
+                        nc.reply_to = cid;
+                        auto r = csha.empty() ? client.comment(id, nc)
+                                              : client.comment_on_commit(csha, nc);
+                        ok = static_cast<bool>(r);
+                        if (!ok) {
+                            errmsg = r.error().message;
+                        }
+                    }
+                    std::vector<diffy::review::ReviewThread> threads;
+                    if (ok) {
+                        auto t = csha.empty() ? client.threads(id) : client.commit_threads(csha);
+                        if (t) {
+                            threads = std::move(t.value());
+                        }
+                    }
+                    slint::invoke_from_event_loop([&, id, key, csha, gen, ok, errmsg, threads,
+                                                   is_edit]() {
+                        backend.set_posting_comment(false);
+                        if (gen != state.load_generation || state.current_pr != id) {
+                            return;
+                        }
+                        if (!ok) {
+                            backend.set_status_text(ss("Comment failed: " + errmsg));
+                            return;
+                        }
+                        if (csha.empty()) {
+                            state.pr_threads = threads;
+                            if (auto it = state.pr_detail_cache.find(key);
+                                it != state.pr_detail_cache.end()) {
+                                it->second.threads = threads;
+                            }
+                        } else {
+                            if (state.current_pr_commit != csha) {
+                                return;
+                            }
+                            state.pr_commit_threads = threads;
+                        }
+                        rebuild_comment_shelf(threads);
+                        backend.set_composer_open(false);
+                        backend.set_status_text(ss(is_edit ? "Comment updated" : "Reply posted"));
+                        if (!state.current_file.empty() && state.pair.ok) {
+                            relayout();
+                        }
+                    });
+                });
             return;
         }
         const bool general = backend.get_composer_general();
@@ -3599,6 +3681,103 @@ main(int argc, char** argv) {
                 });
             });
     });
+    // Reply: open the composer in reply mode, targeting a comment id.
+    backend.on_reply_to_comment([&](slint::SharedString cid, slint::SharedString author) {
+        if (state.current_pr.empty() || !state.bitbucket_cred) {
+            return;
+        }
+        backend.set_composer_mode(ss("reply"));
+        backend.set_composer_comment_id(cid);
+        backend.set_composer_general(false);
+        backend.set_composer_prefill(ss(""));
+        backend.set_composer_target(author);
+        backend.set_composer_open(true);
+    });
+
+    // Edit: resolve the full body from the active threads (the shelf only carries a
+    // truncated snippet) and seed the composer in edit mode.
+    backend.on_edit_comment([&](slint::SharedString cid_s) {
+        if (state.current_pr.empty() || !state.bitbucket_cred) {
+            return;
+        }
+        const std::string cid = str(cid_s);
+        const auto& threads =
+            state.current_pr_commit.empty() ? state.pr_threads : state.pr_commit_threads;
+        std::string body;
+        for (const auto& th : threads) {
+            for (const auto& c : th.comments) {
+                if (c.id == cid) {
+                    body = c.body_md;
+                }
+            }
+        }
+        backend.set_composer_mode(ss("edit"));
+        backend.set_composer_comment_id(cid_s);
+        backend.set_composer_general(false);
+        backend.set_composer_prefill(ss(body));
+        backend.set_composer_target(ss("comment"));
+        backend.set_composer_open(true);
+    });
+
+    // Delete: the UI confirms first (pending-delete-id); this performs it, then
+    // refreshes the active-scope threads. Targets PR-level comments.
+    backend.on_confirm_delete_comment([&](slint::SharedString cid_s) {
+        if (state.current_pr.empty() || !state.bitbucket_cred) {
+            return;
+        }
+        const std::string cid = str(cid_s);
+        const std::string id = state.current_pr, ws = state.pr_ws, repo = state.pr_repo;
+        const std::string key = ws + "/" + repo + "#" + id;
+        const std::string csha = state.current_pr_commit;
+        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const uint64_t gen = state.load_generation;
+        backend.set_deleting_comment(true);
+        backend.set_net_label(ss("Deleting comment"));
+        review_pool.submit(
+            ReviewPool::Prio::Interactive,
+            [&, id, ws, repo, cred, key, csha, cid, gen](diffy::review::HttpClient& http) {
+                diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                auto r = client.delete_comment(id, cid);
+                const bool ok = static_cast<bool>(r);
+                std::string errmsg = ok ? std::string{} : r.error().message;
+                std::vector<diffy::review::ReviewThread> threads;
+                if (ok) {
+                    auto t = csha.empty() ? client.threads(id) : client.commit_threads(csha);
+                    if (t) {
+                        threads = std::move(t.value());
+                    }
+                }
+                slint::invoke_from_event_loop([&, id, key, csha, gen, ok, errmsg, threads]() {
+                    backend.set_deleting_comment(false);
+                    backend.set_pending_delete_id(ss(""));
+                    if (gen != state.load_generation || state.current_pr != id) {
+                        return;
+                    }
+                    if (!ok) {
+                        backend.set_status_text(ss("Delete failed: " + errmsg));
+                        return;
+                    }
+                    if (csha.empty()) {
+                        state.pr_threads = threads;
+                        if (auto it = state.pr_detail_cache.find(key);
+                            it != state.pr_detail_cache.end()) {
+                            it->second.threads = threads;
+                        }
+                    } else {
+                        if (state.current_pr_commit != csha) {
+                            return;
+                        }
+                        state.pr_commit_threads = threads;
+                    }
+                    rebuild_comment_shelf(threads);
+                    backend.set_status_text(ss("Comment deleted"));
+                    if (!state.current_file.empty() && state.pair.ok) {
+                        relayout();
+                    }
+                });
+            });
+    });
+
     // --- context-menu actions ----------------------------------------------
     backend.on_copy_to_clipboard([&](slint::SharedString t) { copy_to_clipboard(str(t)); });
     backend.on_open_url([&](slint::SharedString u) { open_url(str(u)); });

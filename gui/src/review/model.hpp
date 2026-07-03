@@ -147,6 +147,7 @@ struct Comment {
     std::string id;
     std::string parent_id;
     std::string author;
+    std::string author_id;      // provider account id (to tell "mine" for edit/delete)
     std::string author_avatar;  // URL of the author's avatar (may be empty)
     std::string body_md;
     std::string created;

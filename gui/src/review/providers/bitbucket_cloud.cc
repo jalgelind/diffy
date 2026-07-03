@@ -52,6 +52,14 @@ jbool(const json& j, const char* key, bool def = false) {
     return v.is_boolean() ? v.get<bool>() : def;
 }
 
+// A Bitbucket user's stable account id: `account_id`, falling back to `uuid`.
+// Matches how whoami() and PR authors/reviewers are keyed, so ids compare equal.
+std::string
+account_id_of(const json& user) {
+    std::string id = jstr(user, "account_id");
+    return id.empty() ? jstr(user, "uuid") : id;
+}
+
 // An id field may arrive as a JSON number (PRs, comments) or string; normalize to
 // a decimal string either way.
 std::string
@@ -637,6 +645,7 @@ parse_comment_threads(const std::vector<json>& all) {
         cm.id = cid;
         cm.parent_id = parent_of[cid];
         cm.author = jstr(jchild(c, "user"), "display_name");
+        cm.author_id = account_id_of(jchild(c, "user"));
         cm.author_avatar = avatar_href(jchild(c, "user"));
         cm.body_md = comment_body(jchild(c, "content"));
         cm.created = jstr(c, "created_on");
@@ -692,6 +701,7 @@ parse_comment(const json& j) {
     cm.id = jid(j);
     cm.parent_id = jid(jchild(j, "parent"));
     cm.author = jstr(jchild(j, "user"), "display_name");
+    cm.author_id = account_id_of(jchild(j, "user"));
     cm.author_avatar = avatar_href(jchild(j, "user"));
     cm.body_md = comment_body(jchild(j, "content"));
     cm.created = jstr(j, "created_on");
