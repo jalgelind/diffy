@@ -1030,12 +1030,12 @@ component ProviderChip inherits Rectangle {
         clicked => { root.clicked(); }
         changed has-hover => {
             if (self.has-hover) {
-                Backend.tooltip-text = root.active ? root.name + " — configure"
-                                                   : root.name + " — show PRs";
+                Backend.tooltip-text = root.active ? root.name + " — configure (this repo)"
+                                                   : root.name + " — configure";
                 Backend.tooltip-x = root.absolute-position.x;
                 Backend.tooltip-y = root.absolute-position.y + root.height;
-            } else if (Backend.tooltip-text == root.name + " — configure"
-                       || Backend.tooltip-text == root.name + " — show PRs") {
+            } else if (Backend.tooltip-text == root.name + " — configure (this repo)"
+                       || Backend.tooltip-text == root.name + " — configure") {
                 Backend.tooltip-text = "";
             }
         }
