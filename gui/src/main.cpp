@@ -3219,6 +3219,30 @@ main(int argc, char** argv) {
     // store the token in the OS credential vault on success, and — when a
     // workspace+repo are supplied — fetch an open-PR count so the connection can
     // be tested end-to-end. (Surfacing PRs in the sidebar is the rest of P1.)
+    // Open the Connect dialog for a provider, pre-filling what we already know so
+    // it doubles as a "view/update" panel: owner/repo from the open repo's origin
+    // (only when that repo actually belongs to this provider), and the stored
+    // Bitbucket email. The token is never prefilled — it's a secret.
+    backend.on_prepare_connect([&](slint::SharedString prov) {
+        const std::string provider = str(prov);
+        std::string owner, repo, user;
+        if (state.repo) {
+            auto parsed = diffy::review::parse_remote_url(state.repo->origin_url());
+            if (parsed && provider_id_for_host(parsed->host) == provider) {
+                owner = parsed->owner;
+                repo = parsed->repo;
+            }
+        }
+        if (provider != "github") {
+            user = state.settings.bitbucket_account;
+        }
+        backend.set_connect_prefill_owner(ss(owner));
+        backend.set_connect_prefill_repo(ss(repo));
+        backend.set_connect_prefill_user(ss(user));
+        backend.set_configuring_provider(prov);
+        backend.set_show_connect(true);
+    });
+
     backend.on_connect_provider([&](slint::SharedString prov, slint::SharedString ws,
                                     slint::SharedString repo, slint::SharedString user,
                                     slint::SharedString pass) {
