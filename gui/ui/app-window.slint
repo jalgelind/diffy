@@ -35,6 +35,7 @@ export struct DiffRowData {
     // body rows, all uniform-height so the scrollbar/jump math stays exact.
     is-comment: bool,
     comment-is-head: bool,     // true = the avatar/author/time header row
+    comment-is-tail: bool,     // true = the last row of a comment (rounds the bubble)
     comment-author: string,    // (head row)
     comment-time: string,      // relative timestamp, e.g. "3d" (head row)
     comment-body: string,      // one wrapped line (body row)
@@ -112,10 +113,10 @@ export struct PrComment {
 // Backend.font-size). Keeping the whole UI to four sizes — set here in one place —
 // avoids the drift of a dozen ad-hoc per-widget px values.
 global Type {
-    out property <length> title: 16px;  // dialog / prominent titles
-    out property <length> body: 12px;   // primary text (file names, PR titles, comments)
-    out property <length> label: 11px;  // section headers, secondary labels
-    out property <length> meta: 10px;   // timestamps, counts, badges, captions
+    out property <length> title: 17px;  // dialog / prominent titles
+    out property <length> body: 13px;   // primary text (file names, PR titles, comments)
+    out property <length> label: 12px;  // section headers, secondary labels
+    out property <length> meta: 11px;   // timestamps, counts, badges, captions
 }
 
 // ---- option-bar state, shared with C++ -------------------------------------
@@ -669,8 +670,10 @@ component DiffRow inherits Rectangle {
     // which keeps the scrollbar/jump math exact. Comment header rows are taller so
     // the avatar has room; comment body lines are a touch roomier than code. The
     // C++ scroll math mirrors these three heights (see row_pixel_offset).
+    // Comment rows are prose at a fixed UI size (independent of the diff font),
+    // so their heights are fixed too; the C++ scroll math mirrors these (36/24).
     height: rowdata.is-comment
-        ? (rowdata.comment-is-head ? Backend.font-size * 2.8px : Backend.font-size * 1.8px)
+        ? (rowdata.comment-is-head ? 36px : 24px)
         : Backend.font-size * 1.6px;
 
     if rowdata.is-header : Rectangle {
@@ -691,78 +694,87 @@ component DiffRow inherits Rectangle {
     // then wrapped body rows; replies indent one level. Uniform height per row is
     // preserved (C++ pre-wraps), so the avatar is one line tall.
     if rowdata.is-comment : Rectangle {
-        background: rowdata.comment-outdated ? Backend.panel-bg : Backend.header-bg;
-        // Thread accent bar, indented by reply depth.
-        Rectangle {
+        // A comment reads as a distinct inset "bubble" card (rounded on its first
+        // and last rows) rather than a full-bleed band that looks like a hunk
+        // header. Reply depth insets the card from the left.
+        bubble := Rectangle {
             x: 8px + rowdata.comment-depth * 16px;
-            width: 2px;
-            background: rowdata.comment-outdated ? Backend.gutter-fg : Backend.accent;
-        }
-        HorizontalLayout {
-            padding-left: 14px + rowdata.comment-depth * 16px;
-            padding-right: 8px;
-            spacing: 6px;
-            // Avatar column (fixed) — rendered only on the header row so body lines
-            // align beneath the author. The circle is explicitly centred in the
-            // column both ways (a bare child would pin to the top-left).
+            width: parent.width - self.x - 8px;
+            background: rowdata.comment-outdated ? Backend.panel-bg
+                                                 : Backend.accent.mix(Backend.panel-bg, 8%);
+            border-top-left-radius: rowdata.comment-is-head ? 8px : 0;
+            border-top-right-radius: rowdata.comment-is-head ? 8px : 0;
+            border-bottom-left-radius: rowdata.comment-is-tail ? 8px : 0;
+            border-bottom-right-radius: rowdata.comment-is-tail ? 8px : 0;
+            // Thread accent bar down the card's left edge.
             Rectangle {
-                width: 34px;
-                // Real avatar: already center-cropped, downscaled and circle-masked
-                // (with an AA edge) in C++, so we just blit it — no clip needed.
-                if rowdata.comment-is-head && rowdata.comment-avatar.width > 0 : Image {
-                    x: (parent.width - self.width) / 2;
-                    y: (parent.height - self.height) / 2;
-                    width: 26px;
-                    height: 26px;
-                    image-rendering: smooth;
-                    source: rowdata.comment-avatar;
-                }
-                // Fallback: a tinted initials circle.
-                if rowdata.comment-is-head && rowdata.comment-avatar.width == 0 : Rectangle {
-                    x: (parent.width - self.width) / 2;
-                    y: (parent.height - self.height) / 2;
-                    width: 26px;
-                    height: 26px;
-                    border-radius: 13px;
-                    background: rowdata.comment-tint;
-                    Text {
-                        width: 100%;
-                        height: 100%;
-                        text: rowdata.comment-initials;
-                        color: #ffffff;
-                        font-size: Type.body;
-                        font-weight: 700;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
+                x: 0;
+                width: 3px;
+                background: rowdata.comment-outdated ? Backend.gutter-fg : Backend.accent;
+                border-top-left-radius: rowdata.comment-is-head ? 8px : 0;
+                border-bottom-left-radius: rowdata.comment-is-tail ? 8px : 0;
+            }
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                spacing: 8px;
+                // Avatar column (head row only) — the circle is centred in the column.
+                Rectangle {
+                    width: 30px;
+                    if rowdata.comment-is-head && rowdata.comment-avatar.width > 0 : Image {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        width: 28px;
+                        height: 28px;
+                        image-rendering: smooth;
+                        source: rowdata.comment-avatar;
+                    }
+                    if rowdata.comment-is-head && rowdata.comment-avatar.width == 0 : Rectangle {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        width: 28px;
+                        height: 28px;
+                        border-radius: 14px;
+                        background: rowdata.comment-tint;
+                        Text {
+                            width: 100%;
+                            height: 100%;
+                            text: rowdata.comment-initials;
+                            color: #ffffff;
+                            font-size: Type.body;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
                     }
                 }
-            }
-            // Header (author + relative time) or a wrapped body line.
-            if rowdata.comment-is-head : HorizontalLayout {
-                spacing: 6px;
-                Text {
-                    text: rowdata.comment-author;
-                    color: rowdata.comment-outdated ? Backend.gutter-fg : Backend.fg;
-                    font-size: Backend.font-size * 1px;
-                    font-weight: 700;
+                // Header (author + relative time) or a wrapped body line.
+                if rowdata.comment-is-head : HorizontalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: rowdata.comment-author;
+                        color: rowdata.comment-outdated ? Backend.gutter-fg : Backend.fg;
+                        font-size: Type.body;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: rowdata.comment-time;
+                        color: Backend.gutter-fg;
+                        font-size: Type.meta;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                    }
+                }
+                if !rowdata.comment-is-head : Text {
+                    text: rowdata.comment-body;
+                    color: Backend.fg;
+                    font-size: Type.body;
                     vertical-alignment: center;
                     overflow: elide;
                 }
-                Text {
-                    text: rowdata.comment-time;
-                    color: Backend.gutter-fg;
-                    font-size: (Backend.font-size - 1) * 1px;
-                    vertical-alignment: center;
-                    horizontal-stretch: 1;
-                    overflow: elide;
-                }
-            }
-            if !rowdata.comment-is-head : Text {
-                text: rowdata.comment-body;
-                color: Backend.fg;
-                font-size: Backend.font-size * 1px;
-                vertical-alignment: center;
-                overflow: elide;
             }
         }
     }

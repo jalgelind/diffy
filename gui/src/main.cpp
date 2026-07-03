@@ -1079,7 +1079,7 @@ main(int argc, char** argv) {
         for (int r = 0; r < target && r < n; ++r) {
             auto rd = rows->row_data(r);
             if (rd && rd->is_comment) {
-                y += rd->comment_is_head ? fs * 2.8f : fs * 1.8f;
+                y += rd->comment_is_head ? 36.0f : 24.0f;  // fixed comment row heights
             } else {
                 y += fs * 1.6f;
             }
@@ -1238,6 +1238,9 @@ main(int argc, char** argv) {
                     .push_back(&th);
             }
             const int wc = wrap_cols > 0 ? wrap_cols : 80;
+            // Comments render across the full diff width (not a single side's cell),
+            // so wrap them wider than a code cell.
+            const int comment_wc = options.get_side_by_side() ? wc * 2 : wc;
             auto out = std::make_shared<slint::VectorModel<DiffRowData>>();
             auto push_thread = [&](const ReviewThread* th) {
                 for (std::size_t ci = 0; ci < th->comments.size(); ++ci) {
@@ -1255,16 +1258,18 @@ main(int argc, char** argv) {
                     h.comment_tint = avatar_tint(cm.author);
                     h.comment_avatar = avatar_for(cm.author_avatar);
                     out->push_back(h);
-                    // Body rows: wrapped to the indented width.
-                    auto lines = wrap_text(cm.body_md, std::max(16, wc - depth * 2 - 4));
+                    // Body rows: wrapped to the full comment width; the last row is
+                    // the bubble's tail (rounds its bottom).
+                    auto lines = wrap_text(cm.body_md, std::max(20, comment_wc - depth * 2 - 8));
                     if (lines.empty()) {
                         lines.emplace_back();
                     }
-                    for (const auto& ln : lines) {
+                    for (std::size_t li = 0; li < lines.size(); ++li) {
                         DiffRowData d{};
                         d.is_comment = true;
                         d.comment_is_head = false;
-                        d.comment_body = ss(ln);
+                        d.comment_is_tail = (li + 1 == lines.size());
+                        d.comment_body = ss(lines[li]);
                         d.comment_depth = depth;
                         d.comment_outdated = th->outdated;
                         out->push_back(d);
