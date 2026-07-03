@@ -108,6 +108,16 @@ export struct PrComment {
     resolved: bool,     // comment: its thread is resolved
 }
 
+// A small, shared type scale for the chrome/sidebar (the diff itself scales with
+// Backend.font-size). Keeping the whole UI to four sizes — set here in one place —
+// avoids the drift of a dozen ad-hoc per-widget px values.
+global Type {
+    out property <length> title: 16px;  // dialog / prominent titles
+    out property <length> body: 12px;   // primary text (file names, PR titles, comments)
+    out property <length> label: 11px;  // section headers, secondary labels
+    out property <length> meta: 10px;   // timestamps, counts, badges, captions
+}
+
 // ---- option-bar state, shared with C++ -------------------------------------
 
 export global DiffOptions {
@@ -384,7 +394,7 @@ component Button inherits Rectangle {
             text: root.text;
             color: !root.enabled ? Backend.gutter-fg
                  : (root.primary ? Backend.on-accent : Backend.fg);
-            font-size: 12px;
+            font-size: Type.body;
             vertical-alignment: center;
             horizontal-alignment: center;
         }
@@ -420,7 +430,7 @@ component CheckBox inherits Rectangle {
             if root.checked : Text {
                 text: "✓";
                 color: Backend.on-accent;
-                font-size: 12px;
+                font-size: Type.body;
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
@@ -428,7 +438,7 @@ component CheckBox inherits Rectangle {
         Text {
             text: root.text;
             color: Backend.fg;
-            font-size: 12px;
+            font-size: Type.body;
             vertical-alignment: center;
         }
     }
@@ -459,7 +469,7 @@ component LineEdit inherits Rectangle {
         visible: ti.text == "";
         text: root.placeholder-text;
         color: Backend.gutter-fg;
-        font-size: 13px;
+        font-size: Type.body;
         vertical-alignment: center;
         overflow: elide;
     }
@@ -468,7 +478,7 @@ component LineEdit inherits Rectangle {
         width: parent.width - 16px;
         height: 100%;
         color: Backend.fg;
-        font-size: 13px;
+        font-size: Type.body;
         single-line: true;
         input-type: root.password ? InputType.password : InputType.text;
         vertical-alignment: center;
@@ -497,7 +507,7 @@ component TextArea inherits Rectangle {
         visible: ti.text == "";
         text: root.placeholder-text;
         color: Backend.gutter-fg;
-        font-size: 13px;
+        font-size: Type.body;
         wrap: word-wrap;
     }
     // A Flickable lets the caret follow long bodies past the visible height.
@@ -510,7 +520,7 @@ component TextArea inherits Rectangle {
         ti := TextInput {
             width: parent.width;
             color: Backend.fg;
-            font-size: 13px;
+            font-size: Type.body;
             single-line: false;
             wrap: word-wrap;
         }
@@ -720,7 +730,7 @@ component DiffRow inherits Rectangle {
                         height: 100%;
                         text: rowdata.comment-initials;
                         color: #ffffff;
-                        font-size: 12px;
+                        font-size: Type.body;
                         font-weight: 700;
                         horizontal-alignment: center;
                         vertical-alignment: center;
@@ -822,7 +832,7 @@ component SegToggle inherits Rectangle {
         Text {
             text: label;
             color: active ? Backend.on-accent : Backend.fg;
-            font-size: 9px;
+            font-size: Type.meta;
             horizontal-alignment: center;
         }
     }
@@ -855,7 +865,7 @@ component BarToggle inherits Rectangle {
         }
         Text {
             text: root.caption;
-            font-size: 9px;
+            font-size: Type.meta;
             horizontal-alignment: center;
             color: root.active ? Backend.accent : Backend.gutter-fg;
         }
@@ -889,7 +899,7 @@ component ThemedCombo inherits Rectangle {
         Text {
             text: root.display;
             color: Backend.fg;
-            font-size: 12px;
+            font-size: Type.body;
             vertical-alignment: center;
             horizontal-stretch: 1;
             overflow: elide;
@@ -934,7 +944,7 @@ component ThemedCombo inherits Rectangle {
                         x: 8px;
                         text: item;
                         color: Backend.fg;
-                        font-size: 12px;
+                        font-size: Type.body;
                         vertical-alignment: center;
                     }
                 }
@@ -1036,7 +1046,7 @@ component OptionBar inherits Rectangle {
                 }
                 Text {
                     text: "More";
-                    font-size: 9px;
+                    font-size: Type.meta;
                     horizontal-alignment: center;
                     color: Backend.gutter-fg;
                 }
@@ -1113,7 +1123,7 @@ component OptionBar inherits Rectangle {
                         // Algorithm — radio-style rows (avoids a popup inside a popup).
                         VerticalLayout {
                             spacing: 4px;
-                            Text { text: "ALGORITHM"; color: Backend.gutter-fg; font-size: 11px; }
+                            Text { text: "ALGORITHM"; color: Backend.gutter-fg; font-size: Type.label; }
                             for alg[i] in ["Patience", "Myers-greedy", "Myers-linear"] : Rectangle {
                                 height: 26px;
                                 border-radius: 4px;
@@ -1127,7 +1137,7 @@ component OptionBar inherits Rectangle {
                                     x: 8px;
                                     text: alg;
                                     color: Backend.fg;
-                                    font-size: 12px;
+                                    font-size: Type.body;
                                     vertical-alignment: center;
                                 }
                             }
@@ -1135,7 +1145,7 @@ component OptionBar inherits Rectangle {
                         // Compare against an arbitrary base ref (blank = HEAD).
                         VerticalLayout {
                             spacing: 4px;
-                            Text { text: "COMPARE AGAINST REF"; color: Backend.gutter-fg; font-size: 11px; }
+                            Text { text: "COMPARE AGAINST REF"; color: Backend.gutter-fg; font-size: Type.label; }
                             LineEdit {
                                 placeholder-text: "vs ref (HEAD)";
                                 edited => { Backend.set-base-ref(self.text); }
@@ -1152,7 +1162,7 @@ component OptionBar inherits Rectangle {
 
 component SectionLabel inherits Text {
     color: Backend.gutter-fg;
-    font-size: 11px;
+    font-size: Type.label;
 }
 
 // A self-drawn context menu (a PopupWindow we fully control), positioned at the
@@ -1191,7 +1201,7 @@ component MenuPopup inherits PopupWindow {
                     x: 10px;
                     text: it;
                     color: Backend.fg;
-                    font-size: 12px;
+                    font-size: Type.body;
                     vertical-alignment: center;
                 }
             }
@@ -1459,7 +1469,7 @@ component FilesPanel inherits Rectangle {
                         x: 6px;
                         text: f.name;
                         color: Backend.gutter-fg;
-                        font-size: 11px;
+                        font-size: Type.label;
                         vertical-alignment: center;
                     }
 
@@ -1488,7 +1498,7 @@ component FilesPanel inherits Rectangle {
                         Text {
                             text: f.name;
                             color: Backend.fg;
-                            font-size: 12px;
+                            font-size: Type.body;
                             overflow: elide;
                             horizontal-stretch: 1;
                             vertical-alignment: center;
@@ -1506,7 +1516,7 @@ component FilesPanel inherits Rectangle {
                         Text {
                             text: f.name;
                             color: selected ? white : Backend.fg;
-                            font-size: 12px;
+                            font-size: Type.body;
                             vertical-alignment: center;
                         }
                         Text {
@@ -1514,7 +1524,7 @@ component FilesPanel inherits Rectangle {
                             color: Backend.gutter-fg;
                             overflow: elide;
                             horizontal-stretch: 1;
-                            font-size: 11px;
+                            font-size: Type.label;
                             vertical-alignment: center;
                         }
                         // Review-comment count badge (PR mode), vertically centred.
@@ -1530,7 +1540,7 @@ component FilesPanel inherits Rectangle {
                                     Text {
                                         text: f.comment-count;
                                         color: selected ? Backend.accent : Backend.on-accent;
-                                        font-size: 10px;
+                                        font-size: Type.meta;
                                         font-weight: 700;
                                         vertical-alignment: center;
                                     }
@@ -1650,7 +1660,7 @@ component ShelfHeader inherits Rectangle {
         Text {
             text: root.title;
             color: ta.has-hover ? Backend.accent : Backend.gutter-fg;
-            font-size: 10px;
+            font-size: Type.meta;
             font-weight: 700;
             vertical-alignment: center;
         }
@@ -1658,7 +1668,7 @@ component ShelfHeader inherits Rectangle {
         if root.count != "" : Text {
             text: root.count;
             color: Backend.gutter-fg;
-            font-size: 10px;
+            font-size: Type.meta;
             vertical-alignment: center;
         }
     }
@@ -1713,7 +1723,7 @@ component CommitsPanel inherits Rectangle {
             Text {
                 text: Backend.pr-title;
                 color: Backend.fg;
-                font-size: 13px;
+                font-size: Type.body;
                 font-weight: 600;
                 overflow: elide;
                 horizontal-stretch: 1;
@@ -1724,7 +1734,7 @@ component CommitsPanel inherits Rectangle {
                 Text {
                     text: "Comment";
                     color: comment-ta.has-hover ? Backend.accent : Backend.gutter-fg;
-                    font-size: 11px;
+                    font-size: Type.label;
                     horizontal-alignment: right;
                     vertical-alignment: center;
                 }
@@ -1735,7 +1745,7 @@ component CommitsPanel inherits Rectangle {
                 Text {
                     text: "Close";
                     color: close-ta.has-hover ? Backend.accent : Backend.gutter-fg;
-                    font-size: 11px;
+                    font-size: Type.label;
                     horizontal-alignment: right;
                     vertical-alignment: center;
                 }
@@ -1744,7 +1754,7 @@ component CommitsPanel inherits Rectangle {
         if Backend.pr-open : Text {
             text: Backend.pr-subtitle;
             color: Backend.gutter-fg;
-            font-size: 10px;
+            font-size: Type.meta;
             overflow: elide;
         }
         // Diffstat + quick actions (Open in browser / Copy link).
@@ -1753,7 +1763,7 @@ component CommitsPanel inherits Rectangle {
             Text {
                 text: Backend.pr-stat;
                 color: Backend.gutter-fg;
-                font-size: 10px;
+                font-size: Type.meta;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
                 overflow: elide;
@@ -1764,7 +1774,7 @@ component CommitsPanel inherits Rectangle {
                 Text {
                     text: "Open";
                     color: open-ext-ta.has-hover ? Backend.accent : Backend.gutter-fg;
-                    font-size: 10px;
+                    font-size: Type.meta;
                     horizontal-alignment: right;
                     vertical-alignment: center;
                 }
@@ -1775,7 +1785,7 @@ component CommitsPanel inherits Rectangle {
                 Text {
                     text: "Copy";
                     color: copy-link-ta.has-hover ? Backend.accent : Backend.gutter-fg;
-                    font-size: 10px;
+                    font-size: Type.meta;
                     horizontal-alignment: right;
                     vertical-alignment: center;
                 }
@@ -1811,7 +1821,7 @@ component CommitsPanel inherits Rectangle {
                     height: 100%;
                     text: pr.title;
                     color: Backend.gutter-fg;
-                    font-size: 10px;
+                    font-size: Type.meta;
                     font-weight: 700;
                     vertical-alignment: center;
                 }
@@ -1843,7 +1853,7 @@ component CommitsPanel inherits Rectangle {
                                     height: 100%;
                                     text: pr.initials;
                                     color: #ffffff;
-                                    font-size: 11px;
+                                    font-size: Type.label;
                                     font-weight: 700;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
@@ -1857,7 +1867,7 @@ component CommitsPanel inherits Rectangle {
                             Text {
                                 text: pr.title;
                                 color: Backend.fg;
-                                font-size: 12px;
+                                font-size: Type.body;
                                 overflow: elide;
                                 horizontal-stretch: 1;
                                 vertical-alignment: center;
@@ -1871,7 +1881,7 @@ component CommitsPanel inherits Rectangle {
                                     Text {
                                         text: "draft";
                                         color: Backend.gutter-fg;
-                                        font-size: 9px;
+                                        font-size: Type.meta;
                                         vertical-alignment: center;
                                     }
                                 }
@@ -1883,7 +1893,7 @@ component CommitsPanel inherits Rectangle {
                                 text: "#" + pr.id + "  " + pr.source + " → " + pr.dest
                                       + (pr.comments > 0 ? "  ·  " + pr.comments + " 💬" : "");
                                 color: Backend.gutter-fg;
-                                font-size: 10px;
+                                font-size: Type.meta;
                                 overflow: elide;
                                 horizontal-stretch: 1;
                                 vertical-alignment: center;
@@ -1891,7 +1901,7 @@ component CommitsPanel inherits Rectangle {
                             Text {
                                 text: pr.updated-rel;
                                 color: Backend.gutter-fg;
-                                font-size: 10px;
+                                font-size: Type.meta;
                                 vertical-alignment: center;
                             }
                         }
@@ -1902,12 +1912,12 @@ component CommitsPanel inherits Rectangle {
         if Backend.has-bitbucket && !Backend.pr-list-collapsed && Backend.loading-prs : Text {
             text: "Loading pull requests…";
             color: Backend.gutter-fg;
-            font-size: 11px;
+            font-size: Type.label;
         }
         if Backend.has-bitbucket && !Backend.pr-list-collapsed && !Backend.loading-prs && Backend.pull-requests.length == 0 : Text {
             text: "No open pull requests";
             color: Backend.gutter-fg;
-            font-size: 11px;
+            font-size: Type.label;
         }
 
         // ---- Shelf: Reviewers (inside a PR, when it has any) ----
@@ -1944,7 +1954,7 @@ component CommitsPanel inherits Rectangle {
                                     : (Backend.pr-approved-by-me ? "Approved — click to undo"
                                                                  : "Approve");
                                 color: Backend.pr-approved-by-me ? Backend.fg : Backend.on-accent;
-                                font-size: 11px;
+                                font-size: Type.label;
                                 font-weight: 600;
                                 vertical-alignment: center;
                             }
@@ -1983,7 +1993,7 @@ component CommitsPanel inherits Rectangle {
                                 height: 100%;
                                 text: rv.initials;
                                 color: #ffffff;
-                                font-size: 10px;
+                                font-size: Type.meta;
                                 font-weight: 700;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
@@ -2007,7 +2017,7 @@ component CommitsPanel inherits Rectangle {
                     Text {
                         text: rv.name;
                         color: Backend.fg;
-                        font-size: 12px;
+                        font-size: Type.body;
                         overflow: elide;
                         horizontal-stretch: 1;
                         vertical-alignment: center;
@@ -2039,7 +2049,7 @@ component CommitsPanel inherits Rectangle {
                 && Backend.pr-comment-count == 0 : Text {
             text: "No unresolved comments";
             color: Backend.gutter-fg;
-            font-size: 11px;
+            font-size: Type.label;
         }
         if Backend.pr-open && Backend.pr-has-comments && !root.sh-comments-collapsed
                 && Backend.pr-comment-count > 0 : ListView {
@@ -2056,7 +2066,7 @@ component CommitsPanel inherits Rectangle {
                     Text {
                         text: cm.location;
                         color: cm.is-dir ? Backend.gutter-fg : Backend.fg;
-                        font-size: 10px;
+                        font-size: Type.meta;
                         font-weight: cm.is-dir ? 400 : 700;
                         overflow: elide;
                         horizontal-stretch: 1;
@@ -2065,7 +2075,7 @@ component CommitsPanel inherits Rectangle {
                     if cm.count > 0 : Text {
                         text: cm.count;
                         color: Backend.gutter-fg;
-                        font-size: 10px;
+                        font-size: Type.meta;
                         vertical-alignment: center;
                     }
                 }
@@ -2100,13 +2110,13 @@ component CommitsPanel inherits Rectangle {
                             Text {
                                 text: cm.author + (cm.location != "" ? "  ·  " + cm.location : "");
                                 color: Backend.gutter-fg;
-                                font-size: 10px;
+                                font-size: Type.meta;
                                 overflow: elide;
                             }
                             Text {
                                 text: cm.snippet;
                                 color: Backend.fg;
-                                font-size: 12px;
+                                font-size: Type.body;
                                 overflow: elide;
                             }
                         }
@@ -2145,14 +2155,14 @@ component CommitsPanel inherits Rectangle {
                         text: "Uncommitted changes";
                         color: Backend.fg;
                         overflow: elide;
-                        font-size: 12px;
+                        font-size: Type.body;
                     }
                     Text {
                         text: Backend.changes-count > 0
                               ? "\{Backend.changes-count} changed file(s)"
                               : "working tree clean";
                         color: Backend.gutter-fg;
-                        font-size: 10px;
+                        font-size: Type.meta;
                     }
                 }
             }
@@ -2178,12 +2188,12 @@ component CommitsPanel inherits Rectangle {
                     Text {
                         text: "Full diff";
                         color: Backend.fg;
-                        font-size: 12px;
+                        font-size: Type.body;
                     }
                     Text {
                         text: "all changes in this PR";
                         color: Backend.gutter-fg;
-                        font-size: 10px;
+                        font-size: Type.meta;
                         overflow: elide;
                     }
                 }
@@ -2251,13 +2261,13 @@ component CommitsPanel inherits Rectangle {
                             text: c.summary;
                             color: Backend.fg;
                             overflow: elide;
-                            font-size: 12px;
+                            font-size: Type.body;
                         }
                         Text {
                             text: c.short-oid;
                             color: Backend.gutter-fg;
                             font-family: Backend.mono-font;
-                            font-size: 10px;
+                            font-size: Type.meta;
                         }
                     }
                 }
@@ -2266,7 +2276,7 @@ component CommitsPanel inherits Rectangle {
         if Backend.loading-commits : Text {
             text: "Loading…";
             color: Backend.gutter-fg;
-            font-size: 11px;
+            font-size: Type.label;
             horizontal-alignment: center;
         }
     }
@@ -2297,12 +2307,12 @@ component SettingsPanel inherits Rectangle {
             padding: 22px;
             spacing: 16px;
 
-            Text { text: "Settings"; color: Backend.fg; font-size: 17px; font-weight: 600; }
+            Text { text: "Settings"; color: Backend.fg; font-size: Type.title; font-weight: 600; }
 
             // Diff font: curated dropdown + free-text for any installed family.
             VerticalLayout {
                 spacing: 6px;
-                Text { text: "DIFF FONT"; color: Backend.gutter-fg; font-size: 11px; }
+                Text { text: "DIFF FONT"; color: Backend.gutter-fg; font-size: Type.label; }
                 ThemedCombo {
                     model: Backend.font-choices;
                     current-value: Backend.mono-font;
@@ -2318,7 +2328,7 @@ component SettingsPanel inherits Rectangle {
             // UI font: the chrome/sidebar family (defaults to the OS UI font).
             VerticalLayout {
                 spacing: 6px;
-                Text { text: "UI FONT"; color: Backend.gutter-fg; font-size: 11px; }
+                Text { text: "UI FONT"; color: Backend.gutter-fg; font-size: Type.label; }
                 ThemedCombo {
                     model: Backend.ui-font-choices;
                     current-value: Backend.ui-font;
@@ -2350,7 +2360,7 @@ component SettingsPanel inherits Rectangle {
             // Theme (applied live).
             VerticalLayout {
                 spacing: 6px;
-                Text { text: "THEME"; color: Backend.gutter-fg; font-size: 11px; }
+                Text { text: "THEME"; color: Backend.gutter-fg; font-size: Type.label; }
                 ThemedCombo {
                     model: Backend.theme-names;
                     current-value: Backend.theme-name;
@@ -2361,7 +2371,7 @@ component SettingsPanel inherits Rectangle {
             // Pull-request review: open the Bitbucket connect dialog.
             VerticalLayout {
                 spacing: 6px;
-                Text { text: "PULL REQUESTS"; color: Backend.gutter-fg; font-size: 11px; }
+                Text { text: "PULL REQUESTS"; color: Backend.gutter-fg; font-size: Type.label; }
                 Button {
                     text: Backend.bitbucket-connected ? "Bitbucket — connected ✓" : "Connect Bitbucket…";
                     clicked => {
@@ -2401,7 +2411,7 @@ component BitbucketPanel inherits Rectangle {
             padding: 22px;
             spacing: 14px;
 
-            Text { text: "Connect Bitbucket"; color: Backend.fg; font-size: 17px; font-weight: 600; }
+            Text { text: "Connect Bitbucket"; color: Backend.fg; font-size: Type.title; font-weight: 600; }
             Text {
                 text: "Simplest: create a Bitbucket access token (Workspace or Repository settings → "
                     + "Access tokens) with the Pull requests: Read scope and paste it below, leaving "
@@ -2409,23 +2419,23 @@ component BitbucketPanel inherits Rectangle {
                     + "with your account email. The token is stored in the OS credential vault, never "
                     + "in config.";
                 color: Backend.gutter-fg;
-                font-size: 11px;
+                font-size: Type.label;
                 wrap: word-wrap;
             }
 
             VerticalLayout {
                 spacing: 4px;
-                Text { text: "WORKSPACE"; color: Backend.gutter-fg; font-size: 11px; }
+                Text { text: "WORKSPACE"; color: Backend.gutter-fg; font-size: Type.label; }
                 bb-ws := LineEdit { placeholder-text: "e.g. myteam"; }
             }
             VerticalLayout {
                 spacing: 4px;
-                Text { text: "REPOSITORY  (optional — tests an open-PR count)"; color: Backend.gutter-fg; font-size: 11px; }
+                Text { text: "REPOSITORY  (optional — tests an open-PR count)"; color: Backend.gutter-fg; font-size: Type.label; }
                 bb-repo := LineEdit { placeholder-text: "e.g. my-repo"; }
             }
             VerticalLayout {
                 spacing: 4px;
-                Text { text: "ATLASSIAN EMAIL  (leave blank for a Bitbucket access token)"; color: Backend.gutter-fg; font-size: 11px; }
+                Text { text: "ATLASSIAN EMAIL  (leave blank for a Bitbucket access token)"; color: Backend.gutter-fg; font-size: Type.label; }
                 HorizontalLayout {
                     spacing: 6px;
                     bb-user := LineEdit { placeholder-text: "you@example.com — optional"; horizontal-stretch: 1; }
@@ -2445,14 +2455,14 @@ component BitbucketPanel inherits Rectangle {
             }
             VerticalLayout {
                 spacing: 4px;
-                Text { text: "ACCESS / API TOKEN"; color: Backend.gutter-fg; font-size: 11px; }
+                Text { text: "ACCESS / API TOKEN"; color: Backend.gutter-fg; font-size: Type.label; }
                 bb-pass := LineEdit { placeholder-text: "paste token"; password: true; }
             }
 
             if Backend.bitbucket-status != "" : Text {
                 text: Backend.bitbucket-status;
                 color: Backend.bitbucket-connected ? Backend.accent : Backend.fg;
-                font-size: 12px;
+                font-size: Type.body;
                 wrap: word-wrap;
             }
 
@@ -2633,7 +2643,7 @@ export component AppWindow inherits Window {
                         color: Backend.current-file == "" ? Backend.gutter-fg : Backend.fg;
                         vertical-alignment: center;
                         font-family: Backend.mono-font;
-                        font-size: 12px;
+                        font-size: Type.body;
                         horizontal-stretch: 1;
                         overflow: elide;
                     }
@@ -2725,7 +2735,7 @@ export component AppWindow inherits Window {
                                 Text {
                                     text: Backend.overview-title;
                                     color: Backend.fg;
-                                    font-size: 13px;
+                                    font-size: Type.body;
                                     font-weight: 700;
                                     vertical-alignment: center;
                                     overflow: elide;
@@ -2733,7 +2743,7 @@ export component AppWindow inherits Window {
                                 Text {
                                     text: Backend.overview-subtitle;
                                     color: Backend.gutter-fg;
-                                    font-size: 11px;
+                                    font-size: Type.label;
                                     vertical-alignment: center;
                                     horizontal-stretch: 1;
                                     overflow: elide;
@@ -2753,7 +2763,7 @@ export component AppWindow inherits Window {
                                 width: ov-scroll.width - 14px;
                                 text: Backend.overview-body;
                                 color: Backend.fg;
-                                font-size: 12px;
+                                font-size: Type.body;
                                 wrap: word-wrap;
                                 single-line: false;
                                 read-only: true;
@@ -2850,7 +2860,7 @@ export component AppWindow inherits Window {
                                 : "No textual changes to display");
                         color: Backend.gutter-fg;
                         horizontal-alignment: center;
-                        font-size: 13px;
+                        font-size: Type.body;
                     }
                 }
                 }  // content (diff list / empty state)
@@ -2880,7 +2890,7 @@ export component AppWindow inherits Window {
                             text: "\{Backend.find-current}/\{Backend.find-count}";
                             color: Backend.gutter-fg;
                             vertical-alignment: center;
-                            font-size: 11px;
+                            font-size: Type.label;
                         }
                         Button { text: "<"; clicked => { Backend.find-prev(); } }
                         Button { text: ">"; clicked => { Backend.find-next(); } }
@@ -2907,7 +2917,7 @@ export component AppWindow inherits Window {
                     Text {
                         text: "Comment on selection";
                         color: Backend.on-accent;
-                        font-size: 12px;
+                        font-size: Type.body;
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
@@ -2931,7 +2941,7 @@ export component AppWindow inherits Window {
                                 ? "New comment on the pull request"
                                 : "New comment on " + Backend.composer-target;
                             color: Backend.gutter-fg;
-                            font-size: 11px;
+                            font-size: Type.label;
                             overflow: elide;
                         }
                         Rectangle {
@@ -2947,7 +2957,7 @@ export component AppWindow inherits Window {
                                 height: parent.height - 12px;
                                 color: Backend.fg;
                                 font-family: Backend.mono-font;
-                                font-size: 13px;
+                                font-size: Type.body;
                                 wrap: word-wrap;
                                 single-line: false;
                                 init => { self.focus(); }
@@ -2960,7 +2970,7 @@ export component AppWindow inherits Window {
                                 visible: Backend.posting-comment;
                                 text: "Posting…";
                                 color: Backend.gutter-fg;
-                                font-size: 11px;
+                                font-size: Type.label;
                                 vertical-alignment: center;
                             }
                             Button {
@@ -2999,7 +3009,7 @@ export component AppWindow inherits Window {
                     Text {
                         text: Backend.status-text;
                         color: Backend.gutter-fg;
-                        font-size: 11px;
+                        font-size: Type.label;
                         vertical-alignment: center;
                         horizontal-stretch: 1;
                         overflow: elide;
@@ -3034,7 +3044,7 @@ export component AppWindow inherits Window {
                                     ? "Prefetching \{Backend.net-prefetch}…"
                                     : "idle");
                             color: parent.busy ? Backend.accent : Backend.gutter-fg;
-                            font-size: 11px;
+                            font-size: Type.label;
                             vertical-alignment: center;
                         }
                     }
@@ -3097,17 +3107,17 @@ export component AppWindow inherits Window {
             VerticalLayout {
                 padding: 20px;
                 spacing: 12px;
-                Text { text: "Discard changes?"; color: Backend.fg; font-size: 16px; font-weight: 600; }
+                Text { text: "Discard changes?"; color: Backend.fg; font-size: Type.title; font-weight: 600; }
                 Text {
                     text: Backend.confirm-discard;
                     color: Backend.gutter-fg;
-                    font-size: 12px;
+                    font-size: Type.body;
                     overflow: elide;
                 }
                 Text {
                     text: "This cannot be undone.";
                     color: #f48771;
-                    font-size: 11px;
+                    font-size: Type.label;
                 }
                 HorizontalLayout {
                     spacing: 8px;
@@ -3142,7 +3152,7 @@ export component AppWindow inherits Window {
             VerticalLayout {
                 padding: 20px;
                 spacing: 12px;
-                Text { text: "New branch"; color: Backend.fg; font-size: 16px; font-weight: 600; }
+                Text { text: "New branch"; color: Backend.fg; font-size: Type.title; font-weight: 600; }
                 branch-name := LineEdit {
                     placeholder-text: "branch name";
                     init => { self.focus(); }
