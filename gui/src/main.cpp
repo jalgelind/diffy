@@ -232,6 +232,54 @@ provider_api_base(const std::string& provider_id) {
     return provider_id == "github" ? "https://api.github.com" : "https://api.bitbucket.org/2.0";
 }
 
+// A connected review account: a provider identity plus the credential used for it.
+// The secret lives only in the OS vault; this in-memory copy is loaded on restore /
+// set on connect so switching accounts needs no re-fetch. `label` is the vault
+// account key (Bitbucket: Atlassian email or workspace; GitHub: the login, or the
+// legacy "pat"). `display` is the whoami name shown in the UI (falls back to label).
+struct GuiAccount {
+    std::string label;
+    std::string display;
+    diffy::review::Credential cred;
+};
+
+// Config persists the per-provider account list as a comma-separated label string
+// (the secrets stay in the vault). Split/join keep that scheme in one place; labels
+// are emails / usernames / workspaces and never contain a comma.
+std::vector<std::string>
+split_accounts(const std::string& csv) {
+    std::vector<std::string> out;
+    std::size_t start = 0;
+    while (start <= csv.size()) {
+        std::size_t comma = csv.find(',', start);
+        std::string tok = csv.substr(start, comma == std::string::npos ? std::string::npos
+                                                                        : comma - start);
+        // Trim surrounding spaces so a hand-edited "a, b" round-trips cleanly.
+        std::size_t b = tok.find_first_not_of(" \t");
+        std::size_t e = tok.find_last_not_of(" \t");
+        if (b != std::string::npos) {
+            out.push_back(tok.substr(b, e - b + 1));
+        }
+        if (comma == std::string::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+    return out;
+}
+
+std::string
+join_accounts(const std::vector<std::string>& labels) {
+    std::string out;
+    for (const auto& l : labels) {
+        if (!out.empty()) {
+            out += ",";
+        }
+        out += l;
+    }
+    return out;
+}
+
 // Build the concrete ReviewProvider for `provider_id`. One switch, called from the
 // worker threads; the rest of the app talks only to the ReviewProvider interface,
 // so adding a backend is "extend here + register the plugin" with no call-site
@@ -985,6 +1033,11 @@ main(int argc, char** argv) {
         // is the backend that owns the OPEN repo's origin ("" if unrecognized); the
         // active credential is the entry for that provider.
         std::unordered_map<std::string, diffy::review::Credential> creds;
+        // Multi-account: every connected account per provider id, plus which label is
+        // active. The active account's Credential is mirrored into `creds` above, so
+        // all downstream PR code keeps reading a single active credential per provider.
+        std::unordered_map<std::string, std::vector<GuiAccount>> accounts;
+        std::unordered_map<std::string, std::string> active_label;
         std::string provider_id;
         std::string pr_active_repo;  // repo_path the active provider_id was defaulted for
         std::optional<diffy::review::Credential>
@@ -1052,31 +1105,176 @@ main(int argc, char** argv) {
     // refresh_prs re-fetches in the background and swaps in the fresh result.
     state.pr_list_cache = diffy::gui::pr_cache_load();
 
-    // Restore persisted connections from the OS credential vault. Bitbucket keys by
-    // the account email (stored in config); GitHub uses a Bearer PAT under a fixed
-    // "pat" account. (Bearer/access-token Bitbucket connects stay session-only.)
-    if (!state.settings.bitbucket_account.empty()) {
-        const std::string base = "https://api.bitbucket.org/2.0";
-        if (auto tok = diffy::review::SecretStore::get(diffy::review::build_key(
-                "bitbucket-cloud", base, state.settings.bitbucket_account))) {
-            diffy::review::Credential c;
-            c.method = diffy::review::AuthMethod::BasicToken;
-            c.principal = state.settings.bitbucket_account;
-            c.secret = *tok;
-            state.creds["bitbucket-cloud"] = c;
-            backend.set_bitbucket_connected(true);
-            backend.set_bitbucket_status(ss("Connected as " + state.settings.bitbucket_account));
+    // --- Multi-account PR-review connections --------------------------------
+    // Config stores, per provider, a comma-separated list of account labels plus the
+    // active label; the tokens live only in the OS vault, keyed (provider, base,
+    // label). The active account's credential is mirrored into state.creds so the
+    // rest of the app keeps talking to one credential per provider.
+    namespace rv0 = diffy::review;
+
+    // The human name to show for an account: the whoami display when we have it,
+    // else the label — except the legacy fixed GitHub "pat", which has no identity.
+    auto account_display = [](const std::string& /*provider_id*/,
+                              const GuiAccount& a) -> std::string {
+        if (!a.display.empty()) {
+            return a.display;
         }
-    }
-    if (auto tok = diffy::review::SecretStore::get(
-            diffy::review::build_key("github", "https://api.github.com", "pat"))) {
-        diffy::review::Credential c;
-        c.method = diffy::review::AuthMethod::Bearer;
-        c.secret = *tok;
-        state.creds["github"] = c;
-        backend.set_github_connected(true);
-        backend.set_github_status(ss("Connected"));
-    }
+        if (a.label == "pat") {
+            return "personal token";  // migrated legacy key — no identity was stored
+        }
+        return a.label;
+    };
+
+    // Mirror the active account's credential into state.creds and reflect the
+    // connection state onto the provider's UI flags. With no accounts, disconnect.
+    auto apply_active_account = [&](const std::string& provider_id) {
+        auto& list = state.accounts[provider_id];
+        std::string act = state.active_label[provider_id];
+        const GuiAccount* cur = nullptr;
+        for (auto& a : list) {
+            if (a.label == act) {
+                cur = &a;
+                break;
+            }
+        }
+        if (!cur && !list.empty()) {  // stale/blank active -> fall back to the first
+            cur = &list.front();
+            state.active_label[provider_id] = cur->label;
+        }
+        const bool is_github = provider_id == "github";
+        if (cur) {
+            state.creds[provider_id] = cur->cred;
+            const std::string status = "Connected as " + account_display(provider_id, *cur);
+            if (is_github) {
+                backend.set_github_connected(true);
+                backend.set_github_status(ss(status));
+            } else {
+                backend.set_bitbucket_connected(true);
+                backend.set_bitbucket_status(ss(status));
+            }
+        } else {
+            state.creds.erase(provider_id);
+            state.active_label[provider_id] = "";
+            if (is_github) {
+                backend.set_github_connected(false);
+                backend.set_github_status(ss(""));
+            } else {
+                backend.set_bitbucket_connected(false);
+                backend.set_bitbucket_status(ss(""));
+            }
+        }
+    };
+
+    // Persist the provider's account list + active label to config. The legacy
+    // single-account `bitbucket_account` is kept in sync (to the active Basic/email
+    // account) so an older build still auto-reconnects.
+    auto persist_accounts = [&](const std::string& provider_id) {
+        std::vector<std::string> labels;
+        for (auto& a : state.accounts[provider_id]) {
+            labels.push_back(a.label);
+        }
+        const std::string csv = join_accounts(labels);
+        const std::string act = state.active_label[provider_id];
+        if (provider_id == "github") {
+            state.settings.github_accounts = csv;
+            state.settings.github_active = act;
+        } else {
+            state.settings.bitbucket_accounts = csv;
+            state.settings.bitbucket_active = act;
+            state.settings.bitbucket_account = "";
+            for (auto& a : state.accounts[provider_id]) {
+                if (a.label == act && a.cred.method == rv0::AuthMethod::BasicToken) {
+                    state.settings.bitbucket_account = a.label;
+                }
+            }
+        }
+        gui_settings_save(state.settings);
+    };
+
+    // Push the current accounts (all providers) to the settings-panel list model.
+    auto rebuild_accounts_model = [&]() {
+        auto model = std::make_shared<slint::VectorModel<ReviewAccount>>();
+        for (const char* provider_id : {"github", "bitbucket-cloud"}) {
+            for (auto& a : state.accounts[provider_id]) {
+                ReviewAccount e{};
+                e.provider = ss(provider_id);
+                e.label = ss(a.label);
+                e.display = ss(account_display(provider_id, a));
+                e.active = (state.active_label[provider_id] == a.label);
+                model->push_back(e);
+            }
+        }
+        backend.set_review_accounts(model);
+    };
+
+    // Load one provider's accounts from config + vault, migrating the legacy fields
+    // on first run (Bitbucket email; GitHub's fixed "pat" key) into the list form.
+    auto restore_provider_accounts = [&](const std::string& provider_id) {
+        const bool is_github = provider_id == "github";
+        const std::string base = provider_api_base(provider_id);
+        std::string csv = is_github ? state.settings.github_accounts
+                                     : state.settings.bitbucket_accounts;
+        std::string active = is_github ? state.settings.github_active
+                                        : state.settings.bitbucket_active;
+        if (csv.empty()) {  // migrate the pre-multi-account persistence
+            if (!is_github && !state.settings.bitbucket_account.empty()) {
+                csv = active = state.settings.bitbucket_account;
+            } else if (is_github &&
+                       rv0::SecretStore::get(rv0::build_key(provider_id, base, "pat"))) {
+                csv = active = "pat";
+            }
+        }
+        for (const auto& label : split_accounts(csv)) {
+            auto tok = rv0::SecretStore::get(rv0::build_key(provider_id, base, label));
+            if (!tok) {
+                continue;  // token evicted from the vault -> drop this account
+            }
+            GuiAccount a;
+            a.label = label;
+            // A Bitbucket email label means HTTP Basic (email + API token); GitHub and
+            // Bitbucket workspace/access-token labels are Bearer.
+            if (!is_github && label != "pat" && label.find('@') != std::string::npos) {
+                a.cred.method = rv0::AuthMethod::BasicToken;
+                a.cred.principal = label;
+            } else {
+                a.cred.method = rv0::AuthMethod::Bearer;
+            }
+            a.cred.secret = *tok;
+            state.accounts[provider_id].push_back(std::move(a));
+        }
+        if (!state.accounts[provider_id].empty()) {
+            bool has_active = false;
+            for (auto& a : state.accounts[provider_id]) {
+                if (a.label == active) {
+                    has_active = true;
+                    break;
+                }
+            }
+            state.active_label[provider_id] =
+                has_active ? active : state.accounts[provider_id].front().label;
+            apply_active_account(provider_id);
+        }
+        // Persist only when restore changed the stored form — a first-run migration
+        // from the legacy fields, or a token that has since vanished from the vault.
+        // Steady-state launches leave config untouched.
+        std::vector<std::string> final_labels;
+        for (auto& a : state.accounts[provider_id]) {
+            final_labels.push_back(a.label);
+        }
+        const std::string final_csv = join_accounts(final_labels);
+        const std::string cfg_csv = is_github ? state.settings.github_accounts
+                                              : state.settings.bitbucket_accounts;
+        const std::string cfg_active = is_github ? state.settings.github_active
+                                                 : state.settings.bitbucket_active;
+        const bool legacy_leftover = !is_github && !state.settings.bitbucket_account.empty();
+        if (final_csv != cfg_csv || state.active_label[provider_id] != cfg_active ||
+            legacy_leftover) {
+            persist_accounts(provider_id);
+        }
+    };
+    restore_provider_accounts("github");
+    restore_provider_accounts("bitbucket-cloud");
+    rebuild_accounts_model();
 
     // Outstanding background repo-load threads, joined before libgit2 shuts down.
     std::vector<std::thread> load_threads;
@@ -3582,7 +3780,9 @@ main(int argc, char** argv) {
                 repo = parsed->repo;
             }
         }
-        if (provider != "github") {
+        // Prefill the Bitbucket email only when there's no account yet — adding a
+        // second one should start blank rather than repeat the first account's email.
+        if (provider != "github" && state.accounts["bitbucket-cloud"].empty()) {
             user = state.settings.bitbucket_account;
         }
         backend.set_connect_prefill_owner(ss(owner));
@@ -3627,7 +3827,8 @@ main(int argc, char** argv) {
 
             bool ok = false;
             std::string status;
-            std::string account;
+            std::string account;  // whoami display name (for the UI)
+            std::string login;    // whoami username (the GitHub vault-key label)
             int pr_count = -1;
 
             auto describe = [](const rv::Error& e, const std::string& action) {
@@ -3662,6 +3863,7 @@ main(int argc, char** argv) {
                 auto who = client.whoami();
                 if (who) {
                     ok = true;
+                    login = who.value().username;
                     account = who.value().display_name.empty() ? who.value().username
                                                                : who.value().display_name;
                 } else {
@@ -3669,17 +3871,31 @@ main(int argc, char** argv) {
                 }
             }
 
+            // The vault-key label (also the account's identity in config):
+            //   GitHub    — the login (falls back to the owner, then legacy "pat"),
+            //               so multiple GitHub accounts get distinct keys.
+            //   Bitbucket — the Atlassian email (Basic) or, for an access token, the
+            //               workspace. Matches the pre-multi-account key scheme.
+            std::string label;
             if (ok) {
-                if (account.empty()) {
-                    if (auto who = client.whoami()) {  // best-effort display name
-                        account = who.value().display_name.empty() ? who.value().username
-                                                                   : who.value().display_name;
+                if (account.empty() || login.empty()) {
+                    if (auto who = client.whoami()) {  // best-effort identity
+                        if (login.empty()) {
+                            login = who.value().username;
+                        }
+                        if (account.empty()) {
+                            account = who.value().display_name.empty() ? who.value().username
+                                                                       : who.value().display_name;
+                        }
                     }
                 }
-                const std::string base = is_github ? "https://api.github.com"
-                                                   : "https://api.bitbucket.org/2.0";
-                const std::string acct_key = is_github ? std::string("pat") : (u.empty() ? w : u);
-                rv::SecretStore::set(rv::build_key(provider, base, acct_key), p);
+                if (is_github) {
+                    label = !login.empty() ? login : (!w.empty() ? w : std::string("pat"));
+                } else {
+                    label = u.empty() ? w : u;
+                }
+                const std::string base = provider_api_base(provider);
+                rv::SecretStore::set(rv::build_key(provider, base, label), p);
                 status = account.empty() ? "Connected" : ("Connected as " + account);
                 if (pr_count >= 0) {
                     status += "  ·  " + std::to_string(pr_count) + " open PR(s)";
@@ -3687,7 +3903,8 @@ main(int argc, char** argv) {
             }
             rv::log_line(std::string("connect result: ") + (ok ? "OK — " : "FAIL — ") + status);
 
-            slint::invoke_from_event_loop([&, provider, is_github, ok, status, u, p]() {
+            slint::invoke_from_event_loop([&, provider, is_github, ok, status, u, p, label,
+                                           account]() {
                 if (is_github) {
                     backend.set_github_connecting(false);
                     backend.set_github_connected(ok);
@@ -3707,18 +3924,76 @@ main(int argc, char** argv) {
                         c.principal = u;
                         c.secret = p;
                     }
-                    state.creds[provider] = c;
-                    // Persist Bitbucket's Basic/email account so it auto-reconnects;
-                    // GitHub's PAT auto-restores from the vault under "pat".
-                    if (!is_github && !u.empty()) {
-                        state.settings.bitbucket_account = u;
-                        gui_settings_save(state.settings);
+                    // Add or refresh this account, make it active, and mirror its
+                    // credential into state.creds (apply_active_account does the last
+                    // step); persist the list + re-render the settings account list.
+                    auto& list = state.accounts[provider];
+                    GuiAccount entry;
+                    entry.label = label;
+                    entry.display = account;
+                    entry.cred = c;
+                    bool replaced = false;
+                    for (auto& a : list) {
+                        if (a.label == label) {
+                            a = entry;
+                            replaced = true;
+                            break;
+                        }
                     }
+                    if (!replaced) {
+                        list.push_back(entry);
+                    }
+                    state.active_label[provider] = label;
+                    state.creds[provider] = c;
+                    persist_accounts(provider);
+                    rebuild_accounts_model();
                     refresh_prs();  // populate the sidebar if the open repo matches
                 }
             });
         });
     });
+
+    // Make a connected account the active credential for its provider. No network:
+    // the secret is already in memory (loaded on restore / set on connect), so this
+    // just re-points state.creds and re-lists the provider's PRs when it's showing.
+    backend.on_select_account([&](slint::SharedString prov, slint::SharedString lbl) {
+        const std::string provider = str(prov), label = str(lbl);
+        auto& list = state.accounts[provider];
+        const bool exists = std::any_of(list.begin(), list.end(),
+                                        [&](const GuiAccount& a) { return a.label == label; });
+        if (!exists) {
+            return;
+        }
+        state.active_label[provider] = label;
+        apply_active_account(provider);
+        persist_accounts(provider);
+        rebuild_accounts_model();
+        if (state.provider_id == provider) {
+            refresh_prs();  // the sidebar shows this provider — re-list under the new account
+        }
+    });
+
+    // Disconnect an account: erase its token from the OS vault and drop it from the
+    // list. If it was the active one, fall back to another (or none) and refresh.
+    backend.on_disconnect_account([&](slint::SharedString prov, slint::SharedString lbl) {
+        const std::string provider = str(prov), label = str(lbl);
+        diffy::review::SecretStore::erase(
+            diffy::review::build_key(provider, provider_api_base(provider), label));
+        auto& list = state.accounts[provider];
+        list.erase(std::remove_if(list.begin(), list.end(),
+                                  [&](const GuiAccount& a) { return a.label == label; }),
+                   list.end());
+        if (state.active_label[provider] == label) {
+            state.active_label[provider] = list.empty() ? std::string{} : list.front().label;
+        }
+        apply_active_account(provider);
+        persist_accounts(provider);
+        rebuild_accounts_model();
+        if (state.provider_id == provider) {
+            refresh_prs();
+        }
+    });
+
     // Sync the live view/layout options into state.settings so they can be saved.
     // Shared by the immediate per-toggle persist and the persist-on-exit path.
     auto capture_settings = [&]() {

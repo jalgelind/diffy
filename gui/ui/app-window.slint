@@ -102,6 +102,15 @@ export struct PrReviewer {
     approved: bool,
 }
 
+// One connected PR-review account (a provider + a vault-keyed identity). The
+// settings panel lists these across providers; the active one drives PR listing.
+export struct ReviewAccount {
+    provider: string,   // "github" | "bitbucket-cloud"
+    label: string,      // vault account key / identity (email, username or workspace)
+    display: string,    // human-friendly name (from whoami; falls back to label)
+    active: bool,       // the credential currently used for this provider
+}
+
 // One comment shown in the PR "Comments" shelf.
 export struct PrComment {
     id: string,         // provider comment id (for reply / edit / delete)
@@ -232,6 +241,12 @@ export global Backend {
     in property <string> connect-prefill-owner: "";
     in property <string> connect-prefill-repo: "";
     in property <string> connect-prefill-user: "";
+    // Every connected account across providers (see restore/connect in main.cpp).
+    // The settings panel lists them; selecting one makes it that provider's active
+    // credential, disconnecting erases its token from the OS vault.
+    in property <[ReviewAccount]> review-accounts;
+    callback select-account(string /* provider */, string /* label */);
+    callback disconnect-account(string /* provider */, string /* label */);
     // The active review backend — which provider's PRs the sidebar shows. Defaults
     // to the repo's detected host; the sidebar provider chips select/override it.
     in property <string> active-provider: "";
@@ -2768,22 +2783,79 @@ component SettingsPanel inherits Rectangle {
                 }
             }
 
-            // Pull-request review: configure a provider (also in the toolbar).
+            // Pull-request review: connected accounts (one or more per provider).
+            // Click a row to make it that provider's active credential; ✕ removes it
+            // (and erases its token from the OS vault). "Add…" opens the connect card.
             VerticalLayout {
                 spacing: 6px;
                 Text { text: "PULL REQUESTS"; color: Backend.gutter-fg; font-size: Type.label; }
-                Button {
-                    text: Backend.github-connected ? "GitHub — connected ✓" : "Connect GitHub…";
-                    clicked => {
-                        Backend.show-settings = false;
-                        Backend.prepare-connect("github");
+                if Backend.review-accounts.length == 0 : Text {
+                    text: "No accounts connected yet.";
+                    color: Backend.gutter-fg;
+                    font-size: Type.label;
+                }
+                for acct in Backend.review-accounts : Rectangle {
+                    height: 30px;
+                    border-radius: 5px;
+                    background: acct.active
+                        ? Backend.selection
+                        : (acct-ta.has-hover ? Backend.hover : transparent);
+                    acct-ta := TouchArea {
+                        clicked => { Backend.select-account(acct.provider, acct.label); }
+                    }
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 4px;
+                        spacing: 8px;
+                        // Active indicator: a filled accent dot, else a hollow ring.
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 8px;
+                                height: 8px;
+                                border-radius: 4px;
+                                background: acct.active ? Backend.accent : transparent;
+                                border-width: acct.active ? 0px : 1px;
+                                border-color: Backend.divider;
+                            }
+                        }
+                        Text {
+                            text: (acct.provider == "github" ? "GitHub" : "Bitbucket")
+                                + " · " + acct.display;
+                            color: Backend.fg;
+                            font-size: Type.body;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            overflow: elide;
+                        }
+                        dc-ta := TouchArea {
+                            width: 24px;
+                            clicked => { Backend.disconnect-account(acct.provider, acct.label); }
+                            Text {
+                                text: "✕";
+                                color: dc-ta.has-hover ? Backend.fg : Backend.gutter-fg;
+                                font-size: Type.body;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
                     }
                 }
-                Button {
-                    text: Backend.bitbucket-connected ? "Bitbucket — connected ✓" : "Connect Bitbucket…";
-                    clicked => {
-                        Backend.show-settings = false;
-                        Backend.prepare-connect("bitbucket-cloud");
+                HorizontalLayout {
+                    spacing: 8px;
+                    Button {
+                        text: "Add GitHub…";
+                        clicked => {
+                            Backend.show-settings = false;
+                            Backend.prepare-connect("github");
+                        }
+                    }
+                    Button {
+                        text: "Add Bitbucket…";
+                        clicked => {
+                            Backend.show-settings = false;
+                            Backend.prepare-connect("bitbucket-cloud");
+                        }
                     }
                 }
             }
