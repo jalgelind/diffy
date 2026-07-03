@@ -2208,11 +2208,15 @@ component CommitsPanel inherits Rectangle {
                                 font-weight: 600;
                                 vertical-alignment: center;
                             }
-                            Text {
-                                text: "▾";
-                                color: Backend.gutter-fg;
-                                font-size: Type.label;
-                                vertical-alignment: center;
+                            VerticalLayout {
+                                alignment: center;
+                                Image {
+                                    width: 10px;
+                                    height: 10px;
+                                    image-fit: contain;
+                                    source: @image-url("icons/chevron-down.svg");
+                                    colorize: Backend.gutter-fg;
+                                }
                             }
                         }
                         reviewpop := PopupWindow {
@@ -3344,9 +3348,9 @@ export component AppWindow inherits Window {
                                 width: 20px;
                                 clicked => { Backend.overview-open = false; }
                                 Text {
-                                    text: "✕";
+                                    text: "×";
                                     color: ovclose.has-hover ? Backend.accent : Backend.gutter-fg;
-                                    font-size: Type.body;
+                                    font-size: Type.title;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
                                 }
