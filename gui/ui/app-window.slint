@@ -19,6 +19,7 @@ export struct DiffSpan {
 // same cell background but blank line numbers (set on the first row only).
 export struct DiffRowData {
     is-header: bool,
+    is-file-header: bool,  // "All files" view: a per-file separator/title row
     header: string,
     old-no: string,
     new-no: string,
@@ -274,6 +275,8 @@ export global Backend {
     callback close-pr();
     callback open-url(string);          // open a URL in the system browser
     callback show-pr-aggregate();  // leave a single-commit view, show the full PR diff
+    callback show-all-files();      // stacked diff of every changed file (PR default)
+    in property <bool> all-files-active;  // the "All files" view is the current one
     in-out property <int> tab-width: 4;
     in property <[string]> font-choices;   // curated monospace families (per-OS)
     in property <[string]> ui-font-choices; // curated UI (sans) families (per-OS)
@@ -696,7 +699,7 @@ component DiffRow inherits Rectangle {
     // extend (Shift+click or drag) moves only the focus end; a plain press starts
     // fresh and pins the side. Ignored on header / comment rows.
     function select(col: int, row: int, sd: int, extend: bool) {
-        if (rowdata.is-header || rowdata.is-comment) {
+        if (rowdata.is-header || rowdata.is-comment || rowdata.is-file-header) {
             return;
         }
         if (extend && Backend.sel-anchor-row >= 0) {
@@ -739,6 +742,23 @@ component DiffRow inherits Rectangle {
             font-family: Backend.mono-font;
             font-size: Backend.font-size * 1px;
             vertical-alignment: center;
+        }
+    }
+
+    // File separator row (All-files view): a full-width title bar naming the file.
+    if rowdata.is-file-header : Rectangle {
+        background: Backend.selection;
+        Rectangle { y: parent.height - 1px; height: 1px; background: Backend.divider; }
+        Text {
+            x: 10px;
+            width: parent.width - 20px;
+            text: rowdata.header;
+            color: Backend.fg;
+            font-family: Backend.mono-font;
+            font-size: Backend.font-size * 1px;
+            font-weight: 700;
+            vertical-alignment: center;
+            overflow: elide;
         }
     }
 
@@ -834,7 +854,7 @@ component DiffRow inherits Rectangle {
     // All cells/gutters are always present (widths collapse to 0 when unused) so
     // their heights stay referenceable from the row height binding above.
     body := HorizontalLayout {
-        visible: !rowdata.is-header && !rowdata.is-comment;
+        visible: !rowdata.is-header && !rowdata.is-comment && !rowdata.is-file-header;
         spacing: 0px;
         // Side-by-side: old# on the left (new# is the right gutter below). Unified:
         // a single gutter showing the new line number, or the old one for deletions.
@@ -2548,11 +2568,34 @@ component CommitsPanel inherits Rectangle {
             title: Backend.pr-open ? "COMMITS" : "RECENT COMMITS";
             collapsed <=> root.sh-commits-collapsed;
         }
-        // "Full diff" row (PR mode): the aggregate PR diff, selected by default.
+        // "All files" row (PR mode): every changed file's diff stacked into one view.
+        // The default when a PR opens.
+        if Backend.pr-open && !root.sh-commits-collapsed : Rectangle {
+            height: 38px;
+            background: Backend.all-files-active
+                        ? Backend.selection
+                        : (allftouch.has-hover ? Backend.hover : transparent);
+            allftouch := TouchArea { clicked => { Backend.show-all-files(); } }
+            HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 6px;
+                VerticalLayout {
+                    alignment: center;
+                    Text { text: "All files"; color: Backend.fg; font-size: Type.body; }
+                    Text {
+                        text: "every file's diff, stacked";
+                        color: Backend.gutter-fg;
+                        font-size: Type.meta;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+        // "Full diff" row (PR mode): the aggregate PR diff (one file at a time).
         // Selecting a commit below narrows to that commit; this returns here.
         if Backend.pr-open && !root.sh-commits-collapsed : Rectangle {
             height: 38px;
-            background: Backend.commit-sel-index == -1
+            background: (Backend.commit-sel-index == -1 && !Backend.all-files-active)
                         ? Backend.selection
                         : (fulltouch.has-hover ? Backend.hover : transparent);
             fulltouch := TouchArea { clicked => { Backend.show-pr-aggregate(); } }

@@ -866,6 +866,7 @@ main(int argc, char** argv) {
         std::optional<Repo> repo;
         std::vector<RepoEntry> repos;
         std::string current_file;
+        bool all_files_mode = false;  // PR "All files" view: every file's diff stacked
         // A jump-to-code request from a sidebar comment ref, applied once the diff
         // for the target file has been (re)laid out. line <= 0 means "nothing pending".
         int pending_scroll_line = 0;
@@ -1273,7 +1274,16 @@ main(int argc, char** argv) {
     };
 
     // layout-only refresh: reuse the cached annotated hunks
+    // Rebuilds the concatenated all-files diff; assigned once build_all_files is
+    // defined below. relayout/recompute delegate here whenever all_files_mode is on.
+    std::function<void()> rebuild_all_files;
     auto relayout = [&]() {
+        if (state.all_files_mode) {
+            if (rebuild_all_files) {
+                rebuild_all_files();
+            }
+            return;
+        }
         auto input = state.computation.input();
         auto vm = build_diff_view(input, state.computation.hunks, layout_opts(),
                                   &state.computation.a_highlights,
@@ -1425,6 +1435,12 @@ main(int argc, char** argv) {
     // thread so selecting a big file never blocks the event loop (5b).
     constexpr size_t kBackgroundDiffBytes = 256 * 1024;
     auto recompute = [&]() {
+        if (state.all_files_mode) {
+            if (rebuild_all_files) {
+                rebuild_all_files();
+            }
+            return;
+        }
         if (!state.pair.ok) {
             return;
         }
@@ -1458,6 +1474,104 @@ main(int argc, char** argv) {
                 relayout();
             });
         });
+    };
+
+    // Concatenate every changed file's diff into one virtualized model (the "All
+    // files" view). Built on the UI thread but bounded so very large diffs stay
+    // responsive: a file above kAllFilesFileBytes, or anything past the full-diff
+    // budget, renders as a header + "open individually" stub instead of a full diff.
+    // (Inline review comments are omitted here — open a single file to see them.)
+    auto build_all_files = [&]() {
+        if (state.current_pr.empty()) {
+            return;
+        }
+        constexpr std::size_t kAllFilesFileBytes = 400 * 1024;
+        int full_budget = 400;  // cap fully-diffed files so huge PRs stay responsive
+        const std::string base = state.pr_refs.base_sha, head = state.pr_refs.head_sha;
+        const bool local = state.repo && !base.empty() && !head.empty() &&
+                           state.repo->has_commit(base) && state.repo->has_commit(head);
+        const std::string mb = local ? state.repo->merge_base(base, head) : std::string{};
+        auto out = std::make_shared<slint::VectorModel<DiffRowData>>();
+        int max_cols = 0;
+        auto stub = [&](const std::string& note) {
+            DiffRowData r{};
+            r.is_header = true;
+            r.header = ss(note);
+            out->push_back(r);
+        };
+        for (const auto& f : state.all_files) {
+            if (f.path.empty()) {
+                continue;
+            }
+            DiffRowData fh{};  // file separator / header row
+            fh.is_file_header = true;
+            fh.header = ss(f.path);
+            out->push_back(fh);
+
+            diffy::gui::BlobPair bp;
+            bp.ok = false;
+            if (local) {
+                bp = state.repo->diff_oids(mb.empty() ? base : mb, head, f.path);
+            } else {
+                const std::string ck =
+                    state.pr_ws + "/" + state.pr_repo + "#" + state.current_pr + ":" + f.path;
+                if (auto cit = state.pr_file_cache.find(ck); cit != state.pr_file_cache.end()) {
+                    bp.ok = true;
+                    bp.old_text = cit->second.first;
+                    bp.new_text = cit->second.second;
+                    bp.old_name = f.path;
+                    bp.new_name = f.path;
+                }
+            }
+            if (!bp.ok) {
+                stub("    (open this file individually to load its diff)");
+                continue;
+            }
+            if (!bp.note.empty()) {
+                stub("    " + bp.note);  // binary / non-diffable per the differ
+                continue;
+            }
+            if (bp.old_text.size() + bp.new_text.size() > kAllFilesFileBytes || full_budget <= 0) {
+                stub("    (large file — open it individually to view the diff)");
+                continue;
+            }
+            --full_budget;
+            auto comp = compute_annotated_diff(bp.old_text, bp.new_text, bp.old_name, bp.new_name,
+                                               pipeline_opts());
+            auto vm = build_diff_view(comp.input(), comp.hunks, layout_opts(), &comp.a_highlights,
+                                      &comp.b_highlights);
+            auto model = diffy::gui::build_row_model(vm, gui_theme,
+                                                     static_cast<int>(state.settings.tab_width),
+                                                     options.get_word_wrap(), wrap_cols);
+            max_cols = std::max(max_cols, model.max_cols);
+            const std::size_t n = model.rows->row_count();
+            for (std::size_t i = 0; i < n; ++i) {
+                out->push_back(*model.rows->row_data(i));
+            }
+        }
+        backend.set_max_cols(max_cols);
+        backend.set_rows(out);
+        // The all-files view doesn't drive per-hunk nav / find (open a file for that).
+        state.first_visual.clear();
+        state.hunk_rows.clear();
+        state.row_texts.clear();
+        state.cur_hunk = -1;
+        state.find_rows.clear();
+        state.find_idx = -1;
+    };
+    rebuild_all_files = build_all_files;
+
+    // Enter the "All files" view (a sidebar entry + the default when a PR opens).
+    auto show_all_files = [&]() {
+        if (state.current_pr.empty()) {
+            return;
+        }
+        state.all_files_mode = true;
+        state.current_file.clear();
+        backend.set_current_file(ss("All files"));
+        backend.set_all_files_active(true);
+        backend.set_commit_sel_index(-2);  // neither a PR commit nor "Full diff"
+        build_all_files();
     };
 
     // Rebuild the Slint file model from state.all_files, honouring the filter.
@@ -1850,6 +1964,11 @@ main(int argc, char** argv) {
         if (!state.repo) {
             return;
         }
+        // Selecting a single file leaves the "All files" view.
+        if (state.all_files_mode) {
+            state.all_files_mode = false;
+            backend.set_all_files_active(false);
+        }
         if (!state.current_pr.empty()) {
             if (!state.current_pr_commit.empty()) {
                 open_pr_commit_file(path);
@@ -2193,12 +2312,16 @@ main(int argc, char** argv) {
         set_files(d.files);
         set_commits(d.commits, false);
         if (select_first) {
-            if (!d.files.empty()) {
+            if (state.all_files_mode) {
+                show_all_files();  // PR default: the stacked all-files diff
+            } else if (!d.files.empty()) {
                 open_file(d.files.front().path);
             } else {
                 backend.set_rows(std::make_shared<slint::VectorModel<DiffRowData>>());
                 backend.set_current_file(ss(""));
             }
+        } else if (state.all_files_mode) {
+            rebuild_all_files();  // background detail refresh: rebuild the stacked view
         } else if (!state.current_file.empty() && state.pair.ok) {
             relayout();  // background swap: re-render the open file with fresh comments
         }
@@ -2217,6 +2340,7 @@ main(int argc, char** argv) {
         }
         state.current_pr = id;
         state.current_pr_commit.clear();  // start on the aggregate "Full diff"
+        state.all_files_mode = true;      // default a freshly-opened PR to the all-files view
         state.pr_commit_threads.clear();
         state.pr_ws = parsed->owner;
         state.pr_repo = parsed->repo;
@@ -2287,7 +2411,9 @@ main(int argc, char** argv) {
                 if (auto nr = Repo::open(rp)) {
                     state.repo = std::move(nr);  // see the fetched objects
                 }
-                if (!state.current_file.empty()) {
+                if (state.all_files_mode) {
+                    rebuild_all_files();  // now diff every file locally (exact)
+                } else if (!state.current_file.empty()) {
                     open_pr_file(state.current_file);  // re-render locally (exact)
                 }
             });
@@ -2763,11 +2889,16 @@ main(int argc, char** argv) {
     // Return from a single-commit view to the aggregate PR diff ("Full diff"),
     // restoring the PR's files + threads from the cached detail.
     auto exit_pr_commit = [&]() {
-        if (state.current_pr.empty() || state.current_pr_commit.empty()) {
+        if (state.current_pr.empty()) {
             return;
+        }
+        if (state.current_pr_commit.empty() && !state.all_files_mode) {
+            return;  // already on the aggregate "Full diff"
         }
         state.current_pr_commit.clear();
         state.pr_commit_threads.clear();
+        state.all_files_mode = false;  // "Full diff" is the single-file aggregate, not all-files
+        backend.set_all_files_active(false);
         backend.set_sel_anchor_row(-1);
         backend.set_sel_focus_row(-1);
         backend.set_commit_sel_index(-1);  // the "Full diff" row reads as selected
@@ -3099,6 +3230,7 @@ main(int argc, char** argv) {
     });
     backend.on_open_pr([&](slint::SharedString id) { open_pr(str(id)); });
     backend.on_show_pr_aggregate([&]() { exit_pr_commit(); });
+    backend.on_show_all_files([&]() { show_all_files(); });
     backend.on_comments_filter_changed([&]() {
         rebuild_comment_shelf(state.current_pr_commit.empty() ? state.pr_threads
                                                               : state.pr_commit_threads);
