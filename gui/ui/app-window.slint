@@ -880,7 +880,7 @@ component SegToggle inherits Rectangle {
     in property <image> icon;
     in property <bool> active;
     callback clicked();
-    width: 40px;
+    width: 32px;
     background: active ? Backend.accent : (sta.has-hover ? Backend.hover : transparent);
     HorizontalLayout {
         alignment: center;
@@ -890,8 +890,8 @@ component SegToggle inherits Rectangle {
             // component: Icon applies a rotation-angle transform (even at 0deg) and an
             // odd 15px size, which pushed these icons through a blurry raster path.
             Image {
-                width: 16px;
-                height: 16px;
+                width: 14px;
+                height: 14px;
                 image-fit: contain;
                 source: root.icon;
                 colorize: active ? Backend.on-accent : Backend.fg;
@@ -919,7 +919,7 @@ component BarToggle inherits Rectangle {
     in property <string> caption;  // shown on hover as a tooltip
     in property <bool> active;
     callback clicked();
-    width: 34px;
+    width: 28px;
     border-radius: 5px;
     background: root.active ? Backend.selection : (ta.has-hover ? Backend.hover : transparent);
     ta := TouchArea {
@@ -942,8 +942,8 @@ component BarToggle inherits Rectangle {
         VerticalLayout {
             alignment: center;
             Image {
-                width: 16px;
-                height: 16px;
+                width: 14px;
+                height: 14px;
                 image-fit: contain;
                 source: root.icon;
                 colorize: root.active ? Backend.accent : Backend.gutter-fg;
@@ -1035,15 +1035,11 @@ component ThemedCombo inherits Rectangle {
 
 // ---- the option bar --------------------------------------------------------
 
-component OptionBar inherits Rectangle {
-    height: 42px;
-    background: Backend.panel-bg;
-    Rectangle { y: parent.height - 1px; height: 1px; background: Backend.divider; }
-
-    HorizontalLayout {
-        padding: 6px;
-        spacing: 8px;
-        alignment: start;
+// The diff-options controls, embedded (right-aligned) into the file header rather
+// than a separate bar. A HorizontalLayout so it sizes to its own content; the
+// buttons are a touch smaller than a standalone bar to fit the 30px header.
+component OptionBar inherits HorizontalLayout {
+    spacing: 3px;
 
         // View mode — icon + caption segments.
         Rectangle {
@@ -1126,7 +1122,7 @@ component OptionBar inherits Rectangle {
 
         // Less-frequent diff settings (context, algorithm, base ref) in a pop-out.
         more-btn := Rectangle {
-            width: 34px;
+            width: 28px;
             border-radius: 5px;
             background: more-ta.has-hover ? Backend.hover : transparent;
             more-ta := TouchArea {
@@ -1146,8 +1142,8 @@ component OptionBar inherits Rectangle {
                 VerticalLayout {
                     alignment: center;
                     Image {
-                        width: 16px;
-                        height: 16px;
+                        width: 14px;
+                        height: 14px;
                         image-fit: contain;
                         source: @image-url("icons/sliders-horizontal.svg");
                         colorize: more-ta.has-hover ? Backend.fg : Backend.gutter-fg;
@@ -1155,7 +1151,9 @@ component OptionBar inherits Rectangle {
                 }
             }
             more-popup := PopupWindow {
-                x: 0;
+                // Right-align under the button (it now sits near the window's right
+                // edge), so the panel opens leftward instead of off-screen.
+                x: parent.width - self.width;
                 y: parent.height + 4px;
                 // Give the popup window an explicit width matching its content, so
                 // its outside-click region covers the whole panel — otherwise the
@@ -1258,7 +1256,6 @@ component OptionBar inherits Rectangle {
                 }
             }
         }
-    }
 }
 
 // ---- the repository sidebar ------------------------------------------------
@@ -2890,9 +2887,9 @@ export component AppWindow inherits Window {
             // large min-width on the whole window; overflowing controls just clip.
             min-width: 0px;
 
-            // header strip
+            // header strip — filename on the left, diff-options controls right-aligned
             Rectangle {
-                height: 30px;
+                height: 32px;
                 background: Backend.bg;
                 Rectangle { y: parent.height - 1px; height: 1px; background: Backend.divider; }
                 HorizontalLayout {
@@ -2924,6 +2921,9 @@ export component AppWindow inherits Window {
                         horizontal-stretch: 1;
                         overflow: elide;
                     }
+                    // Diff-options controls, right-aligned in the file header (the
+                    // filename's stretch above pushes them to the right).
+                    OptionBar {}
                     // Collapse / expand the right (commits) panel.
                     commits-btn := Rectangle {
                         width: 20px;
@@ -2942,8 +2942,6 @@ export component AppWindow inherits Window {
                     }
                 }
             }
-
-            OptionBar {}
 
             // The diff itself: a single virtualized ListView of full rows, so
             // only the visible rows are instantiated (large diffs stay fast).
