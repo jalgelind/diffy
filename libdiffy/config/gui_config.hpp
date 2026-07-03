@@ -40,8 +40,17 @@ struct GuiSettings {
     bool restore_last_repo = true;
     // Persisted PR-review connection (non-secret): the Atlassian account email used
     // for Bitbucket Basic auth. The token itself lives only in the OS credential
-    // vault, keyed by this account. Empty => no persisted connection.
+    // vault, keyed by this account. Empty => no persisted connection. Kept for
+    // migration into the multi-account lists below.
     std::string bitbucket_account;
+
+    // Multi-account PR-review connections (non-secret): a comma-separated list of
+    // account labels per provider, plus the active label. Tokens live only in the
+    // OS credential vault, keyed by (provider, base_url, label).
+    std::string github_accounts;
+    std::string github_active;
+    std::string bitbucket_accounts;
+    std::string bitbucket_active;
 
     // Optional per-group syntax colour overrides from the [gui.syntax] table,
     // as (group-name, "#rrggbb") pairs. The frontend resolves names to groups.
