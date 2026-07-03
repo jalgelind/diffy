@@ -11,6 +11,7 @@
 #include "repo_model.hpp"
 #include "review/log.hpp"
 #include "review/providers/bitbucket_cloud.hpp"
+#include "review/providers/github.hpp"
 #include "review/secret_store.hpp"
 
 #include <slint.h>
@@ -210,6 +211,39 @@ merge_strategy_label(diffy::review::MergeStrategy s) {
         case M::Rebase: return "Rebase";
         default: return "Merge commit";
     }
+}
+
+// Which review backend owns a git host, or "" if none is recognized. This is the
+// one place host detection lives; everything else keys off the returned id.
+std::string
+provider_id_for_host(const std::string& host) {
+    if (host.find("github.com") != std::string::npos) {
+        return "github";
+    }
+    if (host.find("bitbucket.org") != std::string::npos) {
+        return "bitbucket-cloud";
+    }
+    return {};
+}
+
+// The API root a provider's credential is stored against (SecretStore key).
+std::string
+provider_api_base(const std::string& provider_id) {
+    return provider_id == "github" ? "https://api.github.com" : "https://api.bitbucket.org/2.0";
+}
+
+// Build the concrete ReviewProvider for `provider_id`. One switch, called from the
+// worker threads; the rest of the app talks only to the ReviewProvider interface,
+// so adding a backend is "extend here + register the plugin" with no call-site
+// churn. Falls back to Bitbucket for an unknown id (callers gate on a known id).
+std::unique_ptr<diffy::review::ReviewProvider>
+make_provider(const std::string& provider_id, diffy::review::HttpClient& http,
+              const diffy::review::Credential& cred, const std::string& owner,
+              const std::string& repo) {
+    if (provider_id == "github") {
+        return std::make_unique<diffy::review::GitHubClient>(http, cred, owner, repo);
+    }
+    return std::make_unique<diffy::review::BitbucketCloudClient>(http, cred, owner, repo);
 }
 
 // A short relative time ("just now", "5m", "3h", "6d", "2w") from an ISO-8601
@@ -868,8 +902,19 @@ main(int argc, char** argv) {
         int find_idx = -1;                   // index into find_rows
         // Active Bitbucket credential (from a live connect or restored from the
         // vault at startup); drives detection/PR listing for bitbucket.org repos.
-        std::optional<diffy::review::Credential> bitbucket_cred;
+        // Stored credentials per provider id ("github" / "bitbucket-cloud"),
+        // restored from the OS vault at startup and set on connect. `provider_id`
+        // is the backend that owns the OPEN repo's origin ("" if unrecognized); the
+        // active credential is the entry for that provider.
+        std::unordered_map<std::string, diffy::review::Credential> creds;
+        std::string provider_id;
+        std::optional<diffy::review::Credential>
+        review_cred() const {
+            auto it = creds.find(provider_id);
+            return it == creds.end() ? std::nullopt : std::optional{it->second};
+        }
         std::string account_id;  // the connected account's provider id (for PR grouping)
+        std::string account_provider;  // which provider account_id belongs to
         // PR detail mode: the open PR's id ("" = not in a PR), its ref SHAs (for
         // sourcing file diffs), and the workspace/repo parsed from origin.
         std::string current_pr;
@@ -928,9 +973,9 @@ main(int argc, char** argv) {
     // refresh_prs re-fetches in the background and swaps in the fresh result.
     state.pr_list_cache = diffy::gui::pr_cache_load();
 
-    // Restore a persisted Bitbucket connection: the account email is stored in
-    // config, its token in the OS credential vault. (Bearer/access-token connects
-    // are session-only — not persisted.)
+    // Restore persisted connections from the OS credential vault. Bitbucket keys by
+    // the account email (stored in config); GitHub uses a Bearer PAT under a fixed
+    // "pat" account. (Bearer/access-token Bitbucket connects stay session-only.)
     if (!state.settings.bitbucket_account.empty()) {
         const std::string base = "https://api.bitbucket.org/2.0";
         if (auto tok = diffy::review::SecretStore::get(diffy::review::build_key(
@@ -939,10 +984,19 @@ main(int argc, char** argv) {
             c.method = diffy::review::AuthMethod::BasicToken;
             c.principal = state.settings.bitbucket_account;
             c.secret = *tok;
-            state.bitbucket_cred = c;
+            state.creds["bitbucket-cloud"] = c;
             backend.set_bitbucket_connected(true);
             backend.set_bitbucket_status(ss("Connected as " + state.settings.bitbucket_account));
         }
+    }
+    if (auto tok = diffy::review::SecretStore::get(
+            diffy::review::build_key("github", "https://api.github.com", "pat"))) {
+        diffy::review::Credential c;
+        c.method = diffy::review::AuthMethod::Bearer;
+        c.secret = *tok;
+        state.creds["github"] = c;
+        backend.set_github_connected(true);
+        backend.set_github_status(ss("Connected"));
     }
 
     // Outstanding background repo-load threads, joined before libgit2 shuts down.
@@ -1695,7 +1749,7 @@ main(int argc, char** argv) {
     };
 
     auto open_pr_file = [&](const std::string& path) {
-        if (state.current_pr.empty() || !state.bitbucket_cred) {
+        if (state.current_pr.empty() || !state.review_cred()) {
             return;
         }
         if (state.current_file != path) {
@@ -1729,13 +1783,14 @@ main(int argc, char** argv) {
         }
         backend.set_status_text(ss("PR #" + pr + ": " + path + " …"));
         backend.set_net_label(ss("Loading file"));
-        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const diffy::review::Credential cred = *state.review_cred();
         const std::string ws = state.pr_ws, repo = state.pr_repo;
         const std::string base = state.pr_refs.base_sha, head = state.pr_refs.head_sha;
         const uint64_t gen = state.load_generation;
         review_pool.submit(ReviewPool::Prio::Interactive, [&, path, ws, repo, cred, base, head, pr,
                                                            ck, gen](diffy::review::HttpClient& http) {
-            diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+            auto __provider = make_provider(state.provider_id, http, cred, ws, repo);
+            diffy::review::ReviewProvider& client = *__provider;
             std::string oldt, newt;
             if (auto o = client.file_at(base, path)) {
                 oldt = o.value();
@@ -1835,10 +1890,12 @@ main(int argc, char** argv) {
     // Fetch a PR's full detail (header + refs + files + commits + threads) with the
     // worker's HttpClient. Captureless (results via out params) so both the
     // interactive open and the background prefetch reuse it.
-    auto fetch_pr_detail = [](diffy::review::HttpClient& http, const diffy::review::Credential& cred,
-                              const std::string& ws, const std::string& repo, const std::string& id,
-                              State::PrDetail& d, std::string& err) {
-        diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+    auto fetch_pr_detail = [](const std::string& provider_id, diffy::review::HttpClient& http,
+                              const diffy::review::Credential& cred, const std::string& ws,
+                              const std::string& repo, const std::string& id, State::PrDetail& d,
+                              std::string& err) {
+        auto __provider = make_provider(provider_id, http, cred, ws, repo);
+        diffy::review::ReviewProvider& client = *__provider;
         auto pr = client.get(id);
         auto refs = client.refs(id);
         auto files = client.files(id);
@@ -1890,10 +1947,10 @@ main(int argc, char** argv) {
     // is instant. Runs on the UI thread (reads the cache), submits Prefetch tasks;
     // capped and skips already-cached files.
     auto prefetch_pr_blobs = [&](const std::string& id, const State::PrDetail& d) {
-        if (!state.bitbucket_cred) {
+        if (!state.review_cred()) {
             return;
         }
-        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const diffy::review::Credential cred = *state.review_cred();
         const std::string ws = state.pr_ws, repo = state.pr_repo;
         const std::string base = d.refs.base_sha, head = d.refs.head_sha;
         const uint64_t gen = state.load_generation;
@@ -1910,7 +1967,8 @@ main(int argc, char** argv) {
             review_pool.submit(
                 ReviewPool::Prio::Prefetch,
                 [&, path, ws, repo, cred, base, head, ck, id, gen](diffy::review::HttpClient& http) {
-                    diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                    auto __provider = make_provider(state.provider_id, http, cred, ws, repo);
+            diffy::review::ReviewProvider& client = *__provider;
                     std::string oldt, newt;
                     if (auto o = client.file_at(base, path)) {
                         oldt = o.value();
@@ -2149,7 +2207,7 @@ main(int argc, char** argv) {
     // Enter PR detail mode: show the cached detail instantly (if any), then fetch
     // in the background and swap in the fresh result — no clear+fetch+show flicker.
     auto open_pr = [&](const std::string& id) {
-        if (!state.repo || !state.bitbucket_cred) {
+        if (!state.repo || !state.review_cred()) {
             return;
         }
         auto parsed = diffy::review::parse_remote_url(state.repo->origin_url());
@@ -2180,7 +2238,7 @@ main(int argc, char** argv) {
             set_commits({}, false);
         }
 
-        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const diffy::review::Credential cred = *state.review_cred();
         const std::string ws = parsed->owner, repo = parsed->repo;
         const bool select_first = !had_cache;
         const uint64_t gen = state.load_generation;
@@ -2189,7 +2247,7 @@ main(int argc, char** argv) {
                                                            gen](diffy::review::HttpClient& http) {
             State::PrDetail d;
             std::string err;
-            fetch_pr_detail(http, cred, ws, repo, id, d, err);
+            fetch_pr_detail(state.provider_id, http, cred, ws, repo, id, d, err);
 
             slint::invoke_from_event_loop([&, id, d, key, select_first, err, gen]() {
                 if (gen != state.load_generation || state.current_pr != id) {
@@ -2238,7 +2296,7 @@ main(int argc, char** argv) {
     // Prefetch (background) a PR's full detail into pr_detail_cache so opening it is
     // instant. Skips already-cached PRs; cache-only (no UI change).
     auto prefetch_pr_detail = [&](const std::string& id) {
-        if (!state.repo || !state.bitbucket_cred) {
+        if (!state.repo || !state.review_cred()) {
             return;
         }
         auto parsed = diffy::review::parse_remote_url(state.repo->origin_url());
@@ -2249,14 +2307,14 @@ main(int argc, char** argv) {
         if (state.pr_detail_cache.count(key)) {
             return;
         }
-        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const diffy::review::Credential cred = *state.review_cred();
         const std::string ws = parsed->owner, repo = parsed->repo;
         const uint64_t gen = state.load_generation;
         review_pool.submit(ReviewPool::Prio::Prefetch,
                            [&, id, ws, repo, cred, key, gen](diffy::review::HttpClient& http) {
             State::PrDetail d;
             std::string err;
-            fetch_pr_detail(http, cred, ws, repo, id, d, err);
+            fetch_pr_detail(state.provider_id, http, cred, ws, repo, id, d, err);
             if (!err.empty()) {
                 return;
             }
@@ -2399,14 +2457,15 @@ main(int argc, char** argv) {
     // Fetch the connected account once (background) so show_prs can group PRs; when
     // it arrives, re-group whatever list is currently cached/shown.
     auto ensure_account = [&]() {
-        if (!state.account_id.empty() || !state.bitbucket_cred) {
+        if (!state.account_id.empty() || !state.review_cred()) {
             return;
         }
-        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const diffy::review::Credential cred = *state.review_cred();
         const uint64_t gen = state.load_generation;
         review_pool.submit(ReviewPool::Prio::Interactive,
                            [&, cred, gen](diffy::review::HttpClient& http) {
-            diffy::review::BitbucketCloudClient client(http, cred, state.pr_ws, state.pr_repo);
+            auto __provider = make_provider(state.provider_id, http, cred, state.pr_ws, state.pr_repo);
+            diffy::review::ReviewProvider& client = *__provider;
             auto who = client.whoami();
             if (!who) {
                 return;
@@ -2430,13 +2489,21 @@ main(int argc, char** argv) {
     };
 
     auto refresh_prs = [&]() {
-        if (!state.repo || !state.bitbucket_cred) {
+        if (!state.repo) {
             backend.set_has_bitbucket(false);
             return;
         }
+        // Detect which backend owns this repo's origin and make it the active
+        // provider for every PR operation that follows.
         auto parsed = diffy::review::parse_remote_url(state.repo->origin_url());
-        if (!parsed || parsed->host.find("bitbucket.org") == std::string::npos) {
-            backend.set_has_bitbucket(false);
+        const std::string pid = parsed ? provider_id_for_host(parsed->host) : std::string{};
+        if (pid != state.account_provider) {
+            state.account_id.clear();  // a different backend => a different "me"
+            state.account_provider = pid;
+        }
+        state.provider_id = pid;
+        if (pid.empty() || !state.review_cred()) {
+            backend.set_has_bitbucket(false);  // unknown host or not connected yet
             return;
         }
         backend.set_has_bitbucket(true);
@@ -2454,11 +2521,12 @@ main(int argc, char** argv) {
         }
         backend.set_loading_prs(true);
         backend.set_net_label(ss("Loading pull requests"));
-        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const diffy::review::Credential cred = *state.review_cred();
         const uint64_t gen = state.load_generation;
         review_pool.submit(ReviewPool::Prio::Interactive,
                            [&, ws, repo, key, cred, gen](diffy::review::HttpClient& http) {
-            diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+            auto __provider = make_provider(state.provider_id, http, cred, ws, repo);
+            diffy::review::ReviewProvider& client = *__provider;
             auto prs = client.list_open();
             auto items = std::make_shared<std::vector<diffy::review::PullRequest>>();
             auto cursor = std::make_shared<std::string>();
@@ -2654,14 +2722,15 @@ main(int argc, char** argv) {
             backend.set_current_file(ss(""));
         }
         // Commit-scoped comment threads (background); swap in once they arrive.
-        if (state.bitbucket_cred) {
-            const diffy::review::Credential cred = *state.bitbucket_cred;
+        if (state.review_cred()) {
+            const diffy::review::Credential cred = *state.review_cred();
             const std::string ws = state.pr_ws, repo = state.pr_repo, csha = sha;
             const uint64_t gen = state.load_generation;
             review_pool.submit(
                 ReviewPool::Prio::Interactive,
                 [&, cred, ws, repo, csha, gen](diffy::review::HttpClient& http) {
-                    diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                    auto __provider = make_provider(state.provider_id, http, cred, ws, repo);
+            diffy::review::ReviewProvider& client = *__provider;
                     std::vector<diffy::review::ReviewThread> threads;
                     if (auto t = client.commit_threads(csha)) {
                         threads = std::move(t.value());
@@ -2973,18 +3042,19 @@ main(int argc, char** argv) {
     backend.on_refresh_prs([&]() { refresh_prs(); });
     backend.on_load_more_prs([&]() {
         // Fetch the next page and append to the cached list (lazy pagination).
-        if (state.loading_more_prs || state.pr_next_cursor.empty() || !state.bitbucket_cred ||
+        if (state.loading_more_prs || state.pr_next_cursor.empty() || !state.review_cred() ||
             state.pr_list_key.empty()) {
             return;
         }
         state.loading_more_prs = true;
-        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const diffy::review::Credential cred = *state.review_cred();
         const std::string cursor = state.pr_next_cursor;
         const std::string key = state.pr_list_key;
         const uint64_t gen = state.load_generation;
         review_pool.submit(ReviewPool::Prio::Interactive,
                            [&, cred, cursor, key, gen](diffy::review::HttpClient& http) {
-            diffy::review::BitbucketCloudClient client(http, cred, state.pr_ws, state.pr_repo);
+            auto __provider = make_provider(state.provider_id, http, cred, state.pr_ws, state.pr_repo);
+            diffy::review::ReviewProvider& client = *__provider;
             auto prs = client.list_open(cursor);
             auto items = std::make_shared<std::vector<diffy::review::PullRequest>>();
             auto next = std::make_shared<std::string>();
@@ -3013,19 +3083,20 @@ main(int argc, char** argv) {
     });
     // Approve / remove-approval on the open PR, then refetch reviewers to reflect it.
     auto set_approval = [&](bool approve) {
-        if (state.current_pr.empty() || !state.bitbucket_cred) {
+        if (state.current_pr.empty() || !state.review_cred()) {
             return;
         }
         const std::string id = state.current_pr, ws = state.pr_ws, repo = state.pr_repo;
         const std::string key = ws + "/" + repo + "#" + id;
-        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const diffy::review::Credential cred = *state.review_cred();
         const uint64_t gen = state.load_generation;
         backend.set_pr_approving(true);
         backend.set_net_label(ss(approve ? "Approving" : "Removing approval"));
         review_pool.submit(
             ReviewPool::Prio::Interactive,
             [&, id, ws, repo, key, cred, approve, gen](diffy::review::HttpClient& http) {
-                diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                auto __provider = make_provider(state.provider_id, http, cred, ws, repo);
+            diffy::review::ReviewProvider& client = *__provider;
                 auto r = approve ? client.approve(id) : client.unapprove(id);
                 const bool ok = static_cast<bool>(r);
                 std::string err = ok ? std::string{} : r.error().message;
@@ -3062,17 +3133,18 @@ main(int argc, char** argv) {
     // Request changes (only wired-through where the backend has the state; the
     // button is hidden otherwise, so this is a no-op for Bitbucket Cloud).
     backend.on_request_changes_pr([&]() {
-        if (state.current_pr.empty() || !state.bitbucket_cred) {
+        if (state.current_pr.empty() || !state.review_cred()) {
             return;
         }
         const std::string id = state.current_pr, ws = state.pr_ws, repo = state.pr_repo;
-        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const diffy::review::Credential cred = *state.review_cred();
         const uint64_t gen = state.load_generation;
         backend.set_pr_requesting_changes(true);
         backend.set_net_label(ss("Requesting changes"));
         review_pool.submit(ReviewPool::Prio::Interactive,
                            [&, id, ws, repo, cred, gen](diffy::review::HttpClient& http) {
-                               diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                               auto __provider = make_provider(state.provider_id, http, cred, ws, repo);
+            diffy::review::ReviewProvider& client = *__provider;
                                auto r = client.request_changes(id);
                                const bool ok = static_cast<bool>(r);
                                std::string err = ok ? std::string{} : r.error().message;
@@ -3090,7 +3162,7 @@ main(int argc, char** argv) {
     // Merge the open PR with the chosen strategy (index into pr_merge_strategies).
     // On success, leave PR detail and reload the repo so the list reflects it.
     backend.on_merge_pr([&](int strat_idx, slint::SharedString message) {
-        if (state.current_pr.empty() || !state.bitbucket_cred) {
+        if (state.current_pr.empty() || !state.review_cred()) {
             return;
         }
         if (strat_idx < 0 || strat_idx >= static_cast<int>(state.pr_merge_strategies.size())) {
@@ -3099,13 +3171,14 @@ main(int argc, char** argv) {
         const std::string id = state.current_pr, ws = state.pr_ws, repo = state.pr_repo;
         const std::string msg = str(message);
         const diffy::review::MergeStrategy strategy = state.pr_merge_strategies[strat_idx];
-        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const diffy::review::Credential cred = *state.review_cred();
         const uint64_t gen = state.load_generation;
         backend.set_pr_merging(true);
         backend.set_net_label(ss("Merging"));
         review_pool.submit(ReviewPool::Prio::Interactive,
                            [&, id, ws, repo, cred, strategy, msg, gen](diffy::review::HttpClient& http) {
-                               diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                               auto __provider = make_provider(state.provider_id, http, cred, ws, repo);
+            diffy::review::ReviewProvider& client = *__provider;
                                auto r = client.merge(id, strategy, msg);
                                const bool ok = static_cast<bool>(r);
                                std::string err = ok ? std::string{} : r.error().message;
@@ -3146,29 +3219,38 @@ main(int argc, char** argv) {
     // store the token in the OS credential vault on success, and — when a
     // workspace+repo are supplied — fetch an open-PR count so the connection can
     // be tested end-to-end. (Surfacing PRs in the sidebar is the rest of P1.)
-    backend.on_connect_bitbucket([&](slint::SharedString ws, slint::SharedString repo,
-                                     slint::SharedString user, slint::SharedString pass) {
-        backend.set_bitbucket_connecting(true);
-        backend.set_bitbucket_status(ss("Connecting…"));
+    backend.on_connect_provider([&](slint::SharedString prov, slint::SharedString ws,
+                                    slint::SharedString repo, slint::SharedString user,
+                                    slint::SharedString pass) {
+        const std::string provider = str(prov);
+        const bool is_github = provider == "github";
+        if (is_github) {
+            backend.set_github_connecting(true);
+            backend.set_github_status(ss("Connecting…"));
+        } else {
+            backend.set_bitbucket_connecting(true);
+            backend.set_bitbucket_status(ss("Connecting…"));
+        }
         backend.set_net_label(ss("Connecting"));
         const std::string w = str(ws), rp = str(repo), u = str(user), p = str(pass);
         review_pool.submit(ReviewPool::Prio::Interactive,
-                           [&, w, rp, u, p](diffy::review::HttpClient& http) {
+                           [&, provider, is_github, w, rp, u, p](diffy::review::HttpClient& http) {
             namespace rv = diffy::review;
             rv::Credential cred;
-            if (u.empty()) {
-                // No email → a Bitbucket Access token (scoped), sent as Bearer.
+            if (is_github || u.empty()) {
+                // GitHub: a PAT as Bearer. Bitbucket without an email: a scoped
+                // access token, also Bearer.
                 cred.method = rv::AuthMethod::Bearer;
                 cred.secret = p;
             } else {
-                // Email present → an Atlassian API token / app password over Basic.
+                // Bitbucket with an email → Atlassian API token / app password (Basic).
                 cred.method = rv::AuthMethod::BasicToken;
                 cred.principal = u;
                 cred.secret = p;
             }
-            rv::BitbucketCloudClient client(http, cred, w, rp);
-            rv::log_line("connect bitbucket: ws='" + w + "' repo='" + rp +
-                         "' auth=" + (u.empty() ? "bearer(access-token)" : "basic(email)"));
+            auto provider_ptr = make_provider(provider, http, cred, w, rp);
+            rv::ReviewProvider& client = *provider_ptr;
+            rv::log_line("connect " + provider + ": owner='" + w + "' repo='" + rp + "'");
 
             bool ok = false;
             std::string status;
@@ -3221,24 +3303,30 @@ main(int argc, char** argv) {
                                                                    : who.value().display_name;
                     }
                 }
-                rv::SecretStore::set(rv::build_key("bitbucket-cloud",
-                                                   "https://api.bitbucket.org/2.0",
-                                                   u.empty() ? w : u),
-                                     p);
+                const std::string base = is_github ? "https://api.github.com"
+                                                   : "https://api.bitbucket.org/2.0";
+                const std::string acct_key = is_github ? std::string("pat") : (u.empty() ? w : u);
+                rv::SecretStore::set(rv::build_key(provider, base, acct_key), p);
                 status = account.empty() ? "Connected" : ("Connected as " + account);
                 if (pr_count >= 0) {
-                    status += "  ·  " + std::to_string(pr_count) + " open PR(s) in " + w + "/" + rp;
+                    status += "  ·  " + std::to_string(pr_count) + " open PR(s)";
                 }
             }
             rv::log_line(std::string("connect result: ") + (ok ? "OK — " : "FAIL — ") + status);
 
-            slint::invoke_from_event_loop([&, ok, status, u, p]() {
-                backend.set_bitbucket_connecting(false);
-                backend.set_bitbucket_connected(ok);
-                backend.set_bitbucket_status(ss(status));
+            slint::invoke_from_event_loop([&, provider, is_github, ok, status, u, p]() {
+                if (is_github) {
+                    backend.set_github_connecting(false);
+                    backend.set_github_connected(ok);
+                    backend.set_github_status(ss(status));
+                } else {
+                    backend.set_bitbucket_connecting(false);
+                    backend.set_bitbucket_connected(ok);
+                    backend.set_bitbucket_status(ss(status));
+                }
                 if (ok) {
                     rv::Credential c;
-                    if (u.empty()) {
+                    if (is_github || u.empty()) {
                         c.method = rv::AuthMethod::Bearer;
                         c.secret = p;
                     } else {
@@ -3246,15 +3334,14 @@ main(int argc, char** argv) {
                         c.principal = u;
                         c.secret = p;
                     }
-                    state.bitbucket_cred = c;
-                    // Persist the Basic/email account so it auto-reconnects next
-                    // launch (Bearer access tokens stay session-only).
-                    if (!u.empty()) {
+                    state.creds[provider] = c;
+                    // Persist Bitbucket's Basic/email account so it auto-reconnects;
+                    // GitHub's PAT auto-restores from the vault under "pat".
+                    if (!is_github && !u.empty()) {
                         state.settings.bitbucket_account = u;
                         gui_settings_save(state.settings);
                     }
-                    // If the open repo is a Bitbucket remote, populate the sidebar now.
-                    refresh_prs();
+                    refresh_prs();  // populate the sidebar if the open repo matches
                 }
             });
         });
@@ -3496,7 +3583,7 @@ main(int argc, char** argv) {
     // PR when `general`) and populate the overlay fields before showing it. The label
     // names the commit when we're in a single-commit view (that's where it posts).
     backend.on_open_composer([&](bool general) {
-        if (state.current_pr.empty() || !state.bitbucket_cred) {
+        if (state.current_pr.empty() || !state.review_cred()) {
             return;
         }
         backend.set_composer_mode(ss("new"));
@@ -3530,7 +3617,7 @@ main(int argc, char** argv) {
     // General comments always stay PR-level.
     backend.on_submit_comment([&](slint::SharedString b) {
         const std::string body = str(b);
-        if (body.empty() || state.current_pr.empty() || !state.bitbucket_cred) {
+        if (body.empty() || state.current_pr.empty() || !state.review_cred()) {
             return;
         }
         // Reply / edit reuse this composer. Both work off a comment id and don't need
@@ -3541,7 +3628,7 @@ main(int argc, char** argv) {
             const std::string id = state.current_pr, ws = state.pr_ws, repo = state.pr_repo;
             const std::string key = ws + "/" + repo + "#" + id;
             const std::string csha = state.current_pr_commit;
-            const diffy::review::Credential cred = *state.bitbucket_cred;
+            const diffy::review::Credential cred = *state.review_cred();
             const uint64_t gen = state.load_generation;
             const bool is_edit = mode == "edit";
             backend.set_posting_comment(true);
@@ -3550,7 +3637,8 @@ main(int argc, char** argv) {
                 ReviewPool::Prio::Interactive,
                 [&, id, ws, repo, cred, key, csha, cid, body, is_edit, gen](
                     diffy::review::HttpClient& http) {
-                    diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                    auto __provider = make_provider(state.provider_id, http, cred, ws, repo);
+            diffy::review::ReviewProvider& client = *__provider;
                     bool ok = false;
                     std::string errmsg;
                     if (is_edit) {
@@ -3632,7 +3720,7 @@ main(int argc, char** argv) {
         const std::string id = state.current_pr, ws = state.pr_ws, repo = state.pr_repo;
         const std::string key = ws + "/" + repo + "#" + id;
         const std::string csha = state.current_pr_commit;
-        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const diffy::review::Credential cred = *state.review_cred();
         const uint64_t gen = state.load_generation;
         backend.set_posting_comment(true);
         backend.set_net_label(ss("Posting comment"));
@@ -3640,7 +3728,8 @@ main(int argc, char** argv) {
             ReviewPool::Prio::Interactive,
             [&, id, ws, repo, cred, nc, key, csha, commit_scope, gen](
                 diffy::review::HttpClient& http) {
-                diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                auto __provider = make_provider(state.provider_id, http, cred, ws, repo);
+            diffy::review::ReviewProvider& client = *__provider;
                 auto r = commit_scope ? client.comment_on_commit(csha, nc) : client.comment(id, nc);
                 std::string errmsg = r ? std::string{} : r.error().message;
                 std::vector<diffy::review::ReviewThread> threads;
@@ -3683,7 +3772,7 @@ main(int argc, char** argv) {
     });
     // Reply: open the composer in reply mode, targeting a comment id.
     backend.on_reply_to_comment([&](slint::SharedString cid, slint::SharedString author) {
-        if (state.current_pr.empty() || !state.bitbucket_cred) {
+        if (state.current_pr.empty() || !state.review_cred()) {
             return;
         }
         backend.set_composer_mode(ss("reply"));
@@ -3697,7 +3786,7 @@ main(int argc, char** argv) {
     // Edit: resolve the full body from the active threads (the shelf only carries a
     // truncated snippet) and seed the composer in edit mode.
     backend.on_edit_comment([&](slint::SharedString cid_s) {
-        if (state.current_pr.empty() || !state.bitbucket_cred) {
+        if (state.current_pr.empty() || !state.review_cred()) {
             return;
         }
         const std::string cid = str(cid_s);
@@ -3722,21 +3811,22 @@ main(int argc, char** argv) {
     // Delete: the UI confirms first (pending-delete-id); this performs it, then
     // refreshes the active-scope threads. Targets PR-level comments.
     backend.on_confirm_delete_comment([&](slint::SharedString cid_s) {
-        if (state.current_pr.empty() || !state.bitbucket_cred) {
+        if (state.current_pr.empty() || !state.review_cred()) {
             return;
         }
         const std::string cid = str(cid_s);
         const std::string id = state.current_pr, ws = state.pr_ws, repo = state.pr_repo;
         const std::string key = ws + "/" + repo + "#" + id;
         const std::string csha = state.current_pr_commit;
-        const diffy::review::Credential cred = *state.bitbucket_cred;
+        const diffy::review::Credential cred = *state.review_cred();
         const uint64_t gen = state.load_generation;
         backend.set_deleting_comment(true);
         backend.set_net_label(ss("Deleting comment"));
         review_pool.submit(
             ReviewPool::Prio::Interactive,
             [&, id, ws, repo, cred, key, csha, cid, gen](diffy::review::HttpClient& http) {
-                diffy::review::BitbucketCloudClient client(http, cred, ws, repo);
+                auto __provider = make_provider(state.provider_id, http, cred, ws, repo);
+            diffy::review::ReviewProvider& client = *__provider;
                 auto r = client.delete_comment(id, cid);
                 const bool ok = static_cast<bool>(r);
                 std::string errmsg = ok ? std::string{} : r.error().message;

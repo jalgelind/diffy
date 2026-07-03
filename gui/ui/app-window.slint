@@ -193,15 +193,21 @@ export global Backend {
     in-out property <int> font-size: 13;
     // Settings panel state + values it edits.
     in-out property <bool> show-settings: false;
-    // Bitbucket "Connect" dialog (P1 Connect card). Credentials are verified live
-    // (whoami) off the UI thread; with a workspace+repo an open-PR count is also
-    // fetched so the connection can be tested end-to-end. The token is stored in
-    // the OS credential vault, never in config.
-    in-out property <bool> show-bitbucket: false;
+    // Provider "Connect" dialog (P1 Connect card). Credentials are verified live off
+    // the UI thread; with an owner+repo an open-PR count is also fetched so the
+    // connection can be tested end-to-end. The token is stored in the OS credential
+    // vault, never in config. `configuring-provider` selects which backend the one
+    // shared dialog is currently configuring ("github" | "bitbucket-cloud").
+    in-out property <bool> show-connect: false;
+    in-out property <string> configuring-provider: "";
     in property <bool> bitbucket-connecting: false;
     in property <bool> bitbucket-connected: false;
     in property <string> bitbucket-status: "";
-    callback connect-bitbucket(string, string, string, string);  // workspace, repo, username, app-password
+    in property <bool> github-connecting: false;
+    in property <bool> github-connected: false;
+    in property <string> github-status: "";
+    // provider, owner/workspace, repo, username (blank for GitHub), token.
+    callback connect-provider(string, string, string, string, string);
     // Inject text into the focused field via a synthetic (modifier-free) key
     // event — a workaround for the upstream Slint/winit stuck-modifier bug that
     // drops AltGr characters like "@" (Slint #6263). See main.cpp.
@@ -913,6 +919,35 @@ component BarToggle inherits Rectangle {
     }
 }
 
+// A toolbar button for a review provider: its name over a connect/connected
+// caption, tinted (filled pill + accent) when the provider is configured. Clicking
+// opens the shared Connect dialog for this provider.
+component ProviderButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> connected;
+    callback clicked();
+    width: 62px;
+    border-radius: 5px;
+    background: root.connected ? Backend.selection : (pb-ta.has-hover ? Backend.hover : transparent);
+    pb-ta := TouchArea { clicked => { root.clicked(); } }
+    VerticalLayout {
+        alignment: center;
+        spacing: 1px;
+        Text {
+            text: root.label;
+            font-size: Type.meta;
+            horizontal-alignment: center;
+            color: root.connected ? Backend.accent : Backend.gutter-fg;
+        }
+        Text {
+            text: root.connected ? "connected" : "connect";
+            font-size: Type.meta;
+            horizontal-alignment: center;
+            color: root.connected ? #59a14f : Backend.gutter-fg;
+        }
+    }
+}
+
 component Divider inherits Rectangle {
     width: 1px;
     background: Backend.divider;
@@ -1064,6 +1099,21 @@ component OptionBar inherits Rectangle {
             caption: "Syntax";
             active: DiffOptions.syntax-highlight;
             clicked => { DiffOptions.syntax-highlight = !DiffOptions.syntax-highlight; DiffOptions.rediff(); }
+        }
+
+        Divider {}
+
+        // Review providers: configure GitHub / Bitbucket. Tinted when connected;
+        // click opens the shared Connect dialog for that backend.
+        ProviderButton {
+            label: "GitHub";
+            connected: Backend.github-connected;
+            clicked => { Backend.configuring-provider = "github"; Backend.show-connect = true; }
+        }
+        ProviderButton {
+            label: "Bitbucket";
+            connected: Backend.bitbucket-connected;
+            clicked => { Backend.configuring-provider = "bitbucket-cloud"; Backend.show-connect = true; }
         }
 
         Divider {}
@@ -2530,15 +2580,24 @@ component SettingsPanel inherits Rectangle {
                 }
             }
 
-            // Pull-request review: open the Bitbucket connect dialog.
+            // Pull-request review: configure a provider (also in the toolbar).
             VerticalLayout {
                 spacing: 6px;
                 Text { text: "PULL REQUESTS"; color: Backend.gutter-fg; font-size: Type.label; }
                 Button {
+                    text: Backend.github-connected ? "GitHub — connected ✓" : "Connect GitHub…";
+                    clicked => {
+                        Backend.show-settings = false;
+                        Backend.configuring-provider = "github";
+                        Backend.show-connect = true;
+                    }
+                }
+                Button {
                     text: Backend.bitbucket-connected ? "Bitbucket — connected ✓" : "Connect Bitbucket…";
                     clicked => {
                         Backend.show-settings = false;
-                        Backend.show-bitbucket = true;
+                        Backend.configuring-provider = "bitbucket-cloud";
+                        Backend.show-connect = true;
                     }
                 }
             }
@@ -2551,12 +2610,22 @@ component SettingsPanel inherits Rectangle {
     }
 }
 
-// ---- Bitbucket connect dialog ----------------------------------------------
+// ---- Provider connect dialog -----------------------------------------------
+// One shared dialog for both backends; Backend.configuring-provider selects which.
 
-component BitbucketPanel inherits Rectangle {
+component ConnectPanel inherits Rectangle {
+    // Derived from the provider being configured, so every child reads one flag.
+    property <bool> is-github: Backend.configuring-provider == "github";
+    property <bool> connecting: root.is-github ? Backend.github-connecting : Backend.bitbucket-connecting;
+    property <bool> connected: root.is-github ? Backend.github-connected : Backend.bitbucket-connected;
+    property <string> status-text: root.is-github ? Backend.github-status : Backend.bitbucket-status;
+    // The Bitbucket email lives in a conditionally-shown field, so mirror it onto a
+    // root property the Connect button can read whether or not the field exists.
+    property <string> email-value;
+
     background: #00000099;
-    visible: Backend.show-bitbucket;
-    backdrop-ta := TouchArea { clicked => { Backend.show-bitbucket = false; } }
+    visible: Backend.show-connect;
+    backdrop-ta := TouchArea { clicked => { Backend.show-connect = false; } }
 
     Rectangle {
         width: 460px;
@@ -2573,13 +2642,21 @@ component BitbucketPanel inherits Rectangle {
             padding: 22px;
             spacing: 14px;
 
-            Text { text: "Connect Bitbucket"; color: Backend.fg; font-size: Type.title; font-weight: 600; }
             Text {
-                text: "Simplest: create a Bitbucket access token (Workspace or Repository settings → "
-                    + "Access tokens) with the Pull requests: Read scope and paste it below, leaving "
-                    + "Email blank. Alternatively use an Atlassian API token (id.atlassian.com) together "
-                    + "with your account email. The token is stored in the OS credential vault, never "
-                    + "in config.";
+                text: root.is-github ? "Connect GitHub" : "Connect Bitbucket";
+                color: Backend.fg;
+                font-size: Type.title;
+                font-weight: 600;
+            }
+            Text {
+                text: root.is-github
+                    ? "Create a personal access token (github.com → Settings → Developer settings → "
+                      + "Personal access tokens) with the 'repo' scope and paste it below. The token "
+                      + "is stored in the OS credential vault, never in config."
+                    : "Simplest: create a Bitbucket access token (Workspace or Repository settings → "
+                      + "Access tokens) with the Pull requests: Read scope and paste it below, leaving "
+                      + "Email blank. Alternatively use an Atlassian API token (id.atlassian.com) with "
+                      + "your account email. The token is stored in the OS credential vault, never in config.";
                 color: Backend.gutter-fg;
                 font-size: Type.label;
                 wrap: word-wrap;
@@ -2587,25 +2664,33 @@ component BitbucketPanel inherits Rectangle {
 
             VerticalLayout {
                 spacing: 4px;
-                Text { text: "WORKSPACE"; color: Backend.gutter-fg; font-size: Type.label; }
-                bb-ws := LineEdit { placeholder-text: "e.g. myteam"; }
+                Text {
+                    text: root.is-github ? "OWNER  (user or org)" : "WORKSPACE";
+                    color: Backend.gutter-fg;
+                    font-size: Type.label;
+                }
+                bb-ws := LineEdit { placeholder-text: root.is-github ? "e.g. octocat" : "e.g. myteam"; }
             }
             VerticalLayout {
                 spacing: 4px;
                 Text { text: "REPOSITORY  (optional — tests an open-PR count)"; color: Backend.gutter-fg; font-size: Type.label; }
                 bb-repo := LineEdit { placeholder-text: "e.g. my-repo"; }
             }
-            VerticalLayout {
+            // Email is Bitbucket-only (an Atlassian API token). GitHub uses a Bearer
+            // PAT with no username, so the field is hidden there.
+            if !root.is-github : VerticalLayout {
                 spacing: 4px;
                 Text { text: "ATLASSIAN EMAIL  (leave blank for a Bitbucket access token)"; color: Backend.gutter-fg; font-size: Type.label; }
                 HorizontalLayout {
                     spacing: 6px;
-                    bb-user := LineEdit { placeholder-text: "you@example.com — optional"; horizontal-stretch: 1; }
+                    bb-user := LineEdit {
+                        placeholder-text: "you@example.com — optional";
+                        horizontal-stretch: 1;
+                        edited(t) => { root.email-value = t; }
+                    }
                     // Inserts "@" at the cursor for keyboard layouts where AltGr is
-                    // dropped (Slint #6263). Re-focus the field first, then dispatch
-                    // a synthetic key event: dispatch targets the focused item, and
-                    // clicking the button had moved focus away (which is why nothing
-                    // happened before).
+                    // dropped (Slint #6263): re-focus the field, then dispatch a
+                    // synthetic key event (dispatch targets the focused item).
                     Button {
                         text: "@";
                         clicked => {
@@ -2617,13 +2702,17 @@ component BitbucketPanel inherits Rectangle {
             }
             VerticalLayout {
                 spacing: 4px;
-                Text { text: "ACCESS / API TOKEN"; color: Backend.gutter-fg; font-size: Type.label; }
+                Text {
+                    text: root.is-github ? "PERSONAL ACCESS TOKEN" : "ACCESS / API TOKEN";
+                    color: Backend.gutter-fg;
+                    font-size: Type.label;
+                }
                 bb-pass := LineEdit { placeholder-text: "paste token"; password: true; }
             }
 
-            if Backend.bitbucket-status != "" : Text {
-                text: Backend.bitbucket-status;
-                color: Backend.bitbucket-connected ? Backend.accent : Backend.fg;
+            if root.status-text != "" : Text {
+                text: root.status-text;
+                color: root.connected ? Backend.accent : Backend.fg;
                 font-size: Type.body;
                 wrap: word-wrap;
             }
@@ -2631,12 +2720,13 @@ component BitbucketPanel inherits Rectangle {
             HorizontalLayout {
                 alignment: end;
                 spacing: 8px;
-                Button { text: "Close"; clicked => { Backend.show-bitbucket = false; } }
+                Button { text: "Close"; clicked => { Backend.show-connect = false; } }
                 Button {
-                    text: Backend.bitbucket-connecting ? "Connecting…" : "Connect";
-                    enabled: !Backend.bitbucket-connecting && bb-ws.text != "" && bb-pass.text != "";
+                    text: root.connecting ? "Connecting…" : "Connect";
+                    enabled: !root.connecting && bb-pass.text != "";
                     clicked => {
-                        Backend.connect-bitbucket(bb-ws.text, bb-repo.text, bb-user.text, bb-pass.text);
+                        Backend.connect-provider(Backend.configuring-provider, bb-ws.text, bb-repo.text,
+                                                 root.is-github ? "" : root.email-value, bb-pass.text);
                     }
                 }
             }
@@ -2672,8 +2762,8 @@ export component AppWindow inherits Window {
                 Backend.show-settings = false;
                 return accept;
             }
-            if (event.text == Key.Escape && Backend.show-bitbucket) {
-                Backend.show-bitbucket = false;
+            if (event.text == Key.Escape && Backend.show-connect) {
+                Backend.show-connect = false;
                 return accept;
             }
             if (event.text == Key.Escape && Backend.show-find) {
@@ -3404,7 +3494,7 @@ export component AppWindow inherits Window {
 
     // Settings overlay sits above everything.
     SettingsPanel {}
-    BitbucketPanel {}
+    ConnectPanel {}
 
     // Discard confirmation (destructive — always confirm first).
     if Backend.confirm-discard != "" : Rectangle {
