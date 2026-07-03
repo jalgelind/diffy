@@ -1274,6 +1274,44 @@ main(int argc, char** argv) {
     };
 
     // layout-only refresh: reuse the cached annotated hunks
+    // Emit a review thread's rows (comment header + wrapped body rows, replies
+    // indented) via `emit`, so both the single-file relayout and the all-files
+    // builder share identical comment rendering.
+    auto push_comment_thread = [&](const diffy::review::ReviewThread* th,
+                                   const std::function<void(const DiffRowData&)>& emit) {
+        const int wc = wrap_cols > 0 ? wrap_cols : 80;
+        const int comment_wc = options.get_side_by_side() ? wc * 2 : wc;
+        for (std::size_t ci = 0; ci < th->comments.size(); ++ci) {
+            const auto& cm = th->comments[ci];
+            const int depth = (ci == 0) ? 0 : 1;  // replies indent one level
+            DiffRowData h{};
+            h.is_comment = true;
+            h.comment_is_head = true;
+            h.comment_author = ss(cm.author);
+            h.comment_time = ss(relative_time(cm.created));
+            h.comment_depth = depth;
+            h.comment_outdated = th->outdated;
+            h.comment_initials = ss(initials_of(cm.author));
+            h.comment_tint = avatar_tint(cm.author);
+            h.comment_avatar = avatar_for(cm.author_avatar);
+            emit(h);
+            auto lines = wrap_text(cm.body_md, std::max(20, comment_wc - depth * 2 - 8));
+            if (lines.empty()) {
+                lines.emplace_back();
+            }
+            for (std::size_t li = 0; li < lines.size(); ++li) {
+                DiffRowData d{};
+                d.is_comment = true;
+                d.comment_is_head = false;
+                d.comment_is_tail = (li + 1 == lines.size());
+                d.comment_body = ss(lines[li]);
+                d.comment_depth = depth;
+                d.comment_outdated = th->outdated;
+                emit(d);
+            }
+        }
+    };
+
     // Rebuilds the concatenated all-files diff; assigned once build_all_files is
     // defined below. relayout/recompute delegate here whenever all_files_mode is on.
     std::function<void()> rebuild_all_files;
@@ -1326,40 +1364,10 @@ main(int argc, char** argv) {
             // Comments render across the full diff width (not a single side's cell),
             // so wrap them wider than a code cell.
             const int comment_wc = options.get_side_by_side() ? wc * 2 : wc;
+            (void) comment_wc;  // width is recomputed inside push_comment_thread
             auto out = std::make_shared<slint::VectorModel<DiffRowData>>();
             auto push_thread = [&](const ReviewThread* th) {
-                for (std::size_t ci = 0; ci < th->comments.size(); ++ci) {
-                    const auto& cm = th->comments[ci];
-                    const int depth = (ci == 0) ? 0 : 1;  // replies indent one level
-                    // Header row: avatar + author + relative time.
-                    DiffRowData h{};
-                    h.is_comment = true;
-                    h.comment_is_head = true;
-                    h.comment_author = ss(cm.author);
-                    h.comment_time = ss(relative_time(cm.created));
-                    h.comment_depth = depth;
-                    h.comment_outdated = th->outdated;
-                    h.comment_initials = ss(initials_of(cm.author));
-                    h.comment_tint = avatar_tint(cm.author);
-                    h.comment_avatar = avatar_for(cm.author_avatar);
-                    out->push_back(h);
-                    // Body rows: wrapped to the full comment width; the last row is
-                    // the bubble's tail (rounds its bottom).
-                    auto lines = wrap_text(cm.body_md, std::max(20, comment_wc - depth * 2 - 8));
-                    if (lines.empty()) {
-                        lines.emplace_back();
-                    }
-                    for (std::size_t li = 0; li < lines.size(); ++li) {
-                        DiffRowData d{};
-                        d.is_comment = true;
-                        d.comment_is_head = false;
-                        d.comment_is_tail = (li + 1 == lines.size());
-                        d.comment_body = ss(lines[li]);
-                        d.comment_depth = depth;
-                        d.comment_outdated = th->outdated;
-                        out->push_back(d);
-                    }
-                }
+                push_comment_thread(th, [&](const DiffRowData& d) { out->push_back(d); });
             };
             const std::size_t n = model.rows->row_count();
             for (std::size_t i = 0; i < n; ++i) {
@@ -1477,14 +1485,18 @@ main(int argc, char** argv) {
     };
 
     // Concatenate every changed file's diff into one virtualized model (the "All
-    // files" view). Built on the UI thread but bounded so very large diffs stay
-    // responsive: a file above kAllFilesFileBytes, or anything past the full-diff
-    // budget, renders as a header + "open individually" stub instead of a full diff.
-    // (Inline review comments are omitted here — open a single file to see them.)
+    // files" view), with review comments interleaved per file. Built on the UI
+    // thread but bounded so very large diffs stay responsive: a file above
+    // kAllFilesFileBytes, or anything past the full-diff budget, renders as a header
+    // + "open individually" stub instead of a full diff. row_texts / hunk_rows are
+    // kept aligned to the emitted rows so in-diff find and n/p jump-to-hunk (which
+    // also step between file headers) work across the whole stack.
     auto build_all_files = [&]() {
         if (state.current_pr.empty()) {
             return;
         }
+        using diffy::review::ReviewThread;
+        using diffy::review::Side;
         constexpr std::size_t kAllFilesFileBytes = 400 * 1024;
         int full_budget = 400;  // cap fully-diffed files so huge PRs stay responsive
         const std::string base = state.pr_refs.base_sha, head = state.pr_refs.head_sha;
@@ -1493,12 +1505,58 @@ main(int argc, char** argv) {
         const std::string mb = local ? state.repo->merge_base(base, head) : std::string{};
         auto out = std::make_shared<slint::VectorModel<DiffRowData>>();
         int max_cols = 0;
+        state.hunk_rows.clear();
+        state.row_texts.clear();
+
+        // Emit one row: append it to the model, keep row_texts aligned (for find),
+        // and record hunk / file-header rows as jump targets for n/p.
+        auto row_text_of = [](const DiffRowData& r) -> std::string {
+            std::string t;
+            if (r.is_comment) {
+                t = std::string(std::string_view(r.comment_body)) + " " +
+                    std::string(std::string_view(r.comment_author));
+            } else {
+                t = std::string(std::string_view(r.header));
+                auto add = [&](const auto& m) {
+                    if (!m) {
+                        return;
+                    }
+                    for (std::size_t i = 0; i < m->row_count(); ++i) {
+                        if (auto sp = m->row_data(i)) {
+                            t += std::string(std::string_view((*sp).text));
+                        }
+                    }
+                };
+                add(r.left_spans);
+                add(r.right_spans);
+            }
+            std::transform(t.begin(), t.end(), t.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return t;
+        };
+        auto push_row = [&](const DiffRowData& r) {
+            if (r.is_header || r.is_file_header) {
+                state.hunk_rows.push_back(static_cast<int>(out->row_count()));
+            }
+            state.row_texts.push_back(row_text_of(r));
+            out->push_back(r);
+        };
+        auto emit = [&](const DiffRowData& r) { push_row(r); };
         auto stub = [&](const std::string& note) {
             DiffRowData r{};
             r.is_header = true;
             r.header = ss(note);
-            out->push_back(r);
+            push_row(r);
         };
+
+        // PR-level comments with no file anchor are shown once, at the very end.
+        std::vector<const ReviewThread*> general;
+        for (const auto& th : state.pr_threads) {
+            if (th.anchor.new_path.empty()) {
+                general.push_back(&th);
+            }
+        }
+
         for (const auto& f : state.all_files) {
             if (f.path.empty()) {
                 continue;
@@ -1506,7 +1564,7 @@ main(int argc, char** argv) {
             DiffRowData fh{};  // file separator / header row
             fh.is_file_header = true;
             fh.header = ss(f.path);
-            out->push_back(fh);
+            push_row(fh);
 
             diffy::gui::BlobPair bp;
             bp.ok = false;
@@ -1544,20 +1602,82 @@ main(int argc, char** argv) {
                                                      static_cast<int>(state.settings.tab_width),
                                                      options.get_word_wrap(), wrap_cols);
             max_cols = std::max(max_cols, model.max_cols);
+
+            // This file's inline threads, keyed by anchor line+side; unanchored /
+            // outdated ones append after the file's rows.
+            std::unordered_map<std::string, std::vector<const ReviewThread*>> by_anchor;
+            std::vector<const ReviewThread*> file_outdated;
+            for (const auto& th : state.pr_threads) {
+                if (th.anchor.new_path != f.path) {
+                    continue;
+                }
+                if (th.outdated || th.anchor.start.line < 1) {
+                    file_outdated.push_back(&th);
+                    continue;
+                }
+                by_anchor[std::to_string(th.anchor.start.line) +
+                          (th.anchor.side == Side::New ? "|n" : "|o")]
+                    .push_back(&th);
+            }
             const std::size_t n = model.rows->row_count();
             for (std::size_t i = 0; i < n; ++i) {
-                out->push_back(*model.rows->row_data(i));
+                DiffRowData row = *model.rows->row_data(i);
+                push_row(row);
+                if (row.is_header || row.is_comment) {
+                    continue;
+                }
+                const std::string nn(std::string_view(row.new_no));
+                const std::string on(std::string_view(row.old_no));
+                if (!nn.empty()) {
+                    if (auto it = by_anchor.find(nn + "|n"); it != by_anchor.end()) {
+                        for (auto* th : it->second) push_comment_thread(th, emit);
+                    }
+                }
+                if (!on.empty()) {
+                    if (auto it = by_anchor.find(on + "|o"); it != by_anchor.end()) {
+                        for (auto* th : it->second) push_comment_thread(th, emit);
+                    }
+                }
+            }
+            for (auto* th : file_outdated) {
+                DiffRowData sep{};
+                sep.is_comment = true;
+                sep.comment_is_head = true;
+                sep.comment_outdated = true;
+                sep.comment_author = ss(std::string("Outdated"));
+                sep.comment_time = ss(f.path);
+                sep.comment_initials = ss(std::string("!"));
+                sep.comment_tint = avatar_tint("outdated");
+                push_row(sep);
+                push_comment_thread(th, emit);
             }
         }
+        // General (PR-level) comments once at the end.
+        for (auto* th : general) {
+            DiffRowData sep{};
+            sep.is_comment = true;
+            sep.comment_is_head = true;
+            sep.comment_outdated = true;
+            sep.comment_author = ss(std::string("General comment"));
+            sep.comment_time = ss(std::string("on the pull request"));
+            sep.comment_initials = ss(std::string("!"));
+            sep.comment_tint = avatar_tint("outdated");
+            push_row(sep);
+            push_comment_thread(th, emit);
+        }
+
         backend.set_max_cols(max_cols);
         backend.set_rows(out);
-        // The all-files view doesn't drive per-hunk nav / find (open a file for that).
-        state.first_visual.clear();
-        state.hunk_rows.clear();
-        state.row_texts.clear();
+        // Identity logical->visual map so find (find_rows.push(first_visual[i])) and
+        // n/p (hunk_rows are visual indices) address the emitted rows directly.
+        state.first_visual.resize(out->row_count());
+        for (std::size_t i = 0; i < state.first_visual.size(); ++i) {
+            state.first_visual[i] = static_cast<int>(i);
+        }
         state.cur_hunk = -1;
         state.find_rows.clear();
         state.find_idx = -1;
+        backend.set_diff_scroll_y(-1.0f);
     };
     rebuild_all_files = build_all_files;
 
