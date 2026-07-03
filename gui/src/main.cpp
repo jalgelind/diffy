@@ -908,6 +908,7 @@ main(int argc, char** argv) {
         // active credential is the entry for that provider.
         std::unordered_map<std::string, diffy::review::Credential> creds;
         std::string provider_id;
+        std::string pr_active_repo;  // repo_path the active provider_id was defaulted for
         std::optional<diffy::review::Credential>
         review_cred() const {
             auto it = creds.find(provider_id);
@@ -2493,15 +2494,24 @@ main(int argc, char** argv) {
             backend.set_has_bitbucket(false);
             return;
         }
-        // Detect which backend owns this repo's origin and make it the active
-        // provider for every PR operation that follows.
         auto parsed = diffy::review::parse_remote_url(state.repo->origin_url());
-        const std::string pid = parsed ? provider_id_for_host(parsed->host) : std::string{};
+        if (!parsed) {
+            backend.set_has_bitbucket(false);  // no / unparseable remote
+            return;
+        }
+        // The active provider defaults to the repo's detected host, but only when the
+        // repo changes — so a manual pick (sidebar chips) persists across refreshes.
+        const std::string detected = provider_id_for_host(parsed->host);
+        if (state.pr_active_repo != state.repo_path) {
+            state.pr_active_repo = state.repo_path;
+            state.provider_id = detected;
+        }
+        const std::string pid = state.provider_id;
         if (pid != state.account_provider) {
             state.account_id.clear();  // a different backend => a different "me"
             state.account_provider = pid;
         }
-        state.provider_id = pid;
+        backend.set_active_provider(ss(pid));
         if (pid.empty() || !state.review_cred()) {
             backend.set_has_bitbucket(false);  // unknown host or not connected yet
             return;
@@ -3040,6 +3050,18 @@ main(int argc, char** argv) {
     });
 
     backend.on_refresh_prs([&]() { refresh_prs(); });
+
+    // Pick which configured backend's PRs to show (sidebar provider chips). Keeps the
+    // selection for this repo (refresh_prs only re-defaults when the repo changes).
+    backend.on_select_provider([&](slint::SharedString prov) {
+        const std::string pid = str(prov);
+        if (pid == state.provider_id) {
+            return;
+        }
+        state.provider_id = pid;
+        backend.set_active_provider(prov);
+        refresh_prs();
+    });
     backend.on_load_more_prs([&]() {
         // Fetch the next page and append to the cached list (lazy pagination).
         if (state.loading_more_prs || state.pr_next_cursor.empty() || !state.review_cred() ||

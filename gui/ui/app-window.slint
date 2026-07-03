@@ -221,6 +221,10 @@ export global Backend {
     in property <string> connect-prefill-owner: "";
     in property <string> connect-prefill-repo: "";
     in property <string> connect-prefill-user: "";
+    // The active review backend — which provider's PRs the sidebar shows. Defaults
+    // to the repo's detected host; the sidebar provider chips select/override it.
+    in property <string> active-provider: "";
+    callback select-provider(string /* provider */);
     // Inject text into the focused field via a synthetic (modifier-free) key
     // event — a workaround for the upstream Slint/winit stuck-modifier bug that
     // drops AltGr characters like "@" (Slint #6263). See main.cpp.
@@ -957,6 +961,49 @@ component Divider inherits Rectangle {
     background: Backend.divider;
 }
 
+// A provider selector chip for the right-sidebar toolbar: the backend's brand icon,
+// bordered + tinted when it is the active provider. Click to select it (show its
+// PRs); click the already-active one to open its config. Label shows as a tooltip.
+component ProviderChip inherits Rectangle {
+    in property <image> icon;
+    in property <string> name;
+    in property <bool> active;
+    callback clicked();
+    width: 30px;
+    height: 26px;
+    border-radius: 5px;
+    border-width: root.active ? 1px : 0px;
+    border-color: Backend.accent;
+    background: root.active ? Backend.selection : (pc-ta.has-hover ? Backend.hover : transparent);
+    pc-ta := TouchArea {
+        clicked => { root.clicked(); }
+        changed has-hover => {
+            if (self.has-hover) {
+                Backend.tooltip-text = root.active ? root.name + " — configure"
+                                                   : root.name + " — show PRs";
+                Backend.tooltip-x = root.absolute-position.x;
+                Backend.tooltip-y = root.absolute-position.y + root.height;
+            } else if (Backend.tooltip-text == root.name + " — configure"
+                       || Backend.tooltip-text == root.name + " — show PRs") {
+                Backend.tooltip-text = "";
+            }
+        }
+    }
+    HorizontalLayout {
+        alignment: center;
+        VerticalLayout {
+            alignment: center;
+            Image {
+                width: 15px;
+                height: 15px;
+                image-fit: contain;
+                source: root.icon;
+                colorize: root.active ? Backend.accent : Backend.fg;
+            }
+        }
+    }
+}
+
 // A fully theme-driven dropdown (the std-widgets ComboBox draws a fixed white
 // border that ignores our palette). Supports both index- and value-bound use.
 component ThemedCombo inherits Rectangle {
@@ -1099,23 +1146,6 @@ component OptionBar inherits HorizontalLayout {
             caption: "Syntax";
             active: DiffOptions.syntax-highlight;
             clicked => { DiffOptions.syntax-highlight = !DiffOptions.syntax-highlight; DiffOptions.rediff(); }
-        }
-
-        Divider {}
-
-        // Review providers: configure GitHub / Bitbucket. Tinted when connected;
-        // click opens the shared Connect dialog for that backend.
-        BarToggle {
-            icon: @image-url("icons/github.svg");
-            caption: Backend.github-connected ? "GitHub — connected" : "Connect GitHub";
-            active: Backend.github-connected;
-            clicked => { Backend.prepare-connect("github"); }
-        }
-        BarToggle {
-            icon: @image-url("icons/bitbucket.svg");
-            caption: Backend.bitbucket-connected ? "Bitbucket — connected" : "Connect Bitbucket";
-            active: Backend.bitbucket-connected;
-            clicked => { Backend.prepare-connect("bitbucket-cloud"); }
         }
 
         Divider {}
@@ -1741,6 +1771,8 @@ component FilesPanel inherits Rectangle {
 component ShelfHeader inherits Rectangle {
     in property <string> title;
     in property <string> count;
+    in property <bool> refreshable: false;  // show a refresh button on the right
+    callback refresh();
     in-out property <bool> collapsed: false;
     height: 26px;
     ta := TouchArea { clicked => { root.collapsed = !root.collapsed; } }
@@ -1770,6 +1802,27 @@ component ShelfHeader inherits Rectangle {
             color: Backend.gutter-fg;
             font-size: Type.meta;
             vertical-alignment: center;
+        }
+        // Refresh button (its own TouchArea captures the click, so the header's
+        // collapse toggle doesn't also fire).
+        if root.refreshable : Rectangle {
+            width: 18px;
+            border-radius: 4px;
+            background: rf-ta.has-hover ? Backend.hover : transparent;
+            rf-ta := TouchArea { clicked => { root.refresh(); } }
+            VerticalLayout {
+                alignment: center;
+                HorizontalLayout {
+                    alignment: center;
+                    Image {
+                        width: 12px;
+                        height: 12px;
+                        image-fit: contain;
+                        source: @image-url("icons/refresh-cw.svg");
+                        colorize: rf-ta.has-hover ? Backend.accent : Backend.gutter-fg;
+                    }
+                }
+            }
         }
     }
 }
@@ -1815,6 +1868,106 @@ component CommitsPanel inherits Rectangle {
     VerticalLayout {
         padding: 8px;
         spacing: 4px;
+
+        // Provider toolbar (browse view only): pick which configured backend's PRs
+        // to show (click a chip); click the active chip to configure it; "+" adds an
+        // unconfigured provider.
+        if !Backend.pr-open : HorizontalLayout {
+            spacing: 4px;
+            alignment: start;
+            if Backend.github-connected : ProviderChip {
+                icon: @image-url("icons/github.svg");
+                name: "GitHub";
+                active: Backend.active-provider == "github";
+                clicked => {
+                    if (Backend.active-provider == "github") { Backend.prepare-connect("github"); }
+                    else { Backend.select-provider("github"); }
+                }
+            }
+            if Backend.bitbucket-connected : ProviderChip {
+                icon: @image-url("icons/bitbucket.svg");
+                name: "Bitbucket";
+                active: Backend.active-provider == "bitbucket-cloud";
+                clicked => {
+                    if (Backend.active-provider == "bitbucket-cloud") {
+                        Backend.prepare-connect("bitbucket-cloud");
+                    } else {
+                        Backend.select-provider("bitbucket-cloud");
+                    }
+                }
+            }
+            // "+" — add a provider that isn't configured yet.
+            if !Backend.github-connected || !Backend.bitbucket-connected : Rectangle {
+                width: 26px;
+                height: 26px;
+                border-radius: 5px;
+                border-width: 1px;
+                border-color: Backend.divider;
+                background: add-ta.has-hover ? Backend.hover : transparent;
+                add-ta := TouchArea { clicked => { addmenu.show(); } }
+                Text {
+                    text: "+";
+                    color: Backend.gutter-fg;
+                    font-size: Type.body;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                addmenu := PopupWindow {
+                    x: 0;
+                    y: parent.height + 4px;
+                    Rectangle {
+                        background: Backend.panel-bg;
+                        border-width: 1px;
+                        border-color: Backend.divider;
+                        border-radius: 6px;
+                        VerticalLayout {
+                            padding: 4px;
+                            spacing: 2px;
+                            if !Backend.github-connected : Rectangle {
+                                width: 150px;
+                                height: 28px;
+                                border-radius: 4px;
+                                background: gh-add.has-hover ? Backend.hover : transparent;
+                                gh-add := TouchArea {
+                                    clicked => { addmenu.close(); Backend.prepare-connect("github"); }
+                                }
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    spacing: 8px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image { width: 14px; height: 14px; image-fit: contain;
+                                                source: @image-url("icons/github.svg"); colorize: Backend.fg; }
+                                    }
+                                    Text { text: "Add GitHub"; color: Backend.fg; font-size: Type.body;
+                                           vertical-alignment: center; }
+                                }
+                            }
+                            if !Backend.bitbucket-connected : Rectangle {
+                                width: 150px;
+                                height: 28px;
+                                border-radius: 4px;
+                                background: bb-add.has-hover ? Backend.hover : transparent;
+                                bb-add := TouchArea {
+                                    clicked => { addmenu.close(); Backend.prepare-connect("bitbucket-cloud"); }
+                                }
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    spacing: 8px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Image { width: 14px; height: 14px; image-fit: contain;
+                                                source: @image-url("icons/bitbucket.svg"); colorize: Backend.fg; }
+                                    }
+                                    Text { text: "Add Bitbucket"; color: Backend.fg; font-size: Type.body;
+                                           vertical-alignment: center; }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // PR detail header (only inside a PR): title + a Close control that exits
         // the review to the working tree. (Switch PRs by expanding the shelf below.)
@@ -1896,6 +2049,8 @@ component CommitsPanel inherits Rectangle {
         if Backend.has-bitbucket : ShelfHeader {
             title: "PULL REQUESTS";
             collapsed <=> Backend.pr-list-collapsed;
+            refreshable: true;
+            refresh => { Backend.refresh-prs(); }
         }
         if Backend.has-bitbucket && !Backend.pr-list-collapsed : ListView {
             vertical-stretch: 1;
@@ -2662,13 +2817,36 @@ component ConnectPanel inherits Rectangle {
                     ? "Create a personal access token (github.com → Settings → Developer settings → "
                       + "Personal access tokens) with the 'repo' scope and paste it below. The token "
                       + "is stored in the OS credential vault, never in config."
-                    : "Simplest: create a Bitbucket access token (Workspace or Repository settings → "
-                      + "Access tokens) with the Pull requests: Read scope and paste it below, leaving "
-                      + "Email blank. Alternatively use an Atlassian API token (id.atlassian.com) with "
-                      + "your account email. The token is stored in the OS credential vault, never in config.";
+                    : "Create an Atlassian API token, then paste it below together with your "
+                      + "Atlassian account email. The token is stored in the OS credential vault, "
+                      + "never in config.";
                 color: Backend.gutter-fg;
                 font-size: Type.label;
                 wrap: word-wrap;
+            }
+            // Bitbucket: a clickable link to the token page + the required scopes.
+            if !root.is-github : VerticalLayout {
+                spacing: 3px;
+                link-ta := TouchArea {
+                    height: 16px;
+                    clicked => {
+                        Backend.open-url("https://id.atlassian.com/manage-profile/security/api-tokens");
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        Text {
+                            text: "→ id.atlassian.com/manage-profile/security/api-tokens";
+                            color: link-ta.has-hover ? Backend.header-fg : Backend.accent;
+                            font-size: Type.label;
+                        }
+                    }
+                }
+                Text {
+                    text: "Required scopes:  read:repository:bitbucket · read:pullrequest:bitbucket · write:pullrequest:bitbucket";
+                    color: Backend.gutter-fg;
+                    font-size: Type.label;
+                    wrap: word-wrap;
+                }
             }
 
             VerticalLayout {
@@ -3514,6 +3692,15 @@ export component AppWindow inherits Window {
         interval: 5s;
         running: true;
         triggered => { Backend.auto-refresh(); }
+    }
+
+    // Poll the active provider for new PRs every 3 minutes (only while a provider is
+    // connected). refresh-prs swaps the fresh list in over the cached one, so this
+    // never flickers or steals focus. (Startup + repo-open already fetch once.)
+    Timer {
+        interval: 180s;
+        running: Backend.has-bitbucket;
+        triggered => { Backend.refresh-prs(); }
     }
 
     // Settings overlay sits above everything.
