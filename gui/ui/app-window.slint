@@ -67,6 +67,13 @@ export struct CommitEntry {
     summary: string,
 }
 
+// One rendered line of the overview markdown. kind: 0 normal, 1 h1, 2 h2, 3 h3,
+// 4 bullet, 5 code, 6 quote, 7 horizontal rule.
+export struct OverviewLine {
+    text: string,
+    kind: int,
+}
+
 // One open pull request shown in the right sidebar (from a hosted-review
 // backend). `state` is a short glyph/word for the approval state.
 export struct PrEntry {
@@ -187,6 +194,7 @@ export global Backend {
     in property <string> overview-title;
     in property <string> overview-subtitle;
     in property <string> overview-body;
+    in property <[OverviewLine]> overview-lines;  // body parsed into styled markdown lines
     in property <bool> loading: false;  // a repo open is in progress
     in property <bool> dark: true;      // active theme is dark (drives std-widget chrome)
     in property <int> max-cols: 0;  // longest line in chars, for horizontal scroll
@@ -3152,7 +3160,7 @@ export component AppWindow inherits Window {
                 // non-layout child's `width` fills the parent, which would make the
                 // advance scale with the pane and the wrap column count constant.
                 property <length> advance: calib.preferred-width / 40;
-                property <length> overview-body-h: 120px;  // user-resizable overview height
+                property <length> overview-body-h: 200px;  // user-resizable overview fly-out height
                 property <length> gut: DiffOptions.show-line-numbers ? 48px : 0px;
                 // One diff cell's width at the *visible* pane width (mirrors
                 // DiffRow.cellw). Pushed to C++ to derive the wrap column count.
@@ -3357,18 +3365,67 @@ export component AppWindow inherits Window {
                             }
                         }
                         ovf-scroll := ScrollView {
-                            height: min(320px, ovf-body.preferred-height);
+                            height: diff-area.overview-body-h;
                             viewport-width: ovf-scroll.width - 14px;
-                            viewport-height: ovf-body.preferred-height;
-                            ovf-body := TextInput {
+                            viewport-height: ovf-md.preferred-height;
+                            // Basic markdown: each source line becomes a styled row
+                            // (headings, bullets, code, quotes, rules). Inline markers
+                            // are stripped in C++ (Slint Text is single-style).
+                            ovf-md := VerticalLayout {
                                 width: ovf-scroll.width - 14px;
-                                text: Backend.overview-body;
-                                color: Backend.fg;
-                                font-size: Type.body;
-                                wrap: word-wrap;
-                                single-line: false;
-                                read-only: true;
+                                spacing: 2px;
+                                for l in Backend.overview-lines : HorizontalLayout {
+                                    if l.kind == 7 : Rectangle {
+                                        height: 9px;
+                                        horizontal-stretch: 1;
+                                        Rectangle { y: 4px; height: 1px; background: Backend.divider; }
+                                    }
+                                    if l.kind != 7 : Text {
+                                        horizontal-stretch: 1;
+                                        text: l.text;
+                                        color: l.kind == 6 ? Backend.gutter-fg : Backend.fg;
+                                        font-family: l.kind == 5 ? Backend.mono-font : Backend.ui-font;
+                                        font-size: l.kind == 1 ? Type.title
+                                            : (l.kind == 2 ? Type.body + 2px
+                                            : (l.kind == 3 ? Type.body + 1px : Type.body));
+                                        font-weight: (l.kind >= 1 && l.kind <= 3) ? 700 : 400;
+                                        wrap: word-wrap;
+                                    }
+                                }
                             }
+                        }
+                    }
+                    // Drag the bottom edge to resize the fly-out body.
+                    Rectangle {
+                        height: 7px;
+                        y: parent.height - self.height;
+                        property <length> start-h;
+                        property <length> start-y;
+                        ovresize := TouchArea {
+                            mouse-cursor: ns-resize;
+                            pointer-event(e) => {
+                                if (e.kind == PointerEventKind.down) {
+                                    parent.start-h = diff-area.overview-body-h;
+                                    parent.start-y = self.absolute-position.y + self.mouse-y;
+                                }
+                            }
+                            moved => {
+                                if (self.pressed) {
+                                    diff-area.overview-body-h = clamp(
+                                        parent.start-h + self.absolute-position.y + self.mouse-y
+                                            - parent.start-y,
+                                        60px, 600px);
+                                }
+                            }
+                        }
+                        Rectangle {
+                            y: (parent.height - self.height) / 2;
+                            height: 3px;
+                            width: 40px;
+                            x: (parent.width - self.width) / 2;
+                            border-radius: 1px;
+                            background: ovresize.pressed || ovresize.has-hover
+                                        ? Backend.accent : Backend.divider;
                         }
                     }
                 }

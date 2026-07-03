@@ -246,6 +246,83 @@ make_provider(const std::string& provider_id, diffy::review::HttpClient& http,
     return std::make_unique<diffy::review::BitbucketCloudClient>(http, cred, owner, repo);
 }
 
+// Parse a markdown body into styled lines for the overview fly-out. Block-level
+// only (headings / bullets / fenced code / blockquote / rule); inline markers
+// (**bold**, `code`, [text](url)) are stripped since Slint Text is single-style.
+// kind: 0 normal, 1 h1, 2 h2, 3 h3, 4 bullet, 5 code, 6 quote, 7 rule.
+std::vector<std::pair<std::string, int>>
+parse_overview_markdown(const std::string& body) {
+    auto strip_inline = [](const std::string& s) {
+        std::string r;
+        r.reserve(s.size());
+        for (std::size_t i = 0; i < s.size();) {
+            if (s[i] == '[') {  // [label](url) -> label
+                auto close = s.find(']', i);
+                if (close != std::string::npos && close + 1 < s.size() && s[close + 1] == '(') {
+                    auto paren = s.find(')', close + 2);
+                    if (paren != std::string::npos) {
+                        r += s.substr(i + 1, close - (i + 1));
+                        i = paren + 1;
+                        continue;
+                    }
+                }
+            }
+            if (s[i] == '`') {  // drop code ticks
+                ++i;
+                continue;
+            }
+            if ((s[i] == '*' || s[i] == '_') && i + 1 < s.size() && s[i + 1] == s[i]) {
+                i += 2;  // drop ** / __ (bold)
+                continue;
+            }
+            r += s[i++];
+        }
+        return r;
+    };
+    auto ltrim = [](const std::string& s) {
+        std::size_t i = 0;
+        while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) {
+            ++i;
+        }
+        return s.substr(i);
+    };
+    std::vector<std::pair<std::string, int>> out;
+    bool in_code = false;
+    std::size_t start = 0;
+    while (start <= body.size()) {
+        std::size_t nl = body.find('\n', start);
+        std::string line = body.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        const std::string t = ltrim(line);
+        if (t.rfind("```", 0) == 0) {
+            in_code = !in_code;
+        } else if (in_code) {
+            out.emplace_back(line, 5);
+        } else if (t == "---" || t == "***" || t == "___") {
+            out.emplace_back("", 7);
+        } else if (t.rfind("### ", 0) == 0) {
+            out.emplace_back(strip_inline(t.substr(4)), 3);
+        } else if (t.rfind("## ", 0) == 0) {
+            out.emplace_back(strip_inline(t.substr(3)), 2);
+        } else if (t.rfind("# ", 0) == 0) {
+            out.emplace_back(strip_inline(t.substr(2)), 1);
+        } else if (t.rfind("- ", 0) == 0 || t.rfind("* ", 0) == 0 || t.rfind("+ ", 0) == 0) {
+            out.emplace_back("•  " + strip_inline(t.substr(2)), 4);
+        } else if (t.rfind("> ", 0) == 0) {
+            out.emplace_back(strip_inline(t.substr(2)), 6);
+        } else {
+            out.emplace_back(strip_inline(line), 0);
+        }
+        if (nl == std::string::npos) {
+            break;
+        }
+        start = nl + 1;
+    }
+    return out;
+}
+
 // A short relative time ("just now", "5m", "3h", "6d", "2w") from an ISO-8601
 // UTC timestamp like "2026-06-20T10:00:00.000000+00:00". Falls back to the date
 // portion if parsing fails.
@@ -1858,6 +1935,14 @@ main(int argc, char** argv) {
         backend.set_overview_title(ss(title));
         backend.set_overview_subtitle(ss(subtitle));
         backend.set_overview_body(ss(body));
+        auto lines = std::make_shared<slint::VectorModel<OverviewLine>>();
+        for (const auto& [text, kind] : parse_overview_markdown(body)) {
+            OverviewLine ol{};
+            ol.text = ss(text);
+            ol.kind = kind;
+            lines->push_back(ol);
+        }
+        backend.set_overview_lines(lines);
         backend.set_overview_visible(!title.empty() || !body.empty());
     };
     auto clear_overview = [&]() {
@@ -1865,6 +1950,7 @@ main(int argc, char** argv) {
         backend.set_overview_title(ss(""));
         backend.set_overview_subtitle(ss(""));
         backend.set_overview_body(ss(""));
+        backend.set_overview_lines(std::make_shared<slint::VectorModel<OverviewLine>>());
     };
     // Populate the overview from a commit's message. Prefer the API-sourced PR
     // commit (works even when the commit isn't present locally); fall back to the
