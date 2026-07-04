@@ -117,7 +117,9 @@ TEST_CASE("Bitbucket Cloud maps entities onto the neutral model") {
         CHECK(rf.value().head_sha == "aaaa1111");
         CHECK(rf.value().base_sha == "bbbb2222");
         CHECK(rf.value().base_ref == "master");
-        CHECK(rf.value().head_ref == "refs/pull-requests/1/from");
+        // head_ref is the real source branch (Bitbucket has no per-PR git ref), so a
+        // local fetch can pull it under refs/heads/*.
+        CHECK(rf.value().head_ref == "feat/x");
     }
 
     SUBCASE("files (diffstat) incl. rename + delete") {

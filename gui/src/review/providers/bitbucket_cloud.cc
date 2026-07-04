@@ -405,7 +405,10 @@ to_refs(const json& j, const std::string& id) {
     r.head_sha = jstr(jchild(jchild(j, "source"), "commit"), "hash");
     r.base_sha = jstr(jchild(jchild(j, "destination"), "commit"), "hash");
     r.base_ref = jstr(jchild(jchild(j, "destination"), "branch"), "name");
-    r.head_ref = "refs/pull-requests/" + id + "/from";
+    // The real source branch name. Bitbucket Cloud exposes no per-PR git ref
+    // (refs/pull-requests/* don't exist), so a local fetch has to go through this
+    // branch under refs/heads/*. (id is unused now but kept in the signature.)
+    r.head_ref = jstr(jchild(jchild(j, "source"), "branch"), "name");
     return r;
 }
 

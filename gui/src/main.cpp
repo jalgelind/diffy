@@ -280,6 +280,32 @@ join_accounts(const std::vector<std::string>& labels) {
     return out;
 }
 
+// A quick, fetch-free guess that a path is binary, from its extension. Used to skip
+// downloading + diffing blobs we'd only render as "binary" anyway (firmware images,
+// archives, media, compiled objects). Not exhaustive: content that slips through is
+// still caught after the fact by the differ's own binary classification.
+bool
+is_binary_path(const std::string& path) {
+    const auto dot = path.find_last_of('.');
+    const auto slash = path.find_last_of('/');
+    if (dot == std::string::npos || (slash != std::string::npos && dot < slash)) {
+        return false;  // no extension (dotfiles / extensionless names aren't assumed binary)
+    }
+    std::string ext = path.substr(dot);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    static const std::unordered_set<std::string> binary_exts = {
+        ".ldr",  ".bin",  ".o",    ".a",    ".so",   ".dylib", ".dll",  ".exe",  ".lib",
+        ".elf",  ".hex",  ".img",  ".dat",  ".wasm", ".pyc",   ".class", ".pdb",
+        ".png",  ".jpg",  ".jpeg", ".gif",  ".bmp",  ".ico",   ".webp", ".tiff", ".tif",
+        ".pdf",  ".zip",  ".gz",   ".bz2",  ".xz",   ".7z",    ".tar",  ".rar",  ".jar",
+        ".mp3",  ".wav",  ".flac", ".ogg",  ".mp4",  ".mov",   ".avi",  ".mkv",  ".webm",
+        ".ttf",  ".otf",  ".woff", ".woff2", ".eot",
+        ".xlsx", ".xls",  ".docx", ".doc",  ".pptx", ".ppt",   ".odt",  ".ods",
+    };
+    return binary_exts.count(ext) > 0;
+}
+
 // Build the concrete ReviewProvider for `provider_id`. One switch, called from the
 // worker threads; the rest of the app talks only to the ReviewProvider interface,
 // so adding a backend is "extend here + register the plugin" with no call-site
@@ -1102,6 +1128,10 @@ main(int argc, char** argv) {
         // Threads for the open PR (all files); relayout interleaves those matching
         // the current file into the diff.
         std::vector<diffy::review::ReviewThread> pr_threads;
+        // PR ids with a source/target branch fetch in flight, so the detail-apply
+        // (which can fire from cache and again from the fresh result) kicks at most
+        // one background fetch per PR.
+        std::unordered_set<std::string> branch_fetch_inflight;
     } state;
     constexpr int kCommitPage = 50;  // commits per lazy page
     state.settings = settings;
@@ -1420,6 +1450,7 @@ main(int argc, char** argv) {
     // wrapping (the state before the first report).
     int wrap_cols = 0;
     slint::Timer wrap_debounce;  // coalesces re-wraps during a live resize
+    slint::Timer all_files_refill;  // coalesces all-files rebuilds as prefetched blobs land
 
     // Pixel offset of a model row, matching the DiffRow height binding in the
     // .slint (content 1.6em, comment header 2.8em, comment body 1.8em) so jump
@@ -1771,6 +1802,11 @@ main(int argc, char** argv) {
     // + "open individually" stub instead of a full diff. row_texts / hunk_rows are
     // kept aligned to the emitted rows so in-diff find and n/p jump-to-hunk (which
     // also step between file headers) work across the whole stack.
+    // How many of a PR's files we auto-fetch + stack into the all-files view. Beyond
+    // this the view shows an "open individually" stub rather than streaming hundreds
+    // of blobs. Shared by build_all_files (the placeholder decision) and
+    // prefetch_pr_blobs (what it warms) so the two never disagree.
+    constexpr int kAllFilesAutoFetch = 200;
     auto build_all_files = [&]() {
         if (state.current_pr.empty()) {
             return;
@@ -1785,6 +1821,7 @@ main(int argc, char** argv) {
         const std::string mb = local ? state.repo->merge_base(base, head) : std::string{};
         auto out = std::make_shared<slint::VectorModel<DiffRowData>>();
         int max_cols = 0;
+        int pending = 0;  // files whose blob is still being fetched (prefetch in flight)
         state.hunk_rows.clear();
         state.row_texts.clear();
 
@@ -1837,14 +1874,23 @@ main(int argc, char** argv) {
             }
         }
 
+        int file_no = 0;
         for (const auto& f : state.all_files) {
             if (f.path.empty()) {
                 continue;
             }
+            const bool auto_fetch = ++file_no <= kAllFilesAutoFetch;
             DiffRowData fh{};  // file separator / header row
             fh.is_file_header = true;
             fh.header = ss(f.path);
             push_row(fh);
+
+            // Skip binaries up front: no blob fetch, just a note. (Prefetch skips them
+            // too, so they never count as "pending".)
+            if (is_binary_path(f.path)) {
+                stub("    (binary file — not shown)");
+                continue;
+            }
 
             diffy::gui::BlobPair bp;
             bp.ok = false;
@@ -1862,7 +1908,16 @@ main(int argc, char** argv) {
                 }
             }
             if (!bp.ok) {
-                stub("    (open this file individually to load its diff)");
+                // Blob not sourced yet: not fetched locally and not in the cache.
+                // Within the auto-fetch window the prefetch is in flight (or about to
+                // be) and a blob arrival re-runs this build, so show a live
+                // placeholder; past the window we won't fetch it, so say so plainly.
+                if (auto_fetch) {
+                    stub("    Loading " + f.path + " …");
+                    ++pending;
+                } else {
+                    stub("    (open this file individually to load its diff)");
+                }
                 continue;
             }
             if (!bp.note.empty()) {
@@ -1948,6 +2003,14 @@ main(int argc, char** argv) {
 
         backend.set_max_cols(max_cols);
         backend.set_rows(out);
+        // Progress: while some files' blobs are still loading, show a live count that
+        // ticks down as prefetch lands and re-runs this build. Clear it when complete.
+        if (pending > 0) {
+            backend.set_net_label(ss("Loading " + std::to_string(pending) + " file" +
+                                     (pending == 1 ? "" : "s") + " …"));
+        } else {
+            backend.set_net_label(ss(""));
+        }
         // Identity logical->visual map so find (find_rows.push(first_visual[i])) and
         // n/p (hunk_rows are visual indices) address the emitted rows directly.
         state.first_visual.resize(out->row_count());
@@ -2491,8 +2554,11 @@ main(int argc, char** argv) {
         const uint64_t gen = state.load_generation;
         int count = 0;
         for (const auto& f : d.files) {
-            if (count++ >= 40) {
-                break;  // cap: don't speculatively fetch hundreds of blobs
+            if (count++ >= kAllFilesAutoFetch) {
+                break;  // cap: matches the all-files auto-fetch window
+            }
+            if (is_binary_path(f.path)) {
+                continue;  // the all-files view renders binaries as a note, never diffed
             }
             const std::string path = f.path;
             const std::string ck = ws + "/" + repo + "#" + id + ":" + path;
@@ -2516,6 +2582,17 @@ main(int argc, char** argv) {
                             return;
                         }
                         state.pr_file_cache[ck] = {oldt, newt};
+                        // Fill the stacked all-files view incrementally as blobs land.
+                        // Throttle (fire ~every 120ms while loading) rather than debounce
+                        // so a continuous stream still refreshes periodically instead of
+                        // waiting for a lull — the diff visibly streams in and the
+                        // Loading… placeholders resolve to real diffs.
+                        if (state.all_files_mode && rebuild_all_files &&
+                            !all_files_refill.running()) {
+                            all_files_refill.start(slint::TimerMode::SingleShot,
+                                                   std::chrono::milliseconds(120),
+                                                   [&]() { rebuild_all_files(); });
+                        }
                     });
                 });
         }
@@ -2680,6 +2757,67 @@ main(int argc, char** argv) {
     };
     repaint_reviewers = rebuild_reviewers;  // swap in reviewer avatars as they load
 
+    // Bring the PR's head + base commits into the local repo so its diff renders from
+    // git objects (instant, offline) instead of one API blob fetch per file. Bitbucket
+    // Cloud exposes no per-PR git ref, so we fetch the source + target BRANCHES by name
+    // (refs/heads/*) into private refs/diffy/pr/* refs. When the source branch is gone
+    // (e.g. a merged PR) or auth for git-over-HTTPS fails, the fetch just fails and the
+    // network blob path already on screen stays — no regression. Kicked from
+    // apply_pr_detail, once the refs/SHAs are known; deduped and skipped when local.
+    auto fetch_pr_branches = [&](const std::string& id, const diffy::review::PrRefs& refs) {
+        if (!state.repo || !state.review_cred()) {
+            return;
+        }
+        if (refs.head_sha.empty() || refs.base_sha.empty() || refs.head_ref.empty()) {
+            return;
+        }
+        if (state.repo->has_commit(refs.head_sha) && state.repo->has_commit(refs.base_sha)) {
+            return;  // already diffable locally
+        }
+        if (!state.branch_fetch_inflight.insert(id).second) {
+            return;  // a fetch for this PR is already running
+        }
+        const std::string rp = state.repo_path;
+        // Fetch the PR's source + target branches into private refs via the system git
+        // binary against `origin` (reuses the user's git credentials/SSH). libgit2 1.9.x
+        // can't do this fetch on a non-shallow repo (its .git/shallow-stat bug).
+        std::vector<std::string> refspecs{
+            "+refs/heads/" + refs.head_ref + ":refs/diffy/pr/" + id + "/head"};
+        if (!refs.base_ref.empty()) {
+            refspecs.push_back("+refs/heads/" + refs.base_ref + ":refs/diffy/pr/" + id + "/base");
+        }
+        const std::string hsha = refs.head_sha, bsha = refs.base_sha;
+        const uint64_t gen = state.load_generation;
+        load_threads.emplace_back([&, rp, refspecs, id, gen, hsha, bsha]() {
+            std::string ferr;
+            const bool ok = Repo::git_fetch(rp, "origin", refspecs, &ferr);
+            if (!ok) {
+                diffy::review::log_line("pr-branch fetch failed for #" + id + ": " + ferr);
+            }
+            slint::invoke_from_event_loop([&, rp, ok, id, gen, hsha, bsha]() {
+                state.branch_fetch_inflight.erase(id);
+                if (!ok || gen != state.load_generation || state.current_pr != id) {
+                    return;
+                }
+                if (auto nr = Repo::open(rp)) {
+                    state.repo = std::move(nr);  // see the fetched objects
+                }
+                // Only switch to local rendering if both commits actually arrived
+                // (source branch may not contain the exact head after a force-push).
+                if (!state.repo || !state.repo->has_commit(hsha) ||
+                    !state.repo->has_commit(bsha)) {
+                    return;
+                }
+                diffy::review::log_line("pr-branch fetched for #" + id + " — diffing locally");
+                if (state.all_files_mode) {
+                    rebuild_all_files();  // now diff every file locally (exact, offline)
+                } else if (!state.current_file.empty()) {
+                    open_pr_file(state.current_file);
+                }
+            });
+        });
+    };
+
     // Apply a fetched-or-cached PR detail to the sidebars. `select_first` opens the
     // first file — only on the initial display, so a background swap doesn't yank
     // the user off the file they're reading.
@@ -2748,6 +2886,7 @@ main(int argc, char** argv) {
             relayout();  // background swap: re-render the open file with fresh comments
         }
         prefetch_pr_blobs(id, d);  // warm the file cache so switching files is instant
+        fetch_pr_branches(id, d.refs);  // and try to pull the commits for an offline diff
     };
 
     // Enter PR detail mode: show the cached detail instantly (if any), then fetch
@@ -2783,6 +2922,14 @@ main(int argc, char** argv) {
             backend.set_pr_subtitle(ss(""));
             set_files({});  // no cache yet — don't leave the working-tree files showing
             set_commits({}, false);
+            // Placeholder in the diff area so a cold open shows progress immediately
+            // rather than a blank view while the PR detail request is in flight.
+            auto loading = std::make_shared<slint::VectorModel<DiffRowData>>();
+            DiffRowData r{};
+            r.is_header = true;
+            r.header = ss("    Loading pull request…");
+            loading->push_back(r);
+            backend.set_rows(loading);
         }
 
         const diffy::review::Credential cred = *state.review_cred();
@@ -2808,38 +2955,8 @@ main(int argc, char** argv) {
                 }
             });
         });
-
-        // Fetch the PR's head ref in the background (libgit2 on a fresh Repo, so the
-        // shared handle isn't touched off-thread). On success, re-open the shared
-        // repo to pick up the new objects and re-render the current file — which
-        // then uses the exact local diff (#29).
-        const std::string rp = state.repo_path;
-        const std::string furl = "https://bitbucket.org/" + ws + "/" + repo + ".git";
-        const std::string refspec = "+refs/pull-requests/" + id + "/from:refs/diffy/pr/" + id;
-        const std::string fuser = cred.principal, fpass = cred.secret;
-        load_threads.emplace_back([&, rp, furl, refspec, fuser, fpass, id, gen]() {
-            auto r = Repo::open(rp);
-            std::string ferr;
-            if (!r || !r->fetch_refspec(furl, refspec, fuser, fpass, &ferr)) {
-                diffy::review::log_line("pr-ref fetch failed for #" + id + " (" + furl +
-                                        ") user='" + fuser + "': " + ferr);
-                return;
-            }
-            diffy::review::log_line("pr-ref fetched for #" + id + " (" + furl + ")");
-            slint::invoke_from_event_loop([&, rp, id, gen]() {
-                if (gen != state.load_generation || state.current_pr != id) {
-                    return;
-                }
-                if (auto nr = Repo::open(rp)) {
-                    state.repo = std::move(nr);  // see the fetched objects
-                }
-                if (state.all_files_mode) {
-                    rebuild_all_files();  // now diff every file locally (exact)
-                } else if (!state.current_file.empty()) {
-                    open_pr_file(state.current_file);  // re-render locally (exact)
-                }
-            });
-        });
+        // The local-diff fetch (source + target branches) is kicked from
+        // apply_pr_detail once the PR's refs/SHAs are known — see fetch_pr_branches.
     };
 
     // Prefetch (background) a PR's full detail into pr_detail_cache so opening it is

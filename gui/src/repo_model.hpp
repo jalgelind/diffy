@@ -54,6 +54,18 @@ class Repo {
     static std::optional<Repo>
     open(const std::string& path);
 
+    // Fetch `refspecs` from `remote` by shelling out to the system `git` binary,
+    // reusing the user's existing git credentials/SSH setup. We use this rather than
+    // libgit2 for PR-branch fetches because libgit2 1.9.x aborts a fetch on a
+    // non-shallow repo ("could not find .git/shallow to stat"). argv is passed
+    // exec-style (no shell), so branch/refspec text can't inject. GIT_TERMINAL_PROMPT
+    // is forced off so a missing credential fails fast instead of blocking on a
+    // prompt. Returns false (with the last stderr line in `error`) on any failure,
+    // including on platforms where it isn't implemented (Windows → callers fall back).
+    static bool
+    git_fetch(const std::string& repo_path, const std::string& remote,
+              const std::vector<std::string>& refspecs, std::string* error = nullptr);
+
     ~Repo();
     Repo(Repo&& other) noexcept;
     Repo& operator=(Repo&& other) noexcept;
@@ -120,13 +132,6 @@ class Repo {
     // Merge-base of two commits (hex), or "" if either is missing or unrelated.
     std::string
     merge_base(const std::string& a, const std::string& b) const;
-
-    // Fetch `refspec` from an explicit HTTPS `url` (an anonymous remote, so it works
-    // regardless of origin's protocol — e.g. an SSH origin) with Basic credentials,
-    // to pull a PR's head ref so its diff renders locally. Returns false on error.
-    bool
-    fetch_refspec(const std::string& url, const std::string& refspec, const std::string& user,
-                  const std::string& password, std::string* error = nullptr) const;
 
     // --- write operations -------------------------------------------------
     // These mutate the repository (index / working tree / refs). All return

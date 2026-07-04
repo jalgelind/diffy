@@ -6,6 +6,14 @@
 #include <fstream>
 #include <sstream>
 #include <utility>
+#include <vector>
+
+#if !defined(_WIN32)
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+extern char** environ;
+#endif
 
 namespace fs = std::filesystem;
 
@@ -508,52 +516,98 @@ Repo::merge_base(const std::string& a, const std::string& b) const {
 }
 
 bool
-Repo::fetch_refspec(const std::string& url, const std::string& refspec, const std::string& user,
-                    const std::string& password, std::string* error) const {
-    auto capture = [&]() {
-        if (error) {
-            const git_error* e = git_error_last();
-            *error = e && e->message ? e->message : "unknown error";
-        }
-    };
-    git_remote* remote = nullptr;
-    // Anonymous HTTPS remote: independent of origin's protocol (origin may be SSH,
-    // where username/password auth wouldn't apply).
-    if (git_remote_create_anonymous(&remote, repo_, url.c_str()) != 0) {
-        capture();
+Repo::git_fetch(const std::string& repo_path, const std::string& remote,
+                const std::vector<std::string>& refspecs, std::string* error) {
+#if defined(_WIN32)
+    (void)repo_path;
+    (void)remote;
+    (void)refspecs;
+    if (error) {
+        *error = "system git fetch not implemented on this platform";
+    }
+    return false;
+#else
+    if (refspecs.empty()) {
         return false;
     }
-    struct Cred {
-        std::string user;
-        std::string pass;
-        int tries = 0;
-    } cred{user, password, 0};
-
-    git_fetch_options opts = GIT_FETCH_OPTIONS_INIT;
-    opts.callbacks.payload = &cred;
-    opts.callbacks.credentials = [](git_credential** out, const char* /*url*/,
-                                    const char* user_from_url, unsigned int /*allowed*/,
-                                    void* payload) -> int {
-        auto* c = static_cast<Cred*>(payload);
-        // Offer the credential once; if it's rejected, fail fast instead of letting
-        // libgit2 replay it (which ends in "too many authentication replays").
-        if (c->tries++ > 0) {
-            return GIT_EUSER;
-        }
-        // App password / access token over HTTPS Basic. For a Bearer/access token
-        // (no principal) Bitbucket accepts the special username "x-token-auth".
-        const std::string u =
-            !c->user.empty() ? c->user : (user_from_url ? std::string(user_from_url) : "x-token-auth");
-        return git_credential_userpass_plaintext_new(out, u.c_str(), c->pass.c_str());
-    };
-    const char* rs = refspec.c_str();
-    git_strarray specs{const_cast<char**>(&rs), 1};
-    const int rc = git_remote_fetch(remote, &specs, &opts, nullptr);
-    if (rc != 0) {
-        capture();
+    // exec-style argv (no shell): branch/refspec text is passed verbatim and can't
+    // be interpreted as shell syntax. --no-write-fetch-head keeps FETCH_HEAD clean;
+    // --quiet suppresses progress on stdout.
+    std::vector<std::string> args = {"git",     "-C",      repo_path, "fetch", "--no-tags",
+                                     "--quiet", "--no-write-fetch-head", remote};
+    args.insert(args.end(), refspecs.begin(), refspecs.end());
+    std::vector<char*> argv;
+    argv.reserve(args.size() + 1);
+    for (auto& a : args) {
+        argv.push_back(const_cast<char*>(a.c_str()));
     }
-    git_remote_free(remote);
-    return rc == 0;
+    argv.push_back(nullptr);
+
+    int pipefd[2];
+    if (pipe(pipefd) != 0) {
+        if (error) {
+            *error = "pipe() failed";
+        }
+        return false;
+    }
+
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_adddup2(&fa, pipefd[1], STDERR_FILENO);  // capture git's stderr
+    posix_spawn_file_actions_addclose(&fa, pipefd[0]);
+    posix_spawn_file_actions_addclose(&fa, pipefd[1]);
+
+    // Inherit the environment but force GIT_TERMINAL_PROMPT=0 so a missing credential
+    // fails fast rather than blocking this background thread on an interactive prompt.
+    std::vector<std::string> envs;
+    for (char** e = environ; e && *e; ++e) {
+        if (std::string(*e).rfind("GIT_TERMINAL_PROMPT=", 0) != 0) {
+            envs.emplace_back(*e);
+        }
+    }
+    envs.emplace_back("GIT_TERMINAL_PROMPT=0");
+    std::vector<char*> envp;
+    envp.reserve(envs.size() + 1);
+    for (auto& e : envs) {
+        envp.push_back(const_cast<char*>(e.c_str()));
+    }
+    envp.push_back(nullptr);
+
+    pid_t pid = 0;
+    const int spawn_rc = posix_spawnp(&pid, "git", &fa, nullptr, argv.data(), envp.data());
+    posix_spawn_file_actions_destroy(&fa);
+    close(pipefd[1]);  // parent doesn't write
+    if (spawn_rc != 0) {
+        close(pipefd[0]);
+        if (error) {
+            *error = "could not launch git (is it on PATH?)";
+        }
+        return false;
+    }
+
+    std::string captured;
+    char buf[512];
+    ssize_t n;
+    while ((n = read(pipefd[0], buf, sizeof(buf))) > 0) {
+        captured.append(buf, static_cast<size_t>(n));
+    }
+    close(pipefd[0]);
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+    const bool ok = WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    if (!ok && error) {
+        while (!captured.empty() && (captured.back() == '\n' || captured.back() == '\r')) {
+            captured.pop_back();
+        }
+        const auto nl = captured.find_last_of('\n');
+        *error = nl == std::string::npos ? captured : captured.substr(nl + 1);
+        if (error->empty()) {
+            *error = "git fetch failed";
+        }
+    }
+    return ok;
+#endif
 }
 
 bool
