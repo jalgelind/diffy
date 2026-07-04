@@ -4707,7 +4707,10 @@ main(int argc, char** argv) {
     backend.on_load_more_commits([&]() { fetch_more_commits(kCommitPage); });
     backend.on_load_all_commits([&]() { fetch_more_commits(0); });
     options.on_relayout([&]() {
-        if (state.pair.ok) {
+        // all_files_mode (the PR "Full diff") has no single-file state.pair, but
+        // relayout() rebuilds it via rebuild_all_files — so gate on either, otherwise
+        // toggling side-by-side / wrap / line-numbers silently no-ops in a PR diff.
+        if (state.pair.ok || state.all_files_mode) {
             relayout();
         }
     });
