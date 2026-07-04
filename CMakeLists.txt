@@ -71,6 +71,13 @@ add_subdirectory(subprojects/config_parser)
 set(BUILD_SHARED_LIBS "${_diffy_prev_shared}")
 
 # --- our libraries / applications ------------------------------------------
+# enable_testing() must run before any subdirectory that registers a test
+# (gui/ registers gui-logic-tests); otherwise those add_test() calls are dropped
+# and ctest never sees them.
+if(DIFFY_BUILD_TESTS)
+  enable_testing()
+endif()
+
 add_subdirectory(libdiffy)
 
 if(DIFFY_BUILD_CLI)
@@ -82,7 +89,6 @@ if(DIFFY_BUILD_GUI)
 endif()
 
 if(DIFFY_BUILD_TESTS)
-  enable_testing()
   set(DOCTEST_WITH_TESTS OFF CACHE BOOL "" FORCE)
   add_subdirectory(subprojects/doctest EXCLUDE_FROM_ALL)
   add_subdirectory(tests)

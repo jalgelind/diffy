@@ -38,53 +38,78 @@ gui_cmake = $(CMAKE) -S . -B $(1) -G $(GEN) -DCMAKE_BUILD_TYPE=$(2) \
 
 all: debug
 
+# Self-documenting help: every target tagged with a `## <text>` comment is
+# listed by `make help`. Keep the tag on the recipe line so it stays in sync.
+help: ## Show this help (the default for `make help`)
+	@echo "diffy — build targets (run as: make <target>)"
+	@echo
+	@awk 'BEGIN{FS=":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@echo
+	@echo "Build trees live under $(OUT)/$(PLAT)-<config>/."
+
 # Each target reconfigures before building. CMake is idempotent and cheap when
 # nothing changed, but this is what makes the build pick up edits to
 # CMakeLists/treesitter.cmake (e.g. added grammars) rather than silently
 # building against a stale configuration.
 
 # --- CLI (diffy) -----------------------------------------------------------
-debug:
+debug: ## Build the CLI (diffy) in Debug — the default target
 	@$(call cli_cmake,$(B)-debug,Debug)
 	@$(CMAKE) --build $(B)-debug
 	@echo "built: $(B)-debug/cli/diffy"
 
-release:
+release: ## Build the CLI (diffy) in Release
 	@$(call cli_cmake,$(B)-release,Release)
 	@$(CMAKE) --build $(B)-release
 	@echo "built: $(B)-release/cli/diffy"
 
 # --- Tests -----------------------------------------------------------------
-test:
+test: ## Run all unit/logic tests: libdiffy + CLI, and the GUI logic tests
 	@$(call cli_cmake,$(B)-debug,Debug)
 	@$(CMAKE) --build $(B)-debug --target diffy-test
 	@ctest --test-dir $(B)-debug --output-on-failure
+	@$(MAKE) --no-print-directory gui-test
+
+# GUI logic tests (repo_model, review providers + conformance, diff_bridge,
+# text_layout). Slint-free — they link only libgit2, so they build fast — but
+# configuring the GUI tree still needs the Rust toolchain (Slint FetchContent).
+gui-test: ## Build + run the GUI logic tests (needs Rust + libgit2)
+	@$(CMAKE) -S . -B $(B)-gui-tests -G $(GEN) -DCMAKE_BUILD_TYPE=Debug \
+		-DDIFFY_BUILD_GUI=ON -DDIFFY_BUILD_CLI=OFF -DDIFFY_BUILD_TESTS=ON
+	@$(CMAKE) --build $(B)-gui-tests --target diffy-gui-logic-test
+	@ctest --test-dir $(B)-gui-tests -R gui-logic-tests --output-on-failure
 
 # Integration test: diff every fixture pair, apply the unified output with
 # `patch`, and verify the result matches. Requires python3 and patch.
-integration-test: release
+integration-test: release ## Diff/patch round-trip over the fixture pairs (needs python3, patch)
 	@cd tests && python3 testsuite.py ../$(B)-release/cli/diffy
 
+test-all: test integration-test ## Everything: unit + GUI logic + CLI diff/patch integration
+
 # --- GUI (diffy-gui) -------------------------------------------------------
-gui:
+gui: ## Build the GUI (diffy-gui) in Debug (needs Rust toolchain + libgit2)
 	@$(call gui_cmake,$(B)-gui-debug,Debug)
 	@$(CMAKE) --build $(B)-gui-debug --target diffy-gui
 
-gui-release:
+gui-release: ## Build the GUI (diffy-gui) in Release
 	@$(call gui_cmake,$(B)-gui-release,Release)
 	@$(CMAKE) --build $(B)-gui-release --target diffy-gui
 
-# Build (release) and launch the GUI.
-gui-run: gui-release
+gui-run: gui-release ## Build (release) and launch the GUI
 	@./$(B)-gui-release/gui/diffy-gui
 
 # Package a self-contained macOS diffy.app (bundled dylibs + icon) from the
 # release build. Output: $(B)-gui-release/diffy.app
-gui-bundle: gui-release
+gui-bundle: gui-release ## Assemble a self-contained macOS diffy.app (dylibs + icon)
 	@bash extras/make-macos-app.sh $(B)-gui-release
 
-# Remove only the make-created build trees (leaves the Windows out/ tree alone).
-clean:
+# Full macOS distribution: build the GUI, assemble the .app, then wrap it in a
+# drag-to-Applications diffy.dmg. Outputs both under $(B)-gui-release/.
+dist: gui-bundle ## Build the macOS diffy.app and a distributable diffy.dmg
+	@bash extras/make-macos-dmg.sh $(B)-gui-release
+	@echo "dist: $(B)-gui-release/diffy.app + $(B)-gui-release/diffy.dmg"
+
+clean: ## Remove make-created build trees (leaves the Windows out/ tree)
 	rm -rf $(B)-debug $(B)-release $(B)-gui-debug $(B)-gui-release
 
-.PHONY: all debug release test integration-test gui gui-release gui-run gui-bundle clean
+.PHONY: all help debug release test gui-test integration-test test-all gui gui-release gui-run gui-bundle dist clean
