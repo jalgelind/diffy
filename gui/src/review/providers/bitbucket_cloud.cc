@@ -508,22 +508,14 @@ BitbucketCloudClient::whoami() {
 
 Result<bool>
 BitbucketCloudClient::viewer_can_merge() {
-    // GET /2.0/user/permissions/repositories, filtered to this repo, returns the
-    // caller's permission (admin/write/read). Merging a PR needs write or admin.
-    // The q value is BBQL: repository.full_name="ws/repo" (=, ", / percent-encoded).
-    // Any failure — e.g. a repo-scoped access token without the account scope — or
-    // an empty result leaves us permissive, so this never blocks a merge or browsing.
-    const std::string url = base_ + "/user/permissions/repositories?q=repository.full_name%3D%22" +
-                            ws_ + "%2F" + repo_ + "%22";
-    Result<json> r = req_json(http_, cred_, "GET", url);
-    if (!r) {
-        return Result<bool>::ok(true);
-    }
-    const json& values = jchild(r.value(), "values");
-    if (values.is_array() && !values.empty()) {
-        const std::string perm = jstr(values.front(), "permission");
-        return Result<bool>::ok(perm == "write" || perm == "admin");
-    }
+    // Bitbucket Cloud has no cheap, reliable per-repo permission probe for the token
+    // types we support: the /2.0/user/permissions/repositories endpoint needs the
+    // account scope (which repo-scoped access tokens lack -> 403) and is being
+    // retired (observed 410 Gone), and the repo object doesn't carry the caller's
+    // permission. Rather than emit a failing request on every PR open, stay
+    // permissive — the merge call itself still surfaces a normalized error if the
+    // user genuinely can't merge. (GitHub, which does expose repo permissions
+    // cheaply, overrides this with a real probe.)
     return Result<bool>::ok(true);
 }
 

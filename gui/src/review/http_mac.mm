@@ -67,6 +67,55 @@ to_std(NSString* s) {
     return c ? std::string(c) : std::string();
 }
 
+}  // namespace
+}  // namespace diffy::review
+
+// Session delegate that keeps the Authorization header across redirects to the
+// SAME host. NSURLSession strips Authorization when it auto-follows a redirect (a
+// deliberate anti-credential-leak default), which breaks providers whose endpoints
+// 302 to another path on the same API host — notably Bitbucket's PR diffstat/diff,
+// which then arrives unauthenticated and 404s on a private repo. We re-attach the
+// token only when the redirect target host matches the original, so it is never
+// sent to a third-party host a redirect points at (e.g. a signed media/CDN URL).
+@interface DiffyRedirectAuthKeeper : NSObject <NSURLSessionTaskDelegate>
+@end
+
+@implementation DiffyRedirectAuthKeeper
+- (void)URLSession:(NSURLSession*)session
+                          task:(NSURLSessionTask*)task
+    willPerformHTTPRedirection:(NSHTTPURLResponse*)response
+                    newRequest:(NSURLRequest*)request
+             completionHandler:(void (^)(NSURLRequest*))completionHandler {
+    NSString* auth = task.originalRequest.allHTTPHeaderFields[@"Authorization"];
+    NSString* fromHost = task.originalRequest.URL.host;
+    NSString* toHost = request.URL.host;
+    if (auth && fromHost && toHost && [fromHost isEqualToString:toHost] &&
+        ![request valueForHTTPHeaderField:@"Authorization"]) {
+        NSMutableURLRequest* r = [request mutableCopy];
+        [r setValue:auth forHTTPHeaderField:@"Authorization"];
+        completionHandler(r);
+        return;
+    }
+    completionHandler(request);
+}
+@end
+
+namespace diffy::review {
+namespace {
+
+// One process-wide session that carries the redirect delegate above. Created once;
+// NSURLSession is thread-safe and each request blocks its own worker on a semaphore.
+NSURLSession*
+shared_session() {
+    static NSURLSession* session = [] {
+        NSURLSessionConfiguration* cfg = [NSURLSessionConfiguration defaultSessionConfiguration];
+        return [NSURLSession sessionWithConfiguration:cfg
+                                             delegate:[[DiffyRedirectAuthKeeper alloc] init]
+                                        delegateQueue:nil];
+    }();
+    return session;
+}
+
 class NsUrlSessionClient final : public HttpClient {
   public:
     HttpResult
@@ -103,7 +152,7 @@ class NsUrlSessionClient final : public HttpClient {
             __block HttpResult result;
             dispatch_semaphore_t sem = dispatch_semaphore_create(0);
 
-            NSURLSessionDataTask* task = [[NSURLSession sharedSession]
+            NSURLSessionDataTask* task = [shared_session()
                 dataTaskWithRequest:request
                   completionHandler:^(NSData* data, NSURLResponse* response, NSError* error) {
                       if (error) {
