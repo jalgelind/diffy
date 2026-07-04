@@ -131,6 +131,29 @@ TEST_CASE("repo_model: discard restores a tracked file and deletes an untracked 
     CHECK_FALSE(fs::exists(tr.file("new.txt")));
 }
 
+TEST_CASE("repo_model: a wholly-untracked directory is one named '?' entry, not empty") {
+    TempRepo tr;
+    write_file(tr.file("a.txt"), "x\n");
+    auto repo = Repo::open(tr.dir);
+    REQUIRE(repo.has_value());
+    REQUIRE(repo->stage_file("a.txt"));
+    REQUIRE(repo->commit("init"));
+
+    // libgit2 collapses an untracked directory into a single entry whose path
+    // carries a trailing slash; status() must strip it so the UI shows a named row
+    // ("build-out") instead of an empty-named "?" leaf under a phantom folder.
+    fs::create_directories(fs::path(tr.dir) / "build-out" / "nested");
+    write_file(tr.file("build-out/x.o"), "obj\n");
+    write_file(tr.file("build-out/nested/y.o"), "obj\n");
+
+    auto changes = repo->status();
+    REQUIRE(changes.size() == 1);
+    CHECK(changes[0].status == "?");
+    CHECK(changes[0].path == "build-out");    // no trailing slash
+    CHECK_FALSE(changes[0].path.empty());
+    CHECK(changes[0].path.back() != '/');
+}
+
 TEST_CASE("repo_model: branches lists the current branch and checkout switches") {
     TempRepo tr;
     write_file(tr.file("a.txt"), "x\n");

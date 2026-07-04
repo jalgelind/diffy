@@ -242,6 +242,14 @@ Repo::status() const {
         }
         FileChange fc;
         fc.path = path;
+        // A wholly-untracked directory is collapsed by libgit2 into a single entry
+        // whose path carries a trailing slash (we deliberately don't set
+        // RECURSE_UNTRACKED_DIRS — see the flags above). Drop that slash so the UI
+        // renders it as one named row (e.g. "build-gui") instead of an empty-named
+        // "?" leaf hanging under a phantom folder of the same name.
+        if (fc.path.size() > 1 && fc.path.back() == '/') {
+            fc.path.pop_back();
+        }
         fc.status = status_code(e->status);
         fc.staged = (e->status & (GIT_STATUS_INDEX_NEW | GIT_STATUS_INDEX_MODIFIED |
                                   GIT_STATUS_INDEX_DELETED | GIT_STATUS_INDEX_RENAMED |

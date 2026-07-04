@@ -40,6 +40,7 @@ class GitHubClient : public ReviewProvider {
 
     Capabilities capabilities() const override;
     Result<Account> whoami() override;
+    Result<bool> viewer_can_merge() override;
     Result<Page<PullRequest>> list_open(const std::string& cursor = "") override;
     Result<PullRequest> get(const std::string& id) override;
     Result<PrRefs> refs(const std::string& id) override;

@@ -1081,6 +1081,7 @@ main(int argc, char** argv) {
             std::string subtitle;
             std::string description;  // PR body (markdown) for the overview header
             std::string author;
+            std::string author_id;  // provider account id, to gate approving your own PR
             int total_adds = 0;  // summed diffstat across files
             int total_dels = 0;
             // The PR's normalized state and the provider's capabilities, captured at
@@ -1088,6 +1089,10 @@ main(int argc, char** argv) {
             // without a live provider handle (capabilities are provider-static).
             diffy::review::ApprovalState pr_state = diffy::review::ApprovalState::Open;
             diffy::review::Capabilities caps;
+            // Per-viewer authority: whether this user may merge (write access on the
+            // repo). Permissive default so the merge affordance is only ever hidden
+            // when we positively know the user can't — never blocks browsing.
+            bool viewer_can_merge = true;
         };
         std::unordered_map<std::string, PrDetail> pr_detail_cache;
         std::unordered_map<std::string, std::pair<std::string, std::string>> pr_file_cache;
@@ -2462,8 +2467,14 @@ main(int argc, char** argv) {
         if (pr) {
             d.reviewers = pr.value().reviewers;
             d.pr_state = pr.value().state;
+            d.author_id = pr.value().author_id;
         }
         d.caps = client.capabilities();  // provider-static; drives the PR toolbar gating
+        // Per-viewer merge authority (write access). Probed once here and cached in
+        // the PR detail; permissive on any failure so it can only hide, never block.
+        if (auto cm = client.viewer_can_merge()) {
+            d.viewer_can_merge = cm.value();
+        }
         err = files ? std::string{} : files.error().message;
     };
 
@@ -2682,10 +2693,11 @@ main(int argc, char** argv) {
         state.pr_reviewers = d.reviewers;
         rebuild_reviewers();
         rebuild_comment_shelf(d.threads);
-        // Gate the PR toolbar from capabilities (gate, don't branch): request-changes
-        // only where the backend has that state; merge only when the PR is open and
-        // the backend offers strategies. The strategy picker is filled in the same
-        // order as state.pr_merge_strategies so the dialog index maps straight back.
+        // Gate the PR toolbar from capabilities AND per-viewer authority (gate, don't
+        // branch): request-changes only where the backend has that state; merge only
+        // when the PR is open, the backend offers strategies, and this user has write
+        // access; approve unless you're the PR author (you can't approve your own).
+        // Browsing is never gated — these only hide write actions that would 403.
         state.pr_merge_strategies = d.caps.merge_strategies;
         backend.set_pr_can_request_changes(d.caps.request_changes_state);
         {
@@ -2696,7 +2708,13 @@ main(int argc, char** argv) {
             backend.set_merge_strategies(sm);
         }
         backend.set_pr_can_merge(!d.caps.merge_strategies.empty() &&
-                                 d.pr_state == diffy::review::ApprovalState::Open);
+                                 d.pr_state == diffy::review::ApprovalState::Open &&
+                                 d.viewer_can_merge);
+        // Approve is allowed for anyone but the PR author. Stay permissive when either
+        // id is unknown (a provider that doesn't populate account ids, or whoami not
+        // yet resolved) so we never hide a legitimate approve.
+        backend.set_pr_can_approve(state.account_id.empty() || d.author_id.empty() ||
+                                   d.author_id != state.account_id);
         backend.set_pr_title(ss("#" + id + "  " + d.title));
         backend.set_pr_subtitle(ss(d.subtitle));
         backend.set_pr_stat(ss(std::to_string(d.files.size()) + " files  ·  +" +

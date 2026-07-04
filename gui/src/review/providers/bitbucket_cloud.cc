@@ -506,6 +506,27 @@ BitbucketCloudClient::whoami() {
     return Result<Account>::ok(a);
 }
 
+Result<bool>
+BitbucketCloudClient::viewer_can_merge() {
+    // GET /2.0/user/permissions/repositories, filtered to this repo, returns the
+    // caller's permission (admin/write/read). Merging a PR needs write or admin.
+    // The q value is BBQL: repository.full_name="ws/repo" (=, ", / percent-encoded).
+    // Any failure — e.g. a repo-scoped access token without the account scope — or
+    // an empty result leaves us permissive, so this never blocks a merge or browsing.
+    const std::string url = base_ + "/user/permissions/repositories?q=repository.full_name%3D%22" +
+                            ws_ + "%2F" + repo_ + "%22";
+    Result<json> r = req_json(http_, cred_, "GET", url);
+    if (!r) {
+        return Result<bool>::ok(true);
+    }
+    const json& values = jchild(r.value(), "values");
+    if (values.is_array() && !values.empty()) {
+        const std::string perm = jstr(values.front(), "permission");
+        return Result<bool>::ok(perm == "write" || perm == "admin");
+    }
+    return Result<bool>::ok(true);
+}
+
 Result<Page<PullRequest>>
 BitbucketCloudClient::list_open(const std::string& cursor) {
     // Request participants alongside the default fields so the UI can group PRs by

@@ -274,6 +274,7 @@ export global Backend {
     in property <string> pr-url;        // web URL of the PR (quick actions)
     in property <[PrReviewer]> pr-reviewers;  // the open PR's reviewers (Reviewers shelf)
     in property <bool> pr-approved-by-me;      // the connected account has approved this PR
+    in property <bool> pr-can-approve: true;   // false when you're the PR author (can't self-approve)
     in property <bool> pr-approving;           // approve/unapprove request in flight
     in-out property <bool> approve-confirm-open: false;  // approve confirm dialog
     callback approve-pr();
@@ -2253,7 +2254,10 @@ component CommitsPanel inherits Rectangle {
                                 VerticalLayout {
                                     padding: 4px;
                                     spacing: 2px;
-                                    MenuRow {
+                                    // Approve unless you're the PR author; "Remove
+                                    // approval" stays available if you've already
+                                    // approved. Hidden entirely when you can do neither.
+                                    if Backend.pr-approved-by-me || Backend.pr-can-approve : MenuRow {
                                         label: Backend.pr-approved-by-me ? "Remove approval" : "Approve";
                                         clicked => {
                                             reviewpop.close();
@@ -2263,6 +2267,12 @@ component CommitsPanel inherits Rectangle {
                                                 Backend.approve-confirm-open = true;  // confirm first
                                             }
                                         }
+                                    }
+                                    // Read-only viewer: no write action is available.
+                                    if !Backend.pr-approved-by-me && !Backend.pr-can-approve
+                                       && !Backend.pr-can-request-changes && !Backend.pr-can-merge : MenuRow {
+                                        label: "No actions available";
+                                        tint: Backend.gutter-fg;
                                     }
                                     if Backend.pr-can-request-changes : MenuRow {
                                         label: "Request changes";

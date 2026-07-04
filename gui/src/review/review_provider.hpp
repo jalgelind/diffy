@@ -34,6 +34,19 @@ struct ReviewProvider {
     // The authenticated account (drives the "needs your review" grouping).
     virtual Result<Account> whoami() = 0;
 
+    // Whether the authenticated user may MERGE pull requests in this repo. Merging
+    // needs write access, which is strictly more than the read scope browsing needs;
+    // this lets the UI hide a merge affordance the token/role can't exercise instead
+    // of surfacing it and letting the API 403 on click. Repo-scoped and cacheable.
+    //
+    // The default (and the value on any inability to determine it — missing scope,
+    // network error) is PERMISSIVE (true): this may only ever HIDE a merge the user
+    // genuinely can't perform, never gate browsing or a merge the user actually can
+    // do. Providers override it with a cheap repo-permission probe.
+    virtual Result<bool> viewer_can_merge() {
+        return Result<bool>::ok(true);
+    }
+
     // --- read: listing & PR data ------------------------------------------
 
     // One page of open PRs. Pass the previous page's next_cursor to continue;

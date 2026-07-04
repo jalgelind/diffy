@@ -472,6 +472,24 @@ GitHubClient::whoami() {
     return Result<Account>::ok(a);
 }
 
+Result<bool>
+GitHubClient::viewer_can_merge() {
+    // GET /repos/{owner}/{repo} returns a `permissions` object for the authenticated
+    // user: { admin, maintain, push, triage, pull }. Merging a PR needs write, i.e.
+    // push (maintain/admin imply it). Any failure -> stay permissive (never block).
+    Result<json> r = req_json(http_, cred_, "GET", repo_url());
+    if (!r) {
+        return Result<bool>::ok(true);
+    }
+    const json& j = r.value();
+    if (j.contains("permissions") && j["permissions"].is_object()) {
+        const json& p = j["permissions"];
+        const bool can = jbool(p, "push") || jbool(p, "maintain") || jbool(p, "admin");
+        return Result<bool>::ok(can);
+    }
+    return Result<bool>::ok(true);  // no permissions block -> don't restrict
+}
+
 Result<Page<PullRequest>>
 GitHubClient::list_open(const std::string& cursor) {
     // First page builds the URL; a non-empty cursor IS the next page's URL (the
