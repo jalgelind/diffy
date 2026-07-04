@@ -87,13 +87,33 @@ integration-test: release ## Diff/patch round-trip over the fixture pairs (needs
 test-all: test integration-test ## Everything: unit + GUI logic + CLI diff/patch integration
 
 # --- GUI (diffy-gui) -------------------------------------------------------
+# Re-sign the built GUI with a STABLE identity when DIFFY_SIGN_ID is set. Every plain
+# build is ad-hoc signed with a fresh signature, so macOS treats each launch as a new
+# app and re-prompts for Keychain access ("Always Allow" never sticks). Signing with a
+# persistent identity (an "Apple Development"/Developer ID cert — see
+# `security find-identity -v -p codesigning`) makes the Keychain ACL stick across
+# rebuilds, so one "Always Allow" is remembered. No-op when unset.
+#   make gui DIFFY_SIGN_ID="Apple Development: you@example.com (TEAMID)"
+# NB: we intentionally do NOT apply extras/diffy-gui.entitlements here — the
+# keychain-access-groups entitlement it carries needs a provisioning profile, and
+# without one AMFI SIGKILLs the app on launch. That entitlement (and SecretStore's
+# data-protection-keychain path) only apply to a properly provisioned distribution
+# build; a plain signed build uses the legacy keychain, which the stable signature
+# already makes prompt-free.
+gui_sign = @if [ -n "$(DIFFY_SIGN_ID)" ]; then \
+	codesign --force --sign "$(DIFFY_SIGN_ID)" "$(1)/gui/diffy-gui" \
+		&& echo "signed $(1)/gui/diffy-gui as '$(DIFFY_SIGN_ID)'"; \
+	fi
+
 gui: ## Build the GUI (diffy-gui) in Debug (needs Rust toolchain + libgit2)
 	@$(call gui_cmake,$(B)-gui-debug,Debug)
 	@$(CMAKE) --build $(B)-gui-debug --target diffy-gui
+	$(call gui_sign,$(B)-gui-debug)
 
 gui-release: ## Build the GUI (diffy-gui) in Release
 	@$(call gui_cmake,$(B)-gui-release,Release)
 	@$(CMAKE) --build $(B)-gui-release --target diffy-gui
+	$(call gui_sign,$(B)-gui-release)
 
 gui-run: gui-release ## Build (release) and launch the GUI
 	@./$(B)-gui-release/gui/diffy-gui
