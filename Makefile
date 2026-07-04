@@ -121,7 +121,7 @@ gui-run: gui-release ## Build (release) and launch the GUI
 # Package a self-contained macOS diffy.app (bundled dylibs + icon) from the
 # release build. Output: $(B)-gui-release/diffy.app
 gui-bundle: gui-release ## Assemble a self-contained macOS diffy.app (dylibs + icon)
-	@bash extras/make-macos-app.sh $(B)-gui-release
+	@DIFFY_SIGN_ID='$(DIFFY_SIGN_ID)' bash extras/make-macos-app.sh $(B)-gui-release
 
 # Full macOS distribution: build the GUI, assemble the .app, then wrap it in a
 # drag-to-Applications diffy.dmg. Outputs both under $(B)-gui-release/.

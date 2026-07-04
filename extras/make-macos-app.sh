@@ -86,5 +86,28 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
+# --- code signing (optional) -------------------------------------------------
+# Sign with a stable identity so the .app launches without Gatekeeper/Keychain
+# friction (a fresh ad-hoc signature every build re-prompts for Keychain access).
+# Set DIFFY_SIGN_ID to an identity from `security find-identity -v -p codesigning`
+# (an "Apple Development" cert for local use, or a Developer ID for real
+# distribution). Sign inside-out: the bundled dylibs first (rewriting their load
+# paths invalidated any prior signature), then the main binary, then the .app.
+if [ -n "${DIFFY_SIGN_ID:-}" ]; then
+  echo "==> Signing $APP as '$DIFFY_SIGN_ID'"
+  # --timestamp=none: no network needed; a Developer ID release for notarization
+  # would instead want a secure --timestamp. No entitlements: keychain-access-groups
+  # needs a provisioning profile (AMFI SIGKILLs without one); the legacy Keychain a
+  # stable signature already makes prompt-free.
+  while IFS= read -r -d '' lib; do
+    codesign --force --timestamp=none --sign "$DIFFY_SIGN_ID" "$lib"
+  done < <(find "$APP/Contents/Frameworks" -type f -print0 2>/dev/null)
+  codesign --force --timestamp=none --sign "$DIFFY_SIGN_ID" "$BIN"
+  codesign --force --timestamp=none --sign "$DIFFY_SIGN_ID" "$APP"
+  codesign --verify --deep --strict -v "$APP" && echo "    signature OK"
+else
+  echo "    (unsigned — set DIFFY_SIGN_ID to code-sign the .app)"
+fi
+
 echo "==> Done: $APP"
 echo "    Verify deps:  otool -L \"$BIN\" | grep -i slint"
