@@ -32,12 +32,19 @@ compute_edit_sequence(Algo algorithm, bool ignore_whitespace, DiffInput<Line>& i
             return false;
     }
 
-    // Treat changes where both sides are empty-ish as unchanged (mirrors the CLI).
+    // Treat a two-sided edit whose both lines are empty-ish as unchanged (mirrors the
+    // CLI). Only genuine two-sided edits qualify: a pure Insert has no A line and a
+    // pure Delete has no B line. The previous guard compared the index against the
+    // buffer size to skip one-sided edits, but the invalid side of an Insert/Delete
+    // still carries a leftover (in-range) value, so a blank one-sided edit could read
+    // some unrelated A[i]/B[i], find it empty, and get retyped to Common. That desynced
+    // the edit from its one-sided index, inflating the hunk's from_count/to_count in
+    // compose_hunks and leaving annotate_tokens a phantom default-constructed EditLine
+    // — an extra empty row that repeated a line number. Gate on validity instead.
     if (ignore_whitespace) {
         for (auto& seq : result->edit_sequence) {
-            if ((int) seq.a_index >= (int) input.A.size() ||
-                (int) seq.b_index >= (int) input.B.size()) {
-                continue;
+            if (!seq.a_index.valid || !seq.b_index.valid) {
+                continue;  // one-sided (pure insert/delete): no counterpart to compare
             }
             if (is_empty(input.A[seq.a_index].line) && is_empty(input.B[seq.b_index].line)) {
                 seq.type = EditType::Common;

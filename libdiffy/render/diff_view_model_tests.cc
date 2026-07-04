@@ -128,6 +128,49 @@ TEST_CASE("render model: unified emits delete then insert rows") {
     CHECK(has_left_type(m, EditType::Common));
 }
 
+TEST_CASE("render model: ignore-whitespace one-sided edit doesn't spawn phantom rows") {
+    // Regression: a=["","x"], b=["",""] — delete "x", insert a blank line. Under
+    // ignore_whitespace the blank Insert's *invalid* a_index still carried a leftover
+    // value that pointed at the blank A[0]. The old guard compared that value against
+    // the buffer size (in range), so is_empty(A[0]) && is_empty(inserted) held and the
+    // one-sided edit was retyped to Common. That desynced the edit from its one-sided
+    // index, inflating the hunk's from_count/to_count in compose_hunks and leaving
+    // annotate_tokens a phantom default-constructed EditLine — an extra empty row that
+    // repeated a line number. Now one-sided edits are skipped (guard on .valid), so no
+    // phantom appears. (This only bit "sometimes" — when the garbage index happened to
+    // land on a blank line.)
+    const std::string a = "\nx\n";  // ["", "x"]
+    const std::string b = "\n\n";   // ["", ""]
+
+    DiffPipelineOptions p = default_pipeline();
+    p.ignore_whitespace = true;
+
+    for (auto mode : {ViewMode::Unified, ViewMode::SideBySide}) {
+        DiffLayoutOptions layout;
+        layout.mode = mode;
+        auto m = build_diff_view_from_text(a, b, "a", "b", p, layout);
+
+        // Old/new line numbers must be strictly increasing down the model; a phantom
+        // row repeats an earlier number (its default index reads back as line 1).
+        long prev_old = 0, prev_new = 0;
+        for (const auto& r : m.rows) {
+            if (r.kind != RowKind::Content) {
+                continue;
+            }
+            if (r.left.present && r.old_lineno) {
+                CHECK(*r.old_lineno > prev_old);
+                CHECK(*r.old_lineno <= 2);  // a has 2 lines
+                prev_old = *r.old_lineno;
+            }
+            if (r.right.present && r.new_lineno) {
+                CHECK(*r.new_lineno > prev_new);
+                CHECK(*r.new_lineno <= 2);  // b has 2 lines
+                prev_new = *r.new_lineno;
+            }
+        }
+    }
+}
+
 TEST_CASE("render model: pure insertion has only insert/common") {
     const std::string a = "one\ntwo\n";
     const std::string b = "one\ninserted\ntwo\n";
