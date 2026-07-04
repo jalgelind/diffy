@@ -131,6 +131,32 @@ TEST_CASE("repo_model: discard restores a tracked file and deletes an untracked 
     CHECK_FALSE(fs::exists(tr.file("new.txt")));
 }
 
+TEST_CASE("repo_model: pr_branch_refspecs qualifies bare branches, leaves full refs alone") {
+    // GitHub: head_ref is already a full ref (refs/pull/<id>/head), base_ref is a bare
+    // branch name. Prepending refs/heads/ to the head would yield the nonexistent
+    // refs/heads/refs/pull/42/head — the bug that disabled GitHub's local diff.
+    {
+        auto rs = pr_branch_refspecs("refs/pull/42/head", "main", "42");
+        REQUIRE(rs.size() == 2);
+        CHECK(rs[0] == "+refs/pull/42/head:refs/diffy/pr/42/head");
+        CHECK(rs[1] == "+refs/heads/main:refs/diffy/pr/42/base");
+    }
+    // Bitbucket: both refs are bare branch names and get qualified with refs/heads/.
+    {
+        auto rs = pr_branch_refspecs("feature/x", "master", "7");
+        REQUIRE(rs.size() == 2);
+        CHECK(rs[0] == "+refs/heads/feature/x:refs/diffy/pr/7/head");
+        CHECK(rs[1] == "+refs/heads/master:refs/diffy/pr/7/base");
+    }
+    // Empty base_ref => head-only; empty head_ref => nothing to fetch.
+    {
+        auto rs = pr_branch_refspecs("feature/x", "", "9");
+        REQUIRE(rs.size() == 1);
+        CHECK(rs[0] == "+refs/heads/feature/x:refs/diffy/pr/9/head");
+    }
+    CHECK(pr_branch_refspecs("", "master", "1").empty());
+}
+
 TEST_CASE("repo_model: a wholly-untracked directory is one named '?' entry, not empty") {
     TempRepo tr;
     write_file(tr.file("a.txt"), "x\n");

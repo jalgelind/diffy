@@ -49,22 +49,37 @@ git_runtime_init();
 void
 git_runtime_shutdown();
 
+// Force-fetch refspecs that pull a PR's head + base commits into private
+// refs/diffy/pr/<id>/{head,base} refs, for local (offline) diffing. `head_ref` and
+// `base_ref` may be a fully-qualified ref (GitHub's "refs/pull/<id>/head") or a bare
+// branch name (Bitbucket's source/destination branch); a bare name is qualified as
+// "refs/heads/<name>", an already-qualified "refs/*" ref is left as-is. `base_ref`
+// may be empty (head only). Returns an empty vector when `head_ref` is empty.
+std::vector<std::string>
+pr_branch_refspecs(const std::string& head_ref, const std::string& base_ref,
+                   const std::string& pr_id);
+
 class Repo {
    public:
     static std::optional<Repo>
     open(const std::string& path);
 
-    // Fetch `refspecs` from `remote` by shelling out to the system `git` binary,
-    // reusing the user's existing git credentials/SSH setup. We use this rather than
-    // libgit2 for PR-branch fetches because libgit2 1.9.x aborts a fetch on a
-    // non-shallow repo ("could not find .git/shallow to stat"). argv is passed
-    // exec-style (no shell), so branch/refspec text can't inject. GIT_TERMINAL_PROMPT
-    // is forced off so a missing credential fails fast instead of blocking on a
-    // prompt. Returns false (with the last stderr line in `error`) on any failure,
-    // including on platforms where it isn't implemented (Windows → callers fall back).
+    // Fetch `refspecs` from `remote` (a named remote or an explicit URL) by shelling
+    // out to the system `git` binary. We use this rather than libgit2 for PR-branch
+    // fetches because libgit2 1.9.x aborts a fetch on a non-shallow repo ("could not
+    // find .git/shallow to stat"). argv is passed exec-style (no shell), so
+    // branch/refspec text can't inject. When `user`/`pass` are given they authenticate
+    // over HTTPS via a throwaway GIT_ASKPASS helper that reads them from the child's
+    // environment — the secret never touches argv/the process table (use an explicit
+    // https URL as `remote` so the credentials apply). When both are empty it relies
+    // on the user's ambient git credentials/SSH. GIT_TERMINAL_PROMPT is forced off so
+    // a missing credential fails fast instead of blocking. Returns false (with the
+    // last stderr line in `error`) on any failure, including where unimplemented
+    // (Windows → callers fall back to the network path).
     static bool
     git_fetch(const std::string& repo_path, const std::string& remote,
-              const std::vector<std::string>& refspecs, std::string* error = nullptr);
+              const std::vector<std::string>& refspecs, const std::string& user = "",
+              const std::string& pass = "", std::string* error = nullptr);
 
     ~Repo();
     Repo(Repo&& other) noexcept;

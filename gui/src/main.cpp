@@ -1132,6 +1132,9 @@ main(int argc, char** argv) {
         // (which can fire from cache and again from the fresh result) kicks at most
         // one background fetch per PR.
         std::unordered_set<std::string> branch_fetch_inflight;
+        // Blob cache keys currently being prefetched, so the double detail-apply
+        // (cache then fresh) doesn't fetch every file's blobs twice.
+        std::unordered_set<std::string> blob_prefetch_inflight;
     } state;
     constexpr int kCommitPage = 50;  // commits per lazy page
     state.settings = settings;
@@ -1197,6 +1200,15 @@ main(int argc, char** argv) {
                 backend.set_bitbucket_connected(false);
                 backend.set_bitbucket_status(ss(""));
             }
+        }
+        // The active credential for this provider just (re)set, so any cached "me"
+        // identity from the previous account is stale — drop it so ensure_account
+        // re-learns whoami for the new account. Otherwise switching between two
+        // accounts of the same provider keeps the old id, mis-driving the self-approve
+        // gate and the needs-review/yours PR grouping.
+        if (state.account_provider == provider_id) {
+            state.account_id.clear();
+            state.account_provider.clear();
         }
     };
 
@@ -2562,8 +2574,8 @@ main(int argc, char** argv) {
             }
             const std::string path = f.path;
             const std::string ck = ws + "/" + repo + "#" + id + ":" + path;
-            if (state.pr_file_cache.count(ck)) {
-                continue;
+            if (state.pr_file_cache.count(ck) || !state.blob_prefetch_inflight.insert(ck).second) {
+                continue;  // already cached, or a prefetch for this blob is in flight
             }
             review_pool.submit(
                 ReviewPool::Prio::Prefetch,
@@ -2578,6 +2590,7 @@ main(int argc, char** argv) {
                         newt = n.value();
                     }
                     slint::invoke_from_event_loop([&, ck, oldt, newt, id, gen]() {
+                        state.blob_prefetch_inflight.erase(ck);  // clear even if superseded
                         if (gen != state.load_generation || state.current_pr != id) {
                             return;
                         }
@@ -2778,19 +2791,32 @@ main(int argc, char** argv) {
             return;  // a fetch for this PR is already running
         }
         const std::string rp = state.repo_path;
-        // Fetch the PR's source + target branches into private refs via the system git
-        // binary against `origin` (reuses the user's git credentials/SSH). libgit2 1.9.x
-        // can't do this fetch on a non-shallow repo (its .git/shallow-stat bug).
-        std::vector<std::string> refspecs{
-            "+refs/heads/" + refs.head_ref + ":refs/diffy/pr/" + id + "/head"};
-        if (!refs.base_ref.empty()) {
-            refspecs.push_back("+refs/heads/" + refs.base_ref + ":refs/diffy/pr/" + id + "/base");
+        // Fetch the PR's head + base branches into private refs via the system git
+        // binary (libgit2 1.9.x aborts this fetch on a non-shallow repo — its
+        // .git/shallow-stat bug). Fetch from the explicit HTTPS URL and authenticate
+        // with the app's stored token, so it works even when the user only signed in
+        // inside diffy (no ambient git credential/SSH for the host). pr_branch_refspecs
+        // qualifies GitHub's already-full head ref vs a bare Bitbucket branch name.
+        const std::vector<std::string> refspecs =
+            diffy::gui::pr_branch_refspecs(refs.head_ref, refs.base_ref, id);
+        if (refspecs.empty()) {
+            state.branch_fetch_inflight.erase(id);
+            return;
         }
+        const std::string git_host =
+            state.provider_id == "github" ? "github.com" : "bitbucket.org";
+        const std::string furl =
+            "https://" + git_host + "/" + state.pr_ws + "/" + state.pr_repo + ".git";
+        const diffy::review::Credential cred = *state.review_cred();
+        // GitHub PATs take any non-empty username; Bitbucket API tokens take the email.
+        const std::string guser = cred.principal.empty() ? std::string("x-access-token")
+                                                         : cred.principal;
+        const std::string gpass = cred.secret;
         const std::string hsha = refs.head_sha, bsha = refs.base_sha;
         const uint64_t gen = state.load_generation;
-        load_threads.emplace_back([&, rp, refspecs, id, gen, hsha, bsha]() {
+        load_threads.emplace_back([&, rp, furl, refspecs, guser, gpass, id, gen, hsha, bsha]() {
             std::string ferr;
-            const bool ok = Repo::git_fetch(rp, "origin", refspecs, &ferr);
+            const bool ok = Repo::git_fetch(rp, furl, refspecs, guser, gpass, &ferr);
             if (!ok) {
                 diffy::review::log_line("pr-branch fetch failed for #" + id + ": " + ferr);
             }
@@ -4063,6 +4089,20 @@ main(int argc, char** argv) {
                     // credential into state.creds (apply_active_account does the last
                     // step); persist the list + re-render the settings account list.
                     auto& list = state.accounts[provider];
+                    // Reconcile the legacy fixed-"pat" GitHub account into this
+                    // login-keyed one: an older build stored the token under "pat", and
+                    // startup migrated it to an account labeled "pat". Now that we know
+                    // the real login, drop that duplicate (and its vault entry) so the
+                    // same identity isn't permanently listed twice.
+                    if (provider == "github" && label != "pat") {
+                        diffy::review::SecretStore::erase(diffy::review::build_key(
+                            provider, provider_api_base(provider), "pat"));
+                        list.erase(std::remove_if(list.begin(), list.end(),
+                                                  [](const GuiAccount& a) {
+                                                      return a.label == "pat";
+                                                  }),
+                                   list.end());
+                    }
                     GuiAccount entry;
                     entry.label = label;
                     entry.display = account;
@@ -4080,6 +4120,12 @@ main(int argc, char** argv) {
                     }
                     state.active_label[provider] = label;
                     state.creds[provider] = c;
+                    // Re-learn "me" for the newly connected account (self-approve gate +
+                    // PR grouping) rather than keep the previous account's identity.
+                    if (state.account_provider == provider) {
+                        state.account_id.clear();
+                        state.account_provider.clear();
+                    }
                     persist_accounts(provider);
                     rebuild_accounts_model();
                     refresh_prs();  // populate the sidebar if the open repo matches

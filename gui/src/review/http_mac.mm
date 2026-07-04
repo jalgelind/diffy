@@ -89,7 +89,9 @@ to_std(NSString* s) {
     NSString* auth = task.originalRequest.allHTTPHeaderFields[@"Authorization"];
     NSString* fromHost = task.originalRequest.URL.host;
     NSString* toHost = request.URL.host;
-    if (auth && fromHost && toHost && [fromHost isEqualToString:toHost] &&
+    // Host comparison is case-insensitive: DNS names are, and a redirect may echo the
+    // host with different casing — a case-sensitive match would drop auth and 404.
+    if (auth && fromHost && toHost && [fromHost caseInsensitiveCompare:toHost] == NSOrderedSame &&
         ![request valueForHTTPHeaderField:@"Authorization"]) {
         NSMutableURLRequest* r = [request mutableCopy];
         [r setValue:auth forHTTPHeaderField:@"Authorization"];

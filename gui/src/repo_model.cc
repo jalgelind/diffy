@@ -9,7 +9,10 @@
 #include <vector>
 
 #if !defined(_WIN32)
+#include <cstring>
+#include <fcntl.h>
 #include <spawn.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 extern char** environ;
@@ -515,13 +518,37 @@ Repo::merge_base(const std::string& a, const std::string& b) const {
     return out;
 }
 
+std::vector<std::string>
+pr_branch_refspecs(const std::string& head_ref, const std::string& base_ref,
+                   const std::string& pr_id) {
+    // A bare branch name lives under refs/heads/; a ref that already starts with
+    // "refs/" (e.g. GitHub's refs/pull/<id>/head) is fetchable as-is. Prepending
+    // refs/heads/ unconditionally produced "refs/heads/refs/pull/.../head", which no
+    // remote has — silently disabling GitHub's local diff.
+    auto qualify = [](const std::string& ref) {
+        return ref.rfind("refs/", 0) == 0 ? ref : "refs/heads/" + ref;
+    };
+    std::vector<std::string> out;
+    if (head_ref.empty()) {
+        return out;
+    }
+    out.push_back("+" + qualify(head_ref) + ":refs/diffy/pr/" + pr_id + "/head");
+    if (!base_ref.empty()) {
+        out.push_back("+" + qualify(base_ref) + ":refs/diffy/pr/" + pr_id + "/base");
+    }
+    return out;
+}
+
 bool
 Repo::git_fetch(const std::string& repo_path, const std::string& remote,
-                const std::vector<std::string>& refspecs, std::string* error) {
+                const std::vector<std::string>& refspecs, const std::string& user,
+                const std::string& pass, std::string* error) {
 #if defined(_WIN32)
     (void)repo_path;
     (void)remote;
     (void)refspecs;
+    (void)user;
+    (void)pass;
     if (error) {
         *error = "system git fetch not implemented on this platform";
     }
@@ -550,6 +577,11 @@ Repo::git_fetch(const std::string& repo_path, const std::string& remote,
         }
         return false;
     }
+    // Close-on-exec so a concurrently-spawned git (another PR's fetch) doesn't inherit
+    // this pipe's write end and keep our read() from ever seeing EOF (this child gets
+    // stderr via the dup2 in the file actions below, which clears CLOEXEC on fd 2).
+    fcntl(pipefd[0], F_SETFD, FD_CLOEXEC);
+    fcntl(pipefd[1], F_SETFD, FD_CLOEXEC);
 
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
@@ -566,6 +598,32 @@ Repo::git_fetch(const std::string& repo_path, const std::string& remote,
         }
     }
     envs.emplace_back("GIT_TERMINAL_PROMPT=0");
+    // Authenticate with the app-held token (Bitbucket API token / GitHub PAT) via a
+    // throwaway GIT_ASKPASS helper that echoes the credential from the child env — the
+    // secret is never on argv or in .git/config. Falls back to ambient git creds/SSH
+    // when no token is given.
+    std::string askpass_path;
+    if (!user.empty() || !pass.empty()) {
+        char tmpl[] = "/tmp/diffy-askpass-XXXXXX";
+        const int afd = mkstemp(tmpl);
+        if (afd >= 0) {
+            static const char* kScript =
+                "#!/bin/sh\ncase \"$1\" in\n"
+                "Username*) printf %s \"$DIFFY_GIT_USER\" ;;\n"
+                "*) printf %s \"$DIFFY_GIT_PASS\" ;;\nesac\n";
+            const size_t len = std::strlen(kScript);
+            const bool wrote = write(afd, kScript, len) == static_cast<ssize_t>(len);
+            close(afd);
+            if (wrote && chmod(tmpl, 0700) == 0) {
+                askpass_path = tmpl;
+                envs.emplace_back("GIT_ASKPASS=" + askpass_path);
+                envs.emplace_back("DIFFY_GIT_USER=" + user);
+                envs.emplace_back("DIFFY_GIT_PASS=" + pass);
+            } else {
+                unlink(tmpl);
+            }
+        }
+    }
     std::vector<char*> envp;
     envp.reserve(envs.size() + 1);
     for (auto& e : envs) {
@@ -595,6 +653,9 @@ Repo::git_fetch(const std::string& repo_path, const std::string& remote,
 
     int status = 0;
     waitpid(pid, &status, 0);
+    if (!askpass_path.empty()) {
+        unlink(askpass_path.c_str());
+    }
     const bool ok = WIFEXITED(status) && WEXITSTATUS(status) == 0;
     if (!ok && error) {
         while (!captured.empty() && (captured.back() == '\n' || captured.back() == '\r')) {
