@@ -10,12 +10,18 @@ endif()
 
 # Trim Slint to what diffy-gui actually uses: the UI is precompiled by
 # slint_target_sources, so the runtime interpreter (which drags the whole Slint
-# compiler frontend into the DLL) is dead weight, as are the testing harness and
-# the software-renderer fallback (femtovg is the renderer). Must be set before
-# Slint is fetched below.
+# compiler frontend into the DLL) is dead weight, as is the testing harness. Must
+# be set before Slint is fetched below.
 set(SLINT_FEATURE_INTERPRETER OFF CACHE BOOL "" FORCE)
 set(SLINT_FEATURE_TESTING OFF CACHE BOOL "" FORCE)
 set(SLINT_FEATURE_RENDERER_SOFTWARE OFF CACHE BOOL "" FORCE)
+# Disable AccessKit. On macOS it rebuilds the accessibility node tree on every
+# ListView viewport change and bridges each update to NSAccessibility over mach
+# IPC, which stalls the main thread ~70ms/frame during a trackpad/scrollbar scroll
+# (profiled: idle CPU, 6ms GPU, ~13fps) — see slint-ui/slint#3867. The diff is a
+# big virtualized ListView, so this dominates scroll. Trade-off: no screen-reader
+# tree (a dev-tool compromise); re-enable if assistive-tech support is needed.
+set(SLINT_FEATURE_ACCESSIBILITY OFF CACHE BOOL "" FORCE)
 
 # Slint: prefer an installed package, otherwise build it from source (matches the
 # upstream slint-cpp-template). Building from source needs a Rust toolchain.

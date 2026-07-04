@@ -151,7 +151,18 @@ cell_visual_lines(const GuiTheme& t, const diffy::DiffCell& cell, int tab_width,
             color = t.fg;
             bold = false;
         }
-        runs.push_back(DisplayRun{std::move(piece), pack(color), bold});
+        // Coalesce with the previous run when it resolves to the same colour+weight.
+        // Syntax highlighting emits a span per token (plus None-group gaps), and many
+        // adjacent ones share a colour (whitespace, punctuation, runs of plain text),
+        // so without this each becomes its own Slint Text — the dominant per-row cost
+        // when scrolling. Spans butt together (no inter-span gap), so merging is
+        // visually identical. The no-wrap path keeps runs as-is, so coalesce here.
+        const uint32_t argb = pack(color);
+        if (!runs.empty() && runs.back().argb == argb && runs.back().bold == bold) {
+            runs.back().text += piece;
+        } else {
+            runs.push_back(DisplayRun{std::move(piece), argb, bold});
+        }
     }
     out_width = col;
 
