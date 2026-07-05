@@ -50,7 +50,9 @@ TEST_CASE("serializer") {
 
         // A table wrapper is added, so we can't compare with the input.
         std::string reference = R"foo({
-    fg = 'white', bg = 'default', attr = [
+    fg = 'white',
+    bg = 'default',
+    attr = [
         'underline'
     ]
 })foo";
@@ -62,7 +64,9 @@ TEST_CASE("serializer") {
 
     SUBCASE("object-starts-with-curly") {
         std::string cfg_text = R"foo({
-    fg = 'white', bg = 'default', attr = [
+    fg = 'white',
+    bg = 'default',
+    attr = [
         'underline'
     ]
 })foo";

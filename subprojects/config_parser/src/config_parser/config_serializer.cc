@@ -90,6 +90,22 @@ serialize_obj(Value& value, int depth, std::string& output, bool is_last_element
 
     int row = 0;
     int rows = 0;
+
+    // Trailing separator after a value. Inside a container each element goes on
+    // its own line, indented to the container's level, so nested objects and
+    // arrays stay readable instead of collapsing onto one long line. ", " is only
+    // the rare non-container inline case.
+    auto emit_sep = [&]() {
+        if (is_last_element) {
+            return;
+        }
+        if (parent_is_container) {
+            output += ",\n" + indent(depth - 1);
+        } else {
+            output += ", ";
+        }
+    };
+
     if (value.is_table() || value.is_array()) {
         if (value.is_array()) {
             auto& array = value.as_array();
@@ -139,32 +155,23 @@ serialize_obj(Value& value, int depth, std::string& output, bool is_last_element
             }
         }
 
-        if (!is_last_element) {
-            if (parent_is_container) {
-                output += ", \n" + indent(depth - 1);
-            } else {
-                output += ", ";
-            }
-        }
+        emit_sep();
 
     } else if (value.is_int()) {
         output += fmt::format("{}", value.as_int());
-        if (!is_last_element)
-            output += ", ";
+        emit_sep();
         for (auto& comment : value.value_comments) {
             output += " " + comment + "\n";
         }
     } else if (value.is_bool()) {
         output += fmt::format("{}", value.as_bool());
-        if (!is_last_element)
-            output += ", ";
+        emit_sep();
         for (auto& comment : value.value_comments) {
             output += " " + comment + "\n";
         }
     } else if (value.is_string()) {
         output += serialize_string(value.as_string(), current_column(output));
-        if (!is_last_element)
-            output += ", ";
+        emit_sep();
         for (auto& comment : value.value_comments) {
             output += " " + comment + "\n";
         }
