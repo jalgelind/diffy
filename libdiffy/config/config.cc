@@ -1,5 +1,7 @@
 #include "config.hpp"
 
+#include <highlight/highlight_group.hpp>
+#include <highlight/highlight_palette.hpp>
 #include <highlight/language.hpp>
 #include <output/column_view.hpp>
 #include <util/color.hpp>
@@ -581,6 +583,46 @@ diffy::config_apply_theme(const std::string& theme,
 
     for (const auto& [source_value, dest_string] : colors) {
         dest_string->assign(source_value->to_ansi());
+    }
+
+    // Pick the built-in syntax palette (light vs dark) from the theme's
+    // background: a bright background gets the light palette. A theme that leaves
+    // the background as the terminal default (no RGB we can read) falls back to
+    // dark — matching a typical terminal and the historical behaviour. Only used
+    // for groups the theme's [syntax] table below doesn't override.
+    {
+        auto luminance = [](const TermColor& c) -> std::optional<double> {
+            switch (c.kind) {
+                case TermColor::Kind::Color4bit:
+                case TermColor::Kind::Color8bit:
+                case TermColor::Kind::Color24bit:
+                    return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+                default:
+                    return std::nullopt;  // terminal default / no readable RGB
+            }
+        };
+        auto l = luminance(cv_style_opts.common_line.bg);
+        if (!l)
+            l = luminance(cv_style_opts.background.bg);
+        cv_view_opts.light_theme = l.has_value() && *l > 140.0;
+    }
+
+    // Theme-owned syntax palette: replace any previous overrides with this theme's
+    // [syntax] table (group name -> "#rrggbb"). Groups the theme omits fall back
+    // to the built-in palette chosen above. Shared by all frontends; a frontend
+    // may layer user overrides on top by calling set_syntax_color_override after.
+    clear_syntax_overrides();
+    if (auto syntax = config_file_table_value.lookup_value_by_path("syntax");
+        syntax && syntax->get().is_table()) {
+        syntax->get().as_table().for_each([&](const std::string& key, Value& value) {
+            if (!value.is_string())
+                return;
+            const auto group = highlight_group_from_name(key);
+            const auto color = TermColor::parse_string(value.as_string());
+            if (group && *group != HighlightGroup::None && color) {
+                set_syntax_color_override(*group, HlRgb{color->r, color->g, color->b});
+            }
+        });
     }
 
     // Write the configuration to disk with default settings

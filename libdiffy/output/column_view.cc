@@ -52,14 +52,15 @@ struct DisplayLineSegment {
     HighlightGroup syntax = HighlightGroup::None;
 };
 
-// Truecolor SGR foreground for a syntax group (dark palette). Empty for None.
-// Escapes carry no display width, so adding them never disturbs alignment.
+// Truecolor SGR foreground for a syntax group in the chosen palette (light vs
+// dark). Empty for None. Escapes carry no display width, so adding them never
+// disturbs alignment.
 std::string
-syntax_fg(HighlightGroup group) {
+syntax_fg(HighlightGroup group, bool light) {
     if (group == HighlightGroup::None) {
         return "";
     }
-    const HlRgb c = syntax_color(group, /*light=*/false);
+    const HlRgb c = syntax_color(group, light);
     return fmt::format("\033[38;2;{};{};{}m", c.r, c.g, c.b);
 }
 
@@ -592,7 +593,8 @@ render_display_line(const ColumnViewState& config,
             // with the syntax-highlight foreground layered on top when present.
             // TODO: "Meta" is a hack that doesn't scale; it needs its own DisplayType.
             default:
-                output->push_back(DisplayCommand::with_style(base + syntax_fg(segment.syntax), segment.text));
+                output->push_back(DisplayCommand::with_style(
+                    base + syntax_fg(segment.syntax, config.settings.light_theme), segment.text));
                 break;
         }
     }

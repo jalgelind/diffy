@@ -560,7 +560,7 @@ Side by side options:
         auto unified_lines = diffy::unified_diff_render(
             diff_input, hunks, hunk_contexts.empty() ? nullptr : &hunk_contexts,
             color ? &cv_ui_opts.style : nullptr, color ? &a_hl : nullptr, color ? &b_hl : nullptr,
-            /*light_theme=*/false, fill_width);
+            cv_ui_opts.settings.light_theme, fill_width);
         auto num_lines = unified_lines.size();
         for (auto i = 0u; i < num_lines; i++) {
             const auto& line = unified_lines[i];

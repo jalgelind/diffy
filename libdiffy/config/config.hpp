@@ -155,6 +155,10 @@ struct ColumnViewSettings {
     bool context_colored_line_numbers = true;
     bool word_wrap = true;
     bool line_number_align_right = false;
+    // Which built-in syntax palette (light vs dark) to fall back to for groups
+    // the theme doesn't override. Inferred from the theme background by
+    // config_apply_theme.
+    bool light_theme = false;
 };
 
 std::string
