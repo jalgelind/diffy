@@ -141,11 +141,17 @@ def run_single_patch_test(args, test_group, name, test_case):
 GOLDEN_EPOCH = "1700000000"
 GOLDEN_INPUTS = "golden/inputs"
 GOLDEN_EXPECTED = "golden/expected"
+# Each case is (name, cfg) using the default a.c/b.c pair, or (name, cfg, a, b)
+# to point at a different input pair (relative to GOLDEN_INPUTS) — used for the
+# binary/hex fixtures.
 GOLDEN_CASES = (
     ('unified_plain',     '-U3 --color=never'),
     ('unified_color',     '-U3 --color=always -W 80'),
     ('unified_dracula',   '-U3 --color=always -W 80 --theme theme_dracula'),
     ('sidebyside_color',  '-s -W 80'),
+    ('bin_unified_plain', '-u --color=never',        'bin_a.bin', 'bin_b.bin'),
+    ('bin_unified_color', '-u --color=always -W 80', 'bin_a.bin', 'bin_b.bin'),
+    ('bin_sidebyside',    '-s --color=always -W 80', 'bin_a.bin', 'bin_b.bin'),
 )
 
 def _show_visible(data):
@@ -155,12 +161,14 @@ def _show_visible(data):
 def run_golden_tests(diff_tool, update):
     import difflib
     passed = failed = 0
-    a = os.path.join(GOLDEN_INPUTS, "a.c")
-    b = os.path.join(GOLDEN_INPUTS, "b.c")
     env = dict(os.environ, SOURCE_DATE_EPOCH=GOLDEN_EPOCH)
     mkdirs(GOLDEN_EXPECTED)
     print("Golden snapshots" + (" (updating)" if update else ""))
-    for name, cfg in GOLDEN_CASES:
+    for case in GOLDEN_CASES:
+        name, cfg = case[0], case[1]
+        a_rel, b_rel = (case[2], case[3]) if len(case) >= 4 else ("a.c", "b.c")
+        a = os.path.join(GOLDEN_INPUTS, a_rel)
+        b = os.path.join(GOLDEN_INPUTS, b_rel)
         cmd = [diff_tool] + cfg.split() + [a, b]
         # stdout only: diagnostics (config banner, warnings) go to stderr and
         # must not enter the snapshot.

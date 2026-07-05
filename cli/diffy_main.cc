@@ -5,13 +5,18 @@
 #include "highlight/language.hpp"
 #include "highlight/scope.hpp"
 #include "highlight/syntax_highlighter.hpp"
+#include "binary/hex_align.hpp"
 #include "output/column_view.hpp"
+#include "output/hex_column.hpp"
+#include "output/hex_unified.hpp"
 #include "output/unified.hpp"
 #include "processing/diff_hunk.hpp"
 #include "processing/diff_hunk_annotate.hpp"
 #include "processing/tokenizer.hpp"
+#include "util/binary_detect.hpp"
 #include "util/color.hpp"
 #include "util/hash.hpp"
+#include "util/mapped_file.hpp"
 #include "util/readlines.hpp"
 #include "tty.hpp"
 
@@ -227,6 +232,12 @@ Options:
 
     --list-colors                list all available colors available in the configuration
 
+Binary (hex) diff:
+    --binary                     force hex diff (default: auto-detect binary input)
+    --text                       force text diff even for binary-looking input
+    --bytes-per-row [n]          bytes shown per hex row (default 16)
+    --hex-global                 byte-align whole files instead of chunking (small files)
+
 Side by side options:
     -l, --line                   line based diff instead of word based diff
     -W [width]                   maximum width in each column
@@ -248,6 +259,10 @@ Side by side options:
     constexpr int kOptNoHighlight = 257;
     constexpr int kOptTheme = 258;
     constexpr int kOptColor = 260;
+    constexpr int kOptBinary = 261;
+    constexpr int kOptText = 262;
+    constexpr int kOptBytesPerRow = 263;
+    constexpr int kOptHexGlobal = 264;
 
     auto parse_args = [&](int in_argc, char* in_argv[]) {
         static struct option long_options[] = {
@@ -270,6 +285,10 @@ Side by side options:
             {"theme", required_argument, 0, kOptTheme},
             {"color", required_argument, 0, kOptColor},
             {"colour", required_argument, 0, kOptColor},
+            {"binary", no_argument, 0, kOptBinary},
+            {"text", no_argument, 0, kOptText},
+            {"bytes-per-row", required_argument, 0, kOptBytesPerRow},
+            {"hex-global", no_argument, 0, kOptHexGlobal},
             {"list-colors", no_argument, 0, '1'},
             {0, 0, 0, 0}};
         int c = 0, option_index = 0;
@@ -330,6 +349,23 @@ Side by side options:
                     if (optarg && *optarg) {
                         opts.theme = optarg;
                     }
+                    break;
+                case kOptBinary:
+                    opts.binary_mode = diffy::BinaryMode::Always;
+                    break;
+                case kOptText:
+                    opts.binary_mode = diffy::BinaryMode::Never;
+                    break;
+                case kOptBytesPerRow:
+                    if (optarg && isdigit(optarg[0])) {
+                        opts.bytes_per_row = atoi(optarg);
+                        if (opts.bytes_per_row < 1) {
+                            opts.bytes_per_row = 1;
+                        }
+                    }
+                    break;
+                case kOptHexGlobal:
+                    opts.hex_global = true;
                     break;
                 case kOptColor: {
                     const std::string when = optarg ? optarg : "";
@@ -493,6 +529,92 @@ Side by side options:
         puts("");
         diffy::color_dump();
         return 0;
+    }
+
+    // Binary / hex diff path. Decide before readlines so binary input never gets
+    // line-split. Auto mode sniffs the first 1 KiB of each file for a NUL byte.
+    {
+        auto sniff_binary = [](const std::string& path) -> bool {
+            FILE* f = fopen(path.c_str(), "rb");
+            if (!f) {
+                return false;
+            }
+            std::vector<uint8_t> head(1024);
+            size_t n = fread(head.data(), 1, head.size(), f);
+            fclose(f);
+            head.resize(n);
+            return diffy::looks_binary(head);
+        };
+
+        const bool want_binary =
+            opts.binary_mode == diffy::BinaryMode::Always
+                ? true
+                : opts.binary_mode == diffy::BinaryMode::Never
+                      ? false
+                      : (sniff_binary(opts.left_file) || sniff_binary(opts.right_file));
+
+        if (want_binary) {
+            diffy::FileBytes a_file, b_file;
+            if (!a_file.load(opts.left_file) || !b_file.load(opts.right_file)) {
+                fmt::print(stderr, "diffy: failed to read binary input\n");
+                return 2;
+            }
+            const auto a_bytes = a_file.bytes();
+            const auto b_bytes = b_file.bytes();
+
+            diffy::HexAlignParams hp;
+            hp.force_global = opts.hex_global;
+            bool truncated = false;
+            auto alignment = diffy::hex_align(a_bytes, b_bytes, hp, &truncated);
+
+            bool changed = false;
+            for (const auto& seg : alignment) {
+                if (seg.kind != diffy::HexSegKind::Equal) {
+                    changed = true;
+                    break;
+                }
+            }
+            if (!changed) {
+                return 0;  // identical
+            }
+
+            const bool color = opts.color_mode == diffy::ColorMode::Always ||
+                               (opts.color_mode == diffy::ColorMode::Auto && stdout_is_tty());
+
+            auto resolve_width = [&]() -> int64_t {
+                int64_t w = opts.width;
+                if (w == 0) {
+                    int th = 0, tw = 0;
+                    diffy::tty_get_term_size(&th, &tw);
+                    w = static_cast<int64_t>(tw);
+                }
+                return w == 0 ? 80 : w;
+            };
+
+            if (opts.column_view) {
+                for (const auto& line : diffy::hex_column_render(
+                         a_bytes, b_bytes, alignment, color ? &cv_ui_opts.style : nullptr,
+                         static_cast<int>(opts.bytes_per_row), opts.context_lines, resolve_width())) {
+                    puts(line.c_str());
+                }
+            } else {
+                const int64_t bpr = opts.bytes_per_row > 0 ? opts.bytes_per_row : 16;
+                const int64_t fill_width = color ? resolve_width() : 0;
+                for (const auto& line : diffy::hex_unified_render(
+                         a_bytes, b_bytes, opts.left_file_name, opts.right_file_name, alignment,
+                         color ? &cv_ui_opts.style : nullptr, static_cast<int>(bpr), opts.context_lines,
+                         fill_width)) {
+                    puts(line.c_str());
+                }
+            }
+
+            if (truncated) {
+                fmt::print(stderr,
+                           "diffy: note: some changed regions were too large to byte-align; "
+                           "shown as whole removed/added blocks\n");
+            }
+            return 1;
+        }
     }
 
     // ignore_whitespace makes line matching whitespace-insensitive at read time, so

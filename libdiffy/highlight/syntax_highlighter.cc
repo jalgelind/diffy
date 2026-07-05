@@ -1,6 +1,7 @@
 #include "highlight/syntax_highlighter.hpp"
 
 #include "highlight/language_ts.hpp"
+#include "util/binary_detect.hpp"
 
 namespace diffy {
 
@@ -31,12 +32,6 @@ line_starts(std::string_view src) {
     }
     starts.push_back(static_cast<uint32_t>(src.size()));
     return starts;
-}
-
-bool
-looks_binary(std::string_view src) {
-    const size_t n = std::min<size_t>(src.size(), 1024);
-    return std::memchr(src.data(), '\0', n) != nullptr;
 }
 
 }  // namespace
