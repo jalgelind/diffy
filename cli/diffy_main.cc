@@ -2,6 +2,9 @@
 #include "algorithms/myers_linear.hpp"
 #include "algorithms/patience.hpp"
 #include "config/config.hpp"
+#include "highlight/language.hpp"
+#include "highlight/scope.hpp"
+#include "highlight/syntax_highlighter.hpp"
 #include "output/column_view.hpp"
 #include "output/unified.hpp"
 #include "processing/diff_hunk.hpp"
@@ -10,7 +13,7 @@
 #include "util/color.hpp"
 #include "util/hash.hpp"
 #include "util/readlines.hpp"
-#include "util/tty.hpp"
+#include "tty.hpp"
 
 #include <musl/getopt.h>
 #include <sys/stat.h>
@@ -156,7 +159,7 @@ Options:
     -s, -S [context_lines]       show side-by-side column output, optional context line count
 
     -o, --old-file               custom name to give the old-file (left)
-    -n, --new-file               custom name to give the old-file (right)
+    -n, --new-file               custom name to give the new-file (right)
 
     -i, --ignore-line-endings    ignore changes to line endings
     -I, --no-ignore-line-endings inverse of --ignore-line-endings
@@ -182,24 +185,30 @@ Side by side options:
         puts(help.c_str());
     };
 
+    // Above the ASCII range so it doesn't collide with the short options.
+    constexpr int kOptNoIgnoreWhitespace = 256;
+    constexpr int kOptNoHighlight = 257;
+
     auto parse_args = [&](int in_argc, char* in_argv[]) {
-        static struct option long_options[] = {{"help", no_argument, 0, 'h'},
-                                               {"side-by-side", optional_argument, 0, 'S'},
-                                               {"line", optional_argument, 0, 'l'},
-                                               {"unified", optional_argument, 0, 'U'},
-                                               {"version", no_argument, 0, 'v'},
-                                               {"width", optional_argument, 0, 'W'},
-                                               {"algorithm", optional_argument, 0, 'a'},
-                                               {"old-file", optional_argument, 0, 'o'},
-                                               {"new-file", optional_argument, 0, 'n'},
-                                               {"ignore-line-endings", no_argument, 0, 'i'},
-                                               {"no-ignore-line-endings", no_argument, 0, 'I'},
-                                               {"ignore-whitespace", no_argument, 0, 'w'},
-                                               {"no-ignore-whitespace", no_argument, 0, 'W'},
-                                               {"list-colors", no_argument, 0, '1'},
-                                               {0, 0, 0, 0}};
+        static struct option long_options[] = {
+            {"help", no_argument, 0, 'h'},
+            {"side-by-side", optional_argument, 0, 'S'},
+            {"line", optional_argument, 0, 'l'},
+            {"unified", optional_argument, 0, 'U'},
+            {"version", no_argument, 0, 'v'},
+            {"width", optional_argument, 0, 'W'},
+            {"algorithm", optional_argument, 0, 'a'},
+            {"old-file", optional_argument, 0, 'o'},
+            {"new-file", optional_argument, 0, 'n'},
+            {"ignore-line-endings", no_argument, 0, 'i'},
+            {"no-ignore-line-endings", no_argument, 0, 'I'},
+            {"ignore-whitespace", no_argument, 0, 'w'},
+            {"no-ignore-whitespace", no_argument, 0, kOptNoIgnoreWhitespace},
+            {"no-highlight", no_argument, 0, kOptNoHighlight},
+            {"list-colors", no_argument, 0, '1'},
+            {0, 0, 0, 0}};
         int c = 0, option_index = 0;
-        while ((c = getopt_long(in_argc, in_argv, "a:hlsS:uU:W:o:n:iIwW", long_options, &option_index)) >= 0) {
+        while ((c = getopt_long(in_argc, in_argv, "a:hlsS:uU:W:o:n:iIw", long_options, &option_index)) >= 0) {
             switch (c) {
                 case 'v':
                     fmt::print("version: {}\n", DIFFY_VERSION);
@@ -248,19 +257,22 @@ Side by side options:
                     opts.ignore_whitespace = true;
                     break;
                 case 'W': {
-                    if (optarg) {
-                        if (isdigit(optarg[0])) {
-                            opts.width = atoi(optarg);
-                        } else {
-                            opts.ignore_whitespace = false;
-                            optind--;
-                        }
-                    } else {
-                        // Only happens when we don't provide any positional arguments
+                    // -W is overloaded: numeric arg sets width, anything else is
+                    // the legacy --no-ignore-whitespace (hand the token back).
+                    if (optarg && isdigit(optarg[0])) {
+                        opts.width = atoi(optarg);
+                    } else if (optarg) {
                         opts.ignore_whitespace = false;
+                        optind--;
                     }
                     break;
                 }
+                case kOptNoIgnoreWhitespace:
+                    opts.ignore_whitespace = false;
+                    break;
+                case kOptNoHighlight:
+                    opts.syntax_highlight = false;
+                    break;
                 case 'u':
                 case 's':
                 case 'U':
@@ -304,22 +316,6 @@ Side by side options:
         if (positional_count != 2) {
             show_help("error: missing positional arguments");
             return false;
-        }
-
-        if (0)
-        {
-            char** envp = environ;
-            while (*envp != NULL) {
-                printf("%s\n", *envp);
-                envp++;
-            }
-        }
-
-        if (0)
-        {
-            for (int i = optind; i < argc; i++) {
-                printf("arg %d: %s\n", i, argv[i]);
-            }
         }
 
         opts.left_file = argv[optind];
@@ -395,7 +391,7 @@ Side by side options:
                               cv_ui_opts.style);
 
     if (!parse_args(argc, argv)) {
-        return -1;
+        return 2;
     }
 
     if (opts.help) {
@@ -403,8 +399,10 @@ Side by side options:
         return 0;
     }
 
-    auto left_line_data = diffy::readlines(opts.left_file, opts.ignore_line_endings);
-    auto right_line_data = diffy::readlines(opts.right_file, opts.ignore_line_endings);
+    // ignore_whitespace makes line matching whitespace-insensitive at read time, so
+    // reindent-only lines share a checksum and the diff treats them as unchanged.
+    auto left_line_data = diffy::readlines(opts.left_file, opts.ignore_line_endings, opts.ignore_whitespace);
+    auto right_line_data = diffy::readlines(opts.right_file, opts.ignore_line_endings, opts.ignore_whitespace);
 
     gsl::span<diffy::Line> left_lines{left_line_data};
     gsl::span<diffy::Line> right_lines{right_line_data};
@@ -414,24 +412,96 @@ Side by side options:
 
     diffy::DiffResult result;
     if (!compute_diff(opts.algorithm, opts.ignore_whitespace, diff_input, &result)) {
-        return -1;
+        return 2;
     }
 
     if (result.status != diffy::DiffResultStatus::OK && result.status != diffy::DiffResultStatus::NoChanges) {
         puts("Diff compute failed");
-        return 1;
+        return 2;
     }
 
     auto hunks = diffy::compose_hunks(result.edit_sequence, opts.context_lines);
 
+    // Exit status follows `diff`'s convention: 0 = identical, 1 = differences,
+    // 2 = error (handled by the early returns above).
+    const int exit_code = hunks.empty() ? 0 : 1;
+
     if (opts.column_view) {
-        const auto& annotated_hunks = annotate_hunks(
+        auto annotated_hunks = annotate_hunks(
             diff_input, hunks,
             opts.line_granularity ? diffy::EditGranularity::Line : diffy::EditGranularity::Token,
             opts.ignore_whitespace);
-        diffy::column_view_diff_render(diff_input, annotated_hunks, cv_ui_opts, opts);
+
+        // Terminal-width detection lives in the CLI now; the core renderer takes
+        // an explicit width so it stays free of any tty dependency.
+        int64_t width = opts.width;
+        if (width == 0) {
+            int term_height = 0, term_width = 0;
+            diffy::tty_get_term_size(&term_height, &term_width);
+            width = static_cast<int64_t>(term_width);
+        }
+        // Fall back to 80 columns when there's no tty (e.g. under a debugger).
+        if (width == 0) {
+            width = 80;
+        }
+
+        // Syntax highlighting: parse each whole buffer once. The buffer is the
+        // concatenation of its lines (readlines keeps the newlines), and the
+        // language is inferred from the display name. No-op when disabled /
+        // unknown language / oversized.
+        diffy::LineHighlights a_hl, b_hl;
+        if (opts.syntax_highlight) {
+            std::string a_text, b_text;
+            for (const auto& l : left_line_data) a_text += l.line;
+            for (const auto& l : right_line_data) b_text += l.line;
+            const auto lang_a = diffy::language_for_path(opts.left_file_name);
+            const auto lang_b = diffy::language_for_path(opts.right_file_name);
+            a_hl = diffy::highlight_source(a_text, lang_a);
+            b_hl = diffy::highlight_source(b_text, lang_b);
+
+            // git-style hunk context: enclosing definition per hunk.
+            const auto a_outline = diffy::scope_outline(a_text, lang_a);
+            const auto b_outline = diffy::scope_outline(b_text, lang_b);
+            for (auto& h : annotated_hunks) {
+                int64_t a_change = -1, b_change = -1;
+                for (const auto& el : h.a_lines)
+                    if (el.type == diffy::EditType::Delete) { a_change = el.line_index; break; }
+                for (const auto& el : h.b_lines)
+                    if (el.type == diffy::EditType::Insert) { b_change = el.line_index; break; }
+                h.context = diffy::hunk_context(a_outline, b_outline, a_change, b_change, h.from_start,
+                                                h.to_start);
+            }
+        }
+
+        for (const auto& line : diffy::column_view_render_lines(diff_input, annotated_hunks, cv_ui_opts,
+                                                                opts, width, &a_hl, &b_hl)) {
+            puts(line.c_str());
+        }
     } else if (opts.unified) {
-        auto unified_lines = diffy::unified_diff_render(diff_input, hunks);
+        // git-style hunk context for the "@@ ... @@" headers.
+        std::vector<std::string> hunk_contexts;
+        if (opts.syntax_highlight) {
+            std::string a_text, b_text;
+            for (const auto& l : left_line_data) a_text += l.line;
+            for (const auto& l : right_line_data) b_text += l.line;
+            const auto a_outline =
+                diffy::scope_outline(a_text, diffy::language_for_path(opts.left_file_name));
+            const auto b_outline =
+                diffy::scope_outline(b_text, diffy::language_for_path(opts.right_file_name));
+            hunk_contexts.reserve(hunks.size());
+            for (const auto& h : hunks) {
+                int64_t a_change = -1, b_change = -1;
+                for (const auto& e : h.edit_units) {
+                    if (a_change < 0 && e.type == diffy::EditType::Delete) a_change = e.a_index;
+                    if (b_change < 0 && e.type == diffy::EditType::Insert) b_change = e.b_index;
+                    if (a_change >= 0 && b_change >= 0) break;
+                }
+                hunk_contexts.push_back(diffy::hunk_context(a_outline, b_outline, a_change, b_change,
+                                                            h.from_start, h.to_start));
+            }
+        }
+        auto unified_lines = diffy::unified_diff_render(
+            diff_input, hunks, hunk_contexts.empty() ? nullptr : &hunk_contexts);
         auto num_lines = unified_lines.size();
         for (auto i = 0u; i < num_lines; i++) {
             const auto& line = unified_lines[i];
@@ -446,16 +516,17 @@ Side by side options:
         //           eof in the left file. When using this program with git it makes sense to skip this,
         //           since you don't really care if the issue was present in the previous revision.
         bool right_eof_newline = false;
-        if (right_line_data.size() > 0 && right_line_data.back().line.back() == '\n') {
-            right_eof_newline = true;
+        if (right_line_data.size() > 0) {
+            const std::string& last_line = right_line_data.back().line;
+            if (!last_line.empty() && last_line.back() == '\n') {
+                right_eof_newline = true;
+            }
         }
 
         if (!right_eof_newline) {
             printf("\\ No newline at end of file\n");
         }
-
-        return 1;
     }
 
-    return 0;
+    return exit_code;
 }

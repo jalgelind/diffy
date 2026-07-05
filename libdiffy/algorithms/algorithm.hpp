@@ -13,6 +13,13 @@ namespace diffy {
 using std::int64_t;
 using std::size_t;
 
+// Which line-diff algorithm to run. Lives here (not in config) so the render
+// pipeline can name it without pulling in the terminal/theme config types.
+enum class Algo { kInvalid, kMyersGreedy, kMyersLinear, kPatience };
+
+Algo
+algo_from_string(std::string s);
+
 struct Coordinate {
     int64_t x;
     int64_t y;
@@ -23,20 +30,21 @@ struct Move {
     Coordinate to;
 };
 
-enum class EditType {
+enum class EditType : uint8_t {
     Delete,
     Insert,
     Common,
     Meta,
 };
 
+// 32-bit value keeps Edit small; >2e9 lines isn't a realistic input.
 struct EditIndex {
     bool valid;
-    int64_t value;
+    int32_t value;
     EditIndex() : valid(false), value(0) {
     }
 
-    EditIndex(int64_t in_value) : valid(true), value(in_value) {
+    EditIndex(int64_t in_value) : valid(true), value(static_cast<int32_t>(in_value)) {
     }
 
     operator int64_t() const {

@@ -91,10 +91,39 @@ right_trim(const std::string& s) {
     auto end = s.find_last_not_of(" \n\r\t\f\v");
     return (end == std::string::npos) ? s : s.substr(0, end + 1);
 }
+
+bool
+is_ws(char c) {
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v';
+}
+
+std::string
+strip_whitespace(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        if (!is_ws(c)) {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
+// The string a line is hashed by — the comparison key. Normally the line itself,
+// but whitespace-stripped when whitespace is ignored, so reindent-only lines hash
+// equal. The displayed line text is kept separately and is never altered here.
+uint32_t
+checksum_for(const std::string& line, bool ignore_whitespace) {
+    if (ignore_whitespace) {
+        std::string key = strip_whitespace(line);
+        return hash::hash(key.c_str(), static_cast<uint32_t>(key.size()));
+    }
+    return hash::hash(line.c_str(), static_cast<uint32_t>(line.size()));
+}
 };  // namespace
 
 std::vector<diffy::Line>
-diffy::readlines(std::string path, bool ignore_line_endings) {
+diffy::readlines(const std::string& path, bool ignore_line_endings, bool ignore_whitespace) {
     std::vector<diffy::Line> lines;
 
     char* line = nullptr;
@@ -111,13 +140,42 @@ diffy::readlines(std::string path, bool ignore_line_endings) {
         if (ignore_line_endings) {
             sline = right_trim(sline);
         }
-        uint32_t hash = hash::hash(sline.c_str(), static_cast<uint32_t>(sline.size()));
+        uint32_t hash = checksum_for(sline, ignore_whitespace);
         lines.push_back({i, hash, std::move(sline)});
         i++;
     }
 
     free(line);
     fclose(stream);
+
+    return lines;
+}
+
+std::vector<diffy::Line>
+diffy::readlines_from_string(const std::string& content, bool ignore_line_endings,
+                             bool ignore_whitespace) {
+    std::vector<diffy::Line> lines;
+
+    uint32_t i = 1;
+    std::string current;
+    auto flush = [&]() {
+        std::string sline = ignore_line_endings ? right_trim(current) : current;
+        uint32_t hash = checksum_for(sline, ignore_whitespace);
+        lines.push_back({i, hash, std::move(sline)});
+        i++;
+        current.clear();
+    };
+
+    for (char c : content) {
+        current.push_back(c);
+        if (c == '\n') {
+            flush();
+        }
+    }
+    // Trailing content with no final newline still counts as a line.
+    if (!current.empty()) {
+        flush();
+    }
 
     return lines;
 }

@@ -4,6 +4,7 @@
 #include "myers_linear.hpp"
 
 #include <gsl/span>
+#include <algorithm>  // std::reverse, std::sort
 #include <map>
 #include <numeric>  // std::accumulate
 #include <set>
@@ -59,6 +60,7 @@ struct Patience : public Algorithm<Unit> {
         };
 
         std::unordered_map<uint32_t, record> records;
+        records.reserve(static_cast<std::size_t>((s.a_high - s.a_low) + (s.b_high - s.b_low)));
 
         for (auto i = s.a_low; i < s.a_high; i++) {
             const auto& a = A[i].hash();
@@ -86,27 +88,26 @@ struct Patience : public Algorithm<Unit> {
 
     Match*
     patience_sort(std::vector<Match>& matches) {
-        std::vector<Match*> stacks;
+        // Patience sort for the longest increasing subsequence of b_index
+        // (matches are sorted by a_index); recover the LIS via the prev links.
+        std::vector<Match*> piles;
+        piles.reserve(matches.size());
 
         for (auto& match : matches) {
-            const auto& found = std::lower_bound(stacks.cbegin(), stacks.cend(), &match,
-                                                 [](Match* a, Match* b) { return a->b_index < b->b_index; });
-
-            if (found != stacks.end()) {
-                match.prev = *found;
-                stacks.insert(found, &match);
-            } else if (stacks.empty()) {
-                stacks.insert(stacks.begin(), &match);
+            auto found = std::lower_bound(piles.begin(), piles.end(), &match,
+                                          [](Match* a, Match* b) { return a->b_index < b->b_index; });
+            match.prev = (found == piles.begin()) ? nullptr : *(found - 1);
+            if (found == piles.end()) {
+                piles.push_back(&match);
+            } else {
+                *found = &match;
             }
         }
 
-        if (stacks.empty())
+        if (piles.empty())
             return nullptr;
 
-        auto& match = stacks.back();
-        if (!match)
-            return nullptr;
-
+        Match* match = piles.back();
         while (match->prev != nullptr) {
             match->prev->next = match;
             match = match->prev;
@@ -115,12 +116,12 @@ struct Patience : public Algorithm<Unit> {
         return match;
     }
 
-    std::vector<Edit>
-    do_diff(const Slice& in_slice) {
+    // Appends this slice's edits to `out`.
+    void
+    do_diff(const Slice& in_slice, std::vector<Edit>& out) {
         auto unique_lines = index_unique_lines(in_slice);
         auto* match = patience_sort(unique_lines);
         if (!match) {
-            std::vector<Edit> edits;
             auto a_count = in_slice.a_high - in_slice.a_low;
             auto b_count = in_slice.b_high - in_slice.b_low;
             assert(a_count >= 0 && "negative a span?");
@@ -131,14 +132,13 @@ struct Patience : public Algorithm<Unit> {
             auto result = MyersLinear<Unit>{algo_input}.compute();
 
             for (auto& e : result.edit_sequence) {
-                e.a_index.value += static_cast<uint64_t>(in_slice.a_low);
-                e.b_index.value += static_cast<uint64_t>(in_slice.b_low);
+                e.a_index.value += static_cast<int32_t>(in_slice.a_low);
+                e.b_index.value += static_cast<int32_t>(in_slice.b_low);
+                out.push_back(e);
             }
 
-            return result.edit_sequence;
+            return;
         }
-
-        std::vector<Edit> edit_sequence;
 
         auto a_index = in_slice.a_low;
         auto b_index = in_slice.b_low;
@@ -159,45 +159,38 @@ struct Patience : public Algorithm<Unit> {
             assert(b_index <= b_next);
 
             Slice subslice = {a_index, a_next, b_index, b_next};
-            auto adjust_head = [this](Slice& slice) {
-                std::vector<Edit> head;
+            auto adjust_head = [this](Slice& slice, std::vector<Edit>& dst) {
                 while (!slice.empty() && A[slice.a_low] == B[slice.b_low]) {
-                    head.push_back({EditType::Common, EditIndex(slice.a_low), EditIndex(slice.b_low)});
+                    dst.push_back({EditType::Common, EditIndex(slice.a_low), EditIndex(slice.b_low)});
                     slice.a_low += 1;
                     slice.b_low += 1;
                 }
-                return head;
             };
             auto adjust_tail = [this](Slice& slice) {
                 std::vector<Edit> tail;
+                // push_back + reverse, not insert-at-front (which is O(n^2)).
                 while (!slice.empty() && A[slice.a_high - 1] == B[slice.b_high - 1]) {
                     slice.a_high -= 1;
                     slice.b_high -= 1;
-                    // opt: push_back and reverse iteration?
-                    tail.insert(tail.begin(),
-                                {EditType::Common, EditIndex(slice.a_high), EditIndex(slice.b_high)});
+                    tail.push_back({EditType::Common, EditIndex(slice.a_high), EditIndex(slice.b_high)});
                 }
+                std::reverse(tail.begin(), tail.end());
                 return tail;
             };
 
-            auto head = adjust_head(subslice);
+            adjust_head(subslice, out);
             auto tail = adjust_tail(subslice);
 
-            for (const auto& e : head) {
-                edit_sequence.push_back(e);
-            }
-            for (const auto& e : do_diff(subslice)) {
-                edit_sequence.push_back(e);
-            }
+            do_diff(subslice, out);
             for (const auto& e : tail) {
-                edit_sequence.push_back(e);
+                out.push_back(e);
             }
 
             if (match == nullptr) {
-                return edit_sequence;
+                return;
             }
 
-            edit_sequence.push_back({
+            out.push_back({
                 EditType::Common,
                 match->a_index,
                 match->b_index,
@@ -213,7 +206,7 @@ struct Patience : public Algorithm<Unit> {
     diff() {
         auto s = Slice{0, N, 0, M};
         DiffResult result;
-        result.edit_sequence = do_diff(s);
+        do_diff(s, result.edit_sequence);
         int64_t common_count = std::accumulate(
             result.edit_sequence.begin(), result.edit_sequence.end(), (int64_t) 0,
             [](uint64_t acc, const auto& e) { return e.type == EditType::Common ? acc + 1 : acc; });
