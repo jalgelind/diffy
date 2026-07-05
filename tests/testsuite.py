@@ -83,9 +83,11 @@ def run_single_crash_test(args, test_group, name, test_case):
     # diffy follows `diff`'s exit convention (0 = identical, 1 = differences,
     # 2 = error); a crash shows up as a negative code (terminating signal).
     if p.return_code < 0 or p.return_code == 2:
-        print(f"  Test '{test_group}/{name}' FAILED to execute properly")
+        print(f"  Test '{test_group}/{name}' FAILED to execute (exit {p.return_code})")
         print(f"    {args.diff_tool} {args.args} {a_orig} {b_orig}")
         print(p.stdout)
+        return False
+    return True
 
 def run_single_patch_test(args, test_group, name, test_case):
     # TODO(parallelism): Must be a unique workdir.
@@ -100,12 +102,17 @@ def run_single_patch_test(args, test_group, name, test_case):
 
     patch_file = f"{name}.patch"
     Process(f"{args.diff_tool} {args.args} {a_base} {b_base} > {patch_file}", WORKDIR).wait()
-    patch_output = Process(f"patch -u -p0 --input={patch_file}", WORKDIR).stdout
+    patch_proc = Process(f"patch -u -p0 --input={patch_file}", WORKDIR).wait()
 
-    patch_ok = sha1sum(a_test) == sha1sum(b_test)
+    # Two independent failure modes: `patch` rejecting the diff outright, and the
+    # applied result not matching the target.
+    patch_applied = patch_proc.return_code == 0
+    result_matches = sha1sum(a_test) == sha1sum(b_test)
+    ok = patch_applied and result_matches
 
-    if not patch_ok:
-        print(f" Test '{name}' FAILED")
+    if not ok:
+        reason = "patch rejected the diff" if not patch_applied else "applied result != target"
+        print(f"  Test '{test_group}/{name}' FAILED ({reason})")
         
         target = os.path.join(ARCHIVE_FAILED, args.config_name + "_" + test_group.replace("/", "_"))
         dest = os.path.join(target, name)
@@ -123,6 +130,8 @@ def run_single_patch_test(args, test_group, name, test_case):
         copy(a_test, dest)
         copy(b_test, dest)
         copy(os.path.join(WORKDIR, patch_file), dest)
+
+    return ok
 
 
 def main(argv):
@@ -153,24 +162,37 @@ def main(argv):
         *[(f'p{n}', f'-I -W -a p -U{n}') for n in range(2)]
     )
 
+    # Non-patchable output modes: assert diffy runs cleanly (exit 0/1, never 2 or
+    # a signal) across the modes/widths the patch round-trip can't exercise.
     crash_configs = (
-        #*[(f'u{n}', f'-a p -S0 -W -I -W{n}') for n in range(0, 100, 3)],
+        ('sbs',     '-s'),
+        ('sbs-u0',  '-S0'),
+        ('sbs-u1',  '-S1'),
+        ('narrow',  '-S1 -W 40'),
+        ('wide',    '-S1 -W 200'),
+        ('nohl',    '-S1 --disable-syntax-highlighting'),
+        ('unified', '-U0'),
     )
+
+    passed = 0
+    failed = 0
 
     for config_name, config in crash_configs:
         run_args = argparse.Namespace(
             diff_tool = os.path.abspath(args.diff_tool),
             args = config,
-            config_name = config
+            config_name = config_name
         )
 
-        print(f"Test crashiness for configuration '{run_args.args}'")
+        print(f"Crash-check configuration '{run_args.args}'")
         for test_group, test_cases in all_test_cases.items():
             for test_case in test_cases:
                 name = os.path.basename(test_case[0])[:-1]
-                run_single_crash_test(run_args, test_group, name, test_case)
+                if run_single_crash_test(run_args, test_group, name, test_case):
+                    passed += 1
+                else:
+                    failed += 1
 
-    
     for config_name, config in patch_configs:
         run_args = argparse.Namespace(
             diff_tool = os.path.abspath(args.diff_tool),
@@ -178,11 +200,20 @@ def main(argv):
             config_name = config_name
         )
 
-        print(f"Running tests for configuration '{run_args.args}'")
+        print(f"Patch round-trip configuration '{run_args.args}'")
         for test_group, test_cases in all_test_cases.items():
             for test_case in test_cases:
                 name = os.path.basename(test_case[0])[:-2]
-                run_single_patch_test(run_args, test_group, name, test_case)
+                if run_single_patch_test(run_args, test_group, name, test_case):
+                    passed += 1
+                else:
+                    failed += 1
+
+    total = passed + failed
+    print(f"\n{'=' * 60}")
+    print(f"integration: {passed}/{total} checks passed, {failed} failed")
+    print(f"{'=' * 60}")
+    sys.exit(1 if failed else 0)
 
 if __name__ == '__main__':
     main(sys.argv)
