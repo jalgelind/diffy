@@ -17,6 +17,10 @@ namespace diffy {
 // `patch`); Always/Never force it either way (e.g. for golden snapshots).
 enum class ColorMode { Auto, Always, Never };
 
+// --binary/--text: whether to treat the inputs as binary and show a hex diff.
+// Auto sniffs each file for NUL bytes; Always/Never force the decision.
+enum class BinaryMode { Auto, Always, Never };
+
 struct ProgramOptions {
     bool debug = false;
     bool help = false;
@@ -39,6 +43,14 @@ struct ProgramOptions {
 
     // --color=auto|always|never: whether to emit ANSI colour in unified output.
     ColorMode color_mode = ColorMode::Auto;
+
+    // --binary/--text: hex diff mode. Auto detects binary inputs by NUL sniff.
+    BinaryMode binary_mode = BinaryMode::Auto;
+    // --bytes-per-row: bytes shown per hex row. 0 means auto: side-by-side picks
+    // the largest multiple of 8 that fits the terminal; unified uses 16.
+    int64_t bytes_per_row = 0;
+    // --hex-global: byte-align whole files instead of chunking first (small files).
+    bool hex_global = false;
 
     std::string left_file;
     std::string right_file;
