@@ -48,8 +48,13 @@ build_pane(const std::vector<Cell>& row, bool left, int bpr, int width, const St
     std::string ascii;
     for (int k = 0; k < bpr; ++k) {
         const bool in_row = k < static_cast<int>(row.size());
-        const Cell& c = in_row ? row[static_cast<size_t>(k)] : Cell{};
-        const bool present = in_row && (left ? c.has_a : c.has_b);
+        if (!in_row) {
+            hex += "   ";
+            ascii += ' ';
+            continue;
+        }
+        const Cell& c = row[static_cast<size_t>(k)];
+        const bool present = left ? c.has_a : c.has_b;
         if (!present) {
             hex += "   ";
             ascii += ' ';
