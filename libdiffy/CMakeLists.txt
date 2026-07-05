@@ -7,6 +7,10 @@ add_library(diffy_core STATIC
   processing/diff_hunk_annotate.cc
   output/unified.cc
   output/column_view.cc
+  output/hex_unified.cc
+  output/hex_column.cc
+  binary/chunker.cc
+  binary/hex_align.cc
   render/diff_view_model.cc
   render/diff_pipeline.cc
   highlight/highlight_group.cc
@@ -17,6 +21,9 @@ add_library(diffy_core STATIC
   config/config.cc
   util/color.cc
   util/readlines.cc
+  util/read_bytes.cc
+  util/mapped_file.cc
+  util/binary_detect.cc
   util/utf8decode.cc
   util/hash.cc)
 
