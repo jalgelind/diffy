@@ -31,7 +31,26 @@
 #include <unordered_map>
 #include <vector>
 
+#if defined(DIFFY_PLATFORM_WINDOWS)
+#include <io.h>  // _isatty / _fileno
+#else
+#include <unistd.h>  // isatty
+#endif
+
 namespace fs = std::filesystem;
+
+namespace {
+// True when standard output is an interactive terminal (not a pipe/file), so the
+// CLI colourises for viewing but stays plain + patch-compatible when redirected.
+bool
+stdout_is_tty() {
+#if defined(DIFFY_PLATFORM_WINDOWS)
+    return _isatty(_fileno(stdout)) != 0;
+#else
+    return isatty(fileno(stdout)) != 0;
+#endif
+}
+}  // namespace
 
 namespace diffy {
 
@@ -487,17 +506,19 @@ Side by side options:
             puts(line.c_str());
         }
     } else if (opts.unified) {
+        // Concatenate each side once, for scope analysis and (optional) highlighting.
+        std::string a_text, b_text;
+        for (const auto& l : left_line_data) a_text += l.line;
+        for (const auto& l : right_line_data) b_text += l.line;
+        const auto lang_a = diffy::language_for_path(opts.left_file_name);
+        const auto lang_b = diffy::language_for_path(opts.right_file_name);
+
         // git-style hunk context for the "@@ ... @@" headers — always computed so
         // the enclosing definition shows regardless of syntax highlighting (colour).
         std::vector<std::string> hunk_contexts;
         {
-            std::string a_text, b_text;
-            for (const auto& l : left_line_data) a_text += l.line;
-            for (const auto& l : right_line_data) b_text += l.line;
-            const auto a_outline =
-                diffy::scope_outline(a_text, diffy::language_for_path(opts.left_file_name));
-            const auto b_outline =
-                diffy::scope_outline(b_text, diffy::language_for_path(opts.right_file_name));
+            const auto a_outline = diffy::scope_outline(a_text, lang_a);
+            const auto b_outline = diffy::scope_outline(b_text, lang_b);
             hunk_contexts.reserve(hunks.size());
             for (const auto& h : hunks) {
                 int64_t a_change = -1, b_change = -1;
@@ -510,8 +531,36 @@ Side by side options:
                                                             h.from_start, h.to_start));
             }
         }
+
+        // Colourise for terminal viewing only. When stdout is a pipe or file
+        // (git difftool, `> foo.patch`, the test suite), stay plain so the output
+        // round-trips through `patch`.
+        const bool color = stdout_is_tty();
+        diffy::LineHighlights a_hl, b_hl;
+        if (color && opts.syntax_highlight) {
+            a_hl = diffy::highlight_source(a_text, lang_a);
+            b_hl = diffy::highlight_source(b_text, lang_b);
+        }
+
+        // Terminal width, so coloured rows fill to the right edge as solid bars.
+        // Honours an explicit -W, else the detected terminal size, else 80.
+        int64_t fill_width = 0;
+        if (color) {
+            fill_width = opts.width;
+            if (fill_width == 0) {
+                int term_height = 0, term_width = 0;
+                diffy::tty_get_term_size(&term_height, &term_width);
+                fill_width = static_cast<int64_t>(term_width);
+            }
+            if (fill_width == 0) {
+                fill_width = 80;
+            }
+        }
+
         auto unified_lines = diffy::unified_diff_render(
-            diff_input, hunks, hunk_contexts.empty() ? nullptr : &hunk_contexts);
+            diff_input, hunks, hunk_contexts.empty() ? nullptr : &hunk_contexts,
+            color ? &cv_ui_opts.style : nullptr, color ? &a_hl : nullptr, color ? &b_hl : nullptr,
+            /*light_theme=*/false, fill_width);
         auto num_lines = unified_lines.size();
         for (auto i = 0u; i < num_lines; i++) {
             const auto& line = unified_lines[i];
