@@ -60,16 +60,22 @@ TEST_CASE("column_view_render_lines — basic layout") {
     ColumnViewState config;
     auto lines = render_cv({"alpha", "beta", "gamma"}, {"alpha", "BETA", "gamma"}, config, 80);
 
-    // Header row plus three content rows (alpha / beta<->BETA / gamma).
-    REQUIRE(lines.size() == 4);
+    // File-name header, a git-style hunk header (@@ …), then three content rows
+    // (alpha / beta<->BETA / gamma).
+    REQUIRE(lines.size() == 5);
 
-    // The header carries both file names.
+    // The file-name header carries both file names.
     CHECK(lines[0].find("LEFTNAME") != std::string::npos);
     CHECK(lines[0].find("RIGHTNAME") != std::string::npos);
 
-    // Every row has the column separator between the two panes.
+    // A git-style hunk header line is present.
+    CHECK(any_contains(lines, "@@ -"));
+
+    // Every row except the full-width hunk header has the column separator
+    // between the two panes.
     for (const auto& l : lines)
-        CHECK(l.find("│") != std::string::npos);
+        if (l.rfind("@@ ", 0) != 0)
+            CHECK(l.find("│") != std::string::npos);
 
     // Content from both sides is present.
     CHECK(any_contains(lines, "alpha"));
@@ -95,6 +101,8 @@ TEST_CASE("column_view_render_lines — narrow width is clamped and does not cra
     ColumnViewState config;
     auto lines = render_cv({"hello world"}, {"goodbye world"}, config, 10);
     REQUIRE(!lines.empty());
+    // Every row except the full-width hunk header keeps the column separator.
     for (const auto& l : lines)
-        CHECK(l.find("│") != std::string::npos);
+        if (l.rfind("@@ ", 0) != 0)
+            CHECK(l.find("│") != std::string::npos);
 }

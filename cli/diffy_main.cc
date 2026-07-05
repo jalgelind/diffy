@@ -167,6 +167,8 @@ Options:
     -w, --ignore-whitespace      ignore all changes to whitespace
     -W, --no-ignore-whitespace   inverse of --ignore-whitespace
 
+    --disable-syntax-highlighting  turn off tree-sitter syntax highlighting (on by default)
+
     --list-colors                list all available colors available in the configuration
     
 Side by side options:
@@ -205,6 +207,7 @@ Side by side options:
             {"ignore-whitespace", no_argument, 0, 'w'},
             {"no-ignore-whitespace", no_argument, 0, kOptNoIgnoreWhitespace},
             {"no-highlight", no_argument, 0, kOptNoHighlight},
+            {"disable-syntax-highlighting", no_argument, 0, kOptNoHighlight},
             {"list-colors", no_argument, 0, '1'},
             {0, 0, 0, 0}};
         int c = 0, option_index = 0;
@@ -445,21 +448,27 @@ Side by side options:
             width = 80;
         }
 
-        // Syntax highlighting: parse each whole buffer once. The buffer is the
-        // concatenation of its lines (readlines keeps the newlines), and the
-        // language is inferred from the display name. No-op when disabled /
-        // unknown language / oversized.
+        // Concatenate each side once (readlines keeps the newlines); used for both
+        // syntax highlighting and hunk-scope analysis. Language is inferred from
+        // the display name.
+        std::string a_text, b_text;
+        for (const auto& l : left_line_data) a_text += l.line;
+        for (const auto& l : right_line_data) b_text += l.line;
+        const auto lang_a = diffy::language_for_path(opts.left_file_name);
+        const auto lang_b = diffy::language_for_path(opts.right_file_name);
+
+        // Syntax highlighting (colour) is optional. No-op when disabled / unknown
+        // language / oversized.
         diffy::LineHighlights a_hl, b_hl;
         if (opts.syntax_highlight) {
-            std::string a_text, b_text;
-            for (const auto& l : left_line_data) a_text += l.line;
-            for (const auto& l : right_line_data) b_text += l.line;
-            const auto lang_a = diffy::language_for_path(opts.left_file_name);
-            const auto lang_b = diffy::language_for_path(opts.right_file_name);
             a_hl = diffy::highlight_source(a_text, lang_a);
             b_hl = diffy::highlight_source(b_text, lang_b);
+        }
 
-            // git-style hunk context: enclosing definition per hunk.
+        // git-style hunk context (the enclosing definition per hunk) is always
+        // computed, so headers carry it regardless of syntax highlighting — like
+        // the GUI. Empty when the language is unknown or grammars are unavailable.
+        {
             const auto a_outline = diffy::scope_outline(a_text, lang_a);
             const auto b_outline = diffy::scope_outline(b_text, lang_b);
             for (auto& h : annotated_hunks) {
@@ -478,9 +487,10 @@ Side by side options:
             puts(line.c_str());
         }
     } else if (opts.unified) {
-        // git-style hunk context for the "@@ ... @@" headers.
+        // git-style hunk context for the "@@ ... @@" headers — always computed so
+        // the enclosing definition shows regardless of syntax highlighting (colour).
         std::vector<std::string> hunk_contexts;
-        if (opts.syntax_highlight) {
+        {
             std::string a_text, b_text;
             for (const auto& l : left_line_data) a_text += l.line;
             for (const auto& l : right_line_data) b_text += l.line;
