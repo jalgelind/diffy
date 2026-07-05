@@ -1,5 +1,6 @@
 #include <doctest.h>
 
+#include "highlight/language.hpp"
 #include "render/diff_pipeline.hpp"
 #include "render/diff_view_model.hpp"
 
@@ -182,4 +183,25 @@ TEST_CASE("render model: pure insertion has only insert/common") {
     REQUIRE(!m.rows.empty());
     CHECK(has_right_type(m, EditType::Insert));
     CHECK(count_content_rows(m) >= 3);  // 2 context + 1 inserted (alignment may pad)
+}
+
+TEST_CASE("pipeline: force_language overrides filename-based detection") {
+    if (!highlighting_available()) {
+        return;  // built without tree-sitter: nothing to force
+    }
+    const std::string a = "int main() {\n    return 0;\n}\n";
+    const std::string b = "int main() {\n    return 1;\n}\n";
+
+    DiffPipelineOptions p = default_pipeline();
+    p.syntax_highlight = true;
+
+    // The names carry no extension, so detection finds no grammar.
+    auto plain = compute_annotated_diff(a, b, "old", "new", p);
+    CHECK(plain.a_highlights.empty());
+
+    // Forcing one (extension-token form, as --language accepts) highlights both sides.
+    p.force_language = "cpp";
+    auto forced = compute_annotated_diff(a, b, "old", "new", p);
+    CHECK(!forced.a_highlights.empty());
+    CHECK(!forced.b_highlights.empty());
 }

@@ -87,10 +87,12 @@ compute_annotated_diff(const std::string& a_text,
     c.hunks = annotate_hunks(input, hunks, options.granularity, options.ignore_whitespace);
 
     // Syntax highlighting: parse each full buffer once; the language is inferred
-    // from the file name. Returns empty (no-op) for unknown/oversized/binary.
+    // from the file name unless force_language overrides it. Returns empty
+    // (no-op) for unknown/oversized/binary.
     if (options.syntax_highlight) {
-        const Language lang_a = language_for_path(a_name);
-        const Language lang_b = language_for_path(b_name);
+        const Language forced = language_from_name(options.force_language);
+        const Language lang_a = forced.empty() ? language_for_path(a_name) : forced;
+        const Language lang_b = forced.empty() ? language_for_path(b_name) : forced;
         c.a_highlights = highlight_source(a_text, lang_a);
         c.b_highlights = highlight_source(b_text, lang_b);
 
