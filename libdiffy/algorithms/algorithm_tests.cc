@@ -17,6 +17,7 @@
 #include <doctest.h>
 
 #include <filesystem>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -223,6 +224,31 @@ TEST_CASE("patience stays correct despite suboptimal anchoring") {
     CHECK(common == 5);
     CHECK(insert == 1);
     CHECK(del == 0);
+}
+
+// Randomized reconstruct invariant: generated (a,b) drawn from a small alphabet —
+// so common runs, inserts and deletes all occur — checked against every
+// algorithm. A far wider input space than the fixed fixture corpus. The seed is
+// fixed and CAPTURE(iter) logs the failing iteration, so any failure replays
+// deterministically; it also runs under the ASAN build.
+TEST_CASE("diff algorithms — randomized reconstruct invariant") {
+    std::mt19937 rng(0xD1FFu);
+    auto rand_seq = [&](int max_len, int alphabet) {
+        std::uniform_int_distribution<int> len(0, max_len);
+        std::uniform_int_distribution<int> sym(0, alphabet - 1);
+        std::vector<std::string> v;
+        const int n = len(rng);
+        v.reserve(static_cast<size_t>(n));
+        for (int i = 0; i < n; i++)
+            v.push_back("L" + std::to_string(sym(rng)));
+        return make_lines(v);
+    };
+    // Small alphabet + short sequences keep MyersGreedy's O(D*(N+M)) memory bounded
+    // and make shared subsequences frequent (unique lines would be a trivial diff).
+    for (int iter = 0; iter < 3000; iter++) {
+        CAPTURE(iter);
+        check_all_algos(rand_seq(40, 8), rand_seq(40, 8));
+    }
 }
 
 #ifdef DIFFY_TEST_CASES_DIR
