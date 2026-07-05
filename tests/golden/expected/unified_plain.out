@@ -1,0 +1,16 @@
+--- golden/inputs/a.c	2023-11-14 22:13:20.000000000 +0000
++++ golden/inputs/b.c	2023-11-14 22:13:20.000000000 +0000
+@@ -1,11 +1,11 @@ int add(int a, int b)
+ #include <stdio.h>
+ 
+ int add(int a, int b) {
+-    return a + b;
++    return a - b;
+ }
+ 
+ int main(void) {
+-    int result = add(2, 3);
++    int result = add(10, 20);
+     printf("result = %d\n", result);
+     return 0;
+ }

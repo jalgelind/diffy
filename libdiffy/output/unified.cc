@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <fmt/format.h>
 
+#include <cstdlib>
 #include <ctime>
 
 using namespace diffy;
@@ -29,12 +30,26 @@ bool
 get_file_timestamp(const std::string& path, char timestamp[256]) {
     assert(timestamp != nullptr);
 
+    const int MAX_LENGTH = 255;
+
+    // Reproducible-builds override: when SOURCE_DATE_EPOCH is set, pin the header
+    // timestamp to it (formatted in UTC) instead of the file's mtime. This makes
+    // output deterministic for golden snapshots and works for names that don't
+    // exist on disk (synthetic test inputs), where stat() would otherwise fail.
+    if (const char* sde = std::getenv("SOURCE_DATE_EPOCH"); sde && *sde) {
+        const std::time_t epoch = static_cast<std::time_t>(std::strtoll(sde, nullptr, 10));
+        struct tm* gtime = std::gmtime(&epoch);
+        if (gtime == nullptr) {
+            return false;
+        }
+        return std::strftime(timestamp, MAX_LENGTH, "%Y-%m-%d %H:%M:%S.000000000 +0000", gtime) > 0;
+    }
+
     struct stat st;
     if (stat(path.c_str(), &st) == -1) {
         return false;
     }
 
-    const int MAX_LENGTH = 255;
     struct tm* ltime = std::localtime(&st.st_mtime);
     assert(ltime != nullptr);
 

@@ -134,10 +134,68 @@ def run_single_patch_test(args, test_group, name, test_case):
     return ok
 
 
+# Golden snapshots: exact rendered output for a fixed input pair across a few
+# flag combinations. Determinism comes from SOURCE_DATE_EPOCH (pins the unified
+# header timestamp, UTC) plus --color/-W (so colour and fill width don't depend
+# on the tty). Regenerate with --update-golden after an intended output change.
+GOLDEN_EPOCH = "1700000000"
+GOLDEN_INPUTS = "golden/inputs"
+GOLDEN_EXPECTED = "golden/expected"
+GOLDEN_CASES = (
+    ('unified_plain',     '-U3 --color=never'),
+    ('unified_color',     '-U3 --color=always -W 80'),
+    ('unified_dracula',   '-U3 --color=always -W 80 --theme theme_dracula'),
+    ('sidebyside_color',  '-s -W 80'),
+)
+
+def _show_visible(data):
+    # Make ANSI escapes readable in diff output (like `cat -v`'s ^[).
+    return data.decode('utf-8', 'replace').replace('\x1b', '^[')
+
+def run_golden_tests(diff_tool, update):
+    import difflib
+    passed = failed = 0
+    a = os.path.join(GOLDEN_INPUTS, "a.c")
+    b = os.path.join(GOLDEN_INPUTS, "b.c")
+    env = dict(os.environ, SOURCE_DATE_EPOCH=GOLDEN_EPOCH)
+    mkdirs(GOLDEN_EXPECTED)
+    print("Golden snapshots" + (" (updating)" if update else ""))
+    for name, cfg in GOLDEN_CASES:
+        cmd = [diff_tool] + cfg.split() + [a, b]
+        # stdout only: diagnostics (config banner, warnings) go to stderr and
+        # must not enter the snapshot.
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
+        out = proc.stdout
+        expected_path = os.path.join(GOLDEN_EXPECTED, name + ".out")
+        if update:
+            with open(expected_path, "wb") as f:
+                f.write(out)
+            print(f"  wrote {expected_path} ({len(out)} bytes)")
+            passed += 1
+            continue
+        if not os.path.exists(expected_path):
+            print(f"  Golden '{name}' MISSING — run: python3 testsuite.py --update-golden <diffy>")
+            failed += 1
+            continue
+        with open(expected_path, "rb") as f:
+            expected = f.read()
+        if out == expected:
+            passed += 1
+        else:
+            failed += 1
+            print(f"  Golden '{name}' FAILED (output != {expected_path})")
+            diff = difflib.unified_diff(
+                _show_visible(expected).splitlines(keepends=True),
+                _show_visible(out).splitlines(keepends=True),
+                fromfile=f"{name}.expected", tofile=f"{name}.actual")
+            sys.stdout.writelines(itertools.islice(diff, 40))
+    return passed, failed
+
 def main(argv):
     parser = argparse.ArgumentParser(description="Run testsuite on given binary. Diff two files and attempt to run `patch` with the given diff.")
     parser.add_argument('diff_tool', action='store', help='Diff tool to test')
     parser.add_argument('--show-test-list', dest='show_test_list', action='store_true', help='Show list of tests')
+    parser.add_argument('--update-golden', dest='update_golden', action='store_true', help='Regenerate golden snapshots instead of checking them')
     args = parser.parse_args()
 
     all_test_cases = collect_test_cases("test_cases")
@@ -176,6 +234,14 @@ def main(argv):
 
     passed = 0
     failed = 0
+
+    g_pass, g_fail = run_golden_tests(os.path.abspath(args.diff_tool), args.update_golden)
+    passed += g_pass
+    failed += g_fail
+
+    if args.update_golden:
+        print("golden snapshots regenerated")
+        return
 
     for config_name, config in crash_configs:
         run_args = argparse.Namespace(

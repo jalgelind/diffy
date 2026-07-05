@@ -310,12 +310,14 @@ diffy::config_bundled_themes() {
 // list each created file's name indented under it.
 static void
 announce_created_file(const std::string& config_root, const std::string& path) {
+    // Diagnostics go to stderr so first-run output never corrupts stdout (a
+    // piped unified diff must stay a valid patch; golden snapshots stay stable).
     static bool header_printed = false;
     if (!header_printed) {
-        fmt::print("Creating initial configuration in {}:\n", config_root);
+        fmt::print(stderr, "Creating initial configuration in {}:\n", config_root);
         header_printed = true;
     }
-    fmt::print("  {}\n", std::filesystem::path(path).filename().string());
+    fmt::print(stderr, "  {}\n", std::filesystem::path(path).filename().string());
 }
 
 // Write the bundled example themes into the config directory, skipping any that
@@ -410,21 +412,21 @@ config_apply_options(diffy::Value& config, const OptionVector& options) {
                     if (v.is_bool()) {
                         *((bool*) ptr) = v.as_bool();
                     } else {
-                        fmt::print("warning: config value at '{}' is invalid (expected bool)\n", path);
+                        fmt::print(stderr, "warning: config value at '{}' is invalid (expected bool)\n", path);
                     }
                 } break;
                 case ConfigVariableType::Int: {
                     if (v.is_int()) {
                         *((int64_t*) ptr) = (int64_t) v.as_int();
                     } else {
-                        fmt::print("warning: config value at '{}' is invalid (expected int)\n", path);
+                        fmt::print(stderr, "warning: config value at '{}' is invalid (expected int)\n", path);
                     }
                 } break;
                 case ConfigVariableType::String: {
                     if (v.is_string()) {
                         *((std::string*) ptr) = v.as_string();
                     } else {
-                        fmt::print("warning: config value at '{}' is invalid (expected string)\n", path);
+                        fmt::print(stderr, "warning: config value at '{}' is invalid (expected string)\n", path);
                     }
                 } break;
                 case ConfigVariableType::Color: {
@@ -434,7 +436,7 @@ config_apply_options(diffy::Value& config, const OptionVector& options) {
                             *((diffy::TermStyle*) ptr) = *style;
                         }
                     } else {
-                        fmt::print("warning: config value at '{}' is invalid (expected table)\n", path);
+                        fmt::print(stderr, "warning: config value at '{}' is invalid (expected table)\n", path);
                     }
                 } break;
             }
@@ -479,7 +481,7 @@ diffy::config_apply_options(diffy::ProgramOptions& program_options) {
             // yay!
         } break;
         case ConfigLoadResult::Invalid: {
-            fmt::print("error: {}\n\twhile parsing: {}\n", config_parse_result.error, config_path);
+            fmt::print(stderr, "error: {}\n\twhile parsing: {}\n", config_parse_result.error, config_path);
         } break;
         case ConfigLoadResult::DoesNotExist: {
             announce_created_file(config_root, config_path);
@@ -550,7 +552,8 @@ diffy::config_apply_highlight_overrides() {
                 }
             }
         } else {
-            fmt::print("warning: config value at 'highlight.extensions.{}' is invalid "
+            fmt::print(stderr,
+                       "warning: config value at 'highlight.extensions.{}' is invalid "
                        "(expected string or array of strings)\n",
                        lang);
         }
@@ -577,7 +580,7 @@ diffy::config_apply_theme(const std::string& theme,
             // yay!
         } break;
         case ConfigLoadResult::Invalid: {
-            fmt::print("error: {}\n\twhile parsing: {}\n", config_parse_result.error, config_path);
+            fmt::print(stderr, "error: {}\n\twhile parsing: {}\n", config_parse_result.error, config_path);
         } break;
         case ConfigLoadResult::DoesNotExist: {
             if (theme == "theme_default") {
