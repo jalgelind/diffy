@@ -782,25 +782,33 @@ column_view_render_streaming(const DiffInput<diffy::Line>& diff_input,
     }
 
     for (const auto& hunk : hunks) {
-        // git-style hunk context: the enclosing definition, shown as a header
-        // line above the hunk. Only emitted when a caller filled it in (e.g. the
-        // CLI after tree-sitter scope analysis), so default output is unchanged.
-        // Painted full-width with the theme background so a light theme doesn't
-        // leave a ragged black tail past the label.
-        if (!hunk.context.empty()) {
+        // git-style hunk header, shown as a full-width line above the hunk and
+        // mirroring both the unified output and the GUI: the line range, plus —
+        // when a caller ran tree-sitter scope analysis — the enclosing definition
+        // (e.g. the function the hunk is inside). Painted full-width with the theme
+        // background so a light theme doesn't leave a ragged black tail past it.
+        {
             const int64_t gutter =
                 config.settings.show_line_numbers ? (config.line_number_digits_count + 1) : 0;
             const int64_t row_width = 2 * config.max_row_length + 2 * gutter +
                                       utf8_len(config.chars.column_separator) +
                                       2 * utf8_len(config.chars.edge_separator);
-            std::string label = hunk.context;
-            const int64_t avail = row_width > 2 ? row_width - 2 : 0;
+            // Git-style range, matching the unified output's @@ header exactly (a
+            // single number when the count is 1, else "start,count").
+            auto fmt_change = [](int64_t start, int64_t count) {
+                return count == 1 ? fmt::format("{}", start) : fmt::format("{},{}", start, count);
+            };
+            std::string label = fmt::format("@@ -{} +{} @@", fmt_change(hunk.from_start, hunk.from_count),
+                                            fmt_change(hunk.to_start, hunk.to_count));
+            if (!hunk.context.empty()) {
+                label += " " + hunk.context;
+            }
+            const int64_t avail = row_width > 0 ? row_width : 0;
             if (static_cast<int64_t>(utf8_len(label)) > avail) {
                 label = label.substr(0, utf8_advance_by(label, 0, static_cast<size_t>(avail)));
             }
-            const std::string visible = "  " + label;
-            const int64_t pad = row_width - static_cast<int64_t>(utf8_len(visible));
-            emit(config.style.background + config.style.frame + visible +
+            const int64_t pad = row_width - static_cast<int64_t>(utf8_len(label));
+            emit(config.style.background + config.style.frame + label +
                  (pad > 0 ? std::string(static_cast<size_t>(pad), ' ') : std::string()) + "\033[0m");
         }
         emit_columns(make_hunk_columns(diff_input, hunk, config, a_highlights, b_highlights), config,

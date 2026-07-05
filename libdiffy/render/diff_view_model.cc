@@ -203,11 +203,17 @@ build_diff_view(const DiffInput<Line>& input,
     DiffViewModel model;
     model.mode = options.mode;
 
+    // Git-style range, matching the unified and column-view @@ headers exactly:
+    // from_start/to_start are already 1-based, and a count of 1 is shown as a
+    // single number.
+    auto fmt_change = [](int64_t start, int64_t count) {
+        return count == 1 ? fmt::format("{}", start) : fmt::format("{},{}", start, count);
+    };
     for (const auto& hunk : hunks) {
         DiffRow header;
         header.kind = RowKind::HunkHeader;
-        header.header_text = fmt::format("@@ -{},{} +{},{} @@", hunk.from_start + 1, hunk.from_count,
-                                         hunk.to_start + 1, hunk.to_count);
+        header.header_text = fmt::format("@@ -{} +{} @@", fmt_change(hunk.from_start, hunk.from_count),
+                                         fmt_change(hunk.to_start, hunk.to_count));
         if (!hunk.context.empty()) {
             header.header_text += " " + hunk.context;
         }
