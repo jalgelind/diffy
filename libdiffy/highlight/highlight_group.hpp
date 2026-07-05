@@ -6,11 +6,12 @@
     Tree-sitter grammars emit a long tail of capture names (e.g. "keyword",
     "keyword.control.return", "function.method", "variable.parameter",
     "string.special", "punctuation.bracket"). We collapse those into a small,
-    stable set of HighlightGroups that both frontends know how to colour. This
+    stable set of HighlightGroups that any frontend knows how to colour. This
     is the *only* place capture names are interpreted; everything downstream
     speaks HighlightGroup.
 */
 
+#include <optional>
 #include <string_view>
 
 namespace diffy {
@@ -52,5 +53,14 @@ enum class HighlightGroup {
 // Matching is most-specific-first on the dotted components.
 HighlightGroup
 group_for_capture(std::string_view capture);
+
+// Canonical config-key name for a group (e.g. "keyword", "type_builtin") and the
+// reverse. These back the theme [syntax] table and user syntax overrides;
+// from_name returns nullopt for an unknown name. Keep in sync with the enum.
+std::string_view
+highlight_group_name(HighlightGroup group);
+
+std::optional<HighlightGroup>
+highlight_group_from_name(std::string_view name);
 
 }  // namespace diffy

@@ -1,5 +1,7 @@
 #include "highlight/highlight_group.hpp"
 
+#include <utility>
+
 namespace diffy {
 
 namespace {
@@ -13,6 +15,35 @@ has_prefix(std::string_view capture, std::string_view prefix) {
     }
     return capture.size() == prefix.size() || capture[prefix.size()] == '.';
 }
+
+// Canonical config-key name per group, for the theme [syntax] table and user
+// overrides. Flat identifiers (no dots — those are nesting in the config), so the
+// builtin variants use an underscore. Keep in sync with the HighlightGroup enum.
+constexpr std::pair<HighlightGroup, std::string_view> kGroupNames[] = {
+    {HighlightGroup::None, "none"},
+    {HighlightGroup::Comment, "comment"},
+    {HighlightGroup::Keyword, "keyword"},
+    {HighlightGroup::Operator, "operator"},
+    {HighlightGroup::Punctuation, "punctuation"},
+    {HighlightGroup::String, "string"},
+    {HighlightGroup::Escape, "escape"},
+    {HighlightGroup::Number, "number"},
+    {HighlightGroup::Boolean, "boolean"},
+    {HighlightGroup::Constant, "constant"},
+    {HighlightGroup::ConstantBuiltin, "constant_builtin"},
+    {HighlightGroup::Function, "function"},
+    {HighlightGroup::Method, "method"},
+    {HighlightGroup::Constructor, "constructor"},
+    {HighlightGroup::Type, "type"},
+    {HighlightGroup::TypeBuiltin, "type_builtin"},
+    {HighlightGroup::Variable, "variable"},
+    {HighlightGroup::Parameter, "parameter"},
+    {HighlightGroup::Property, "property"},
+    {HighlightGroup::Namespace, "namespace"},
+    {HighlightGroup::Label, "label"},
+    {HighlightGroup::Tag, "tag"},
+    {HighlightGroup::Attribute, "attribute"},
+};
 
 }  // namespace
 
@@ -73,6 +104,22 @@ group_for_capture(std::string_view c) {
     if (has_prefix(c, "label")) return HighlightGroup::Label;
 
     return HighlightGroup::None;
+}
+
+std::string_view
+highlight_group_name(HighlightGroup group) {
+    for (const auto& [g, name] : kGroupNames)
+        if (g == group)
+            return name;
+    return "none";
+}
+
+std::optional<HighlightGroup>
+highlight_group_from_name(std::string_view name) {
+    for (const auto& [g, n] : kGroupNames)
+        if (n == name)
+            return g;
+    return std::nullopt;
 }
 
 }  // namespace diffy
