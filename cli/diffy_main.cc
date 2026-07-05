@@ -163,8 +163,26 @@ main(int argc, char* argv[], char * environ[]) {
     diffy::ProgramOptions opts;
 
     auto show_help = [&](const std::string& optional_error_message) {
+        // Wrap the built-in grammar names so --language help stays in sync with
+        // what diffy actually detects (derived from the language maps).
+        std::string lang_help;
+        {
+            const std::string indent = "                                 ";
+            std::string line = indent;
+            const auto langs = diffy::language_list();
+            for (size_t i = 0; i < langs.size(); ++i) {
+                const std::string tok = langs[i] + (i + 1 < langs.size() ? ", " : "");
+                if (line.size() > indent.size() && line.size() + tok.size() > 80) {
+                    lang_help += line + "\n";
+                    line = indent;
+                }
+                line += tok;
+            }
+            lang_help += line;
+        }
+
         std::string help = fmt::format((R"(
-Usage: {} [options] left_file right_file
+Usage: {0} [options] left_file right_file
 
 Compare files line by line, side by side
 
@@ -187,14 +205,17 @@ Options:
     -W, --no-ignore-whitespace   inverse of --ignore-whitespace
 
     --disable-syntax-highlighting  turn off tree-sitter syntax highlighting (on by default)
+    -L, --language [lang]        force the syntax language instead of detecting it
+                                 from the file names. Supported grammars:
+{2}
 
     --list-colors                list all available colors available in the configuration
-    
+
 Side by side options:
     -l, --line                   line based diff instead of word based diff
     -W [width]                   maximum width in each column
 )"),
-                                       argv[0], diffy::config_get_directory());
+                                       argv[0], diffy::config_get_directory(), lang_help);
 
         help += "\n";
 
@@ -221,6 +242,7 @@ Side by side options:
             {"algorithm", optional_argument, 0, 'a'},
             {"old-file", optional_argument, 0, 'o'},
             {"new-file", optional_argument, 0, 'n'},
+            {"language", required_argument, 0, 'L'},
             {"ignore-line-endings", no_argument, 0, 'i'},
             {"no-ignore-line-endings", no_argument, 0, 'I'},
             {"ignore-whitespace", no_argument, 0, 'w'},
@@ -230,7 +252,7 @@ Side by side options:
             {"list-colors", no_argument, 0, '1'},
             {0, 0, 0, 0}};
         int c = 0, option_index = 0;
-        while ((c = getopt_long(in_argc, in_argv, "a:hlsS:uU:W:o:n:iIw", long_options, &option_index)) >= 0) {
+        while ((c = getopt_long(in_argc, in_argv, "a:hlsS:uU:W:o:n:L:iIw", long_options, &option_index)) >= 0) {
             switch (c) {
                 case 'v':
                     fmt::print("version: {}\n", DIFFY_VERSION);
@@ -268,6 +290,9 @@ Side by side options:
                     break;
                 case 'n':
                     opts.right_file_name = optarg;
+                    break;
+                case 'L':
+                    opts.force_language = optarg ? optarg : "";
                     break;
                 case 'i':
                     opts.ignore_line_endings = true;
@@ -473,8 +498,10 @@ Side by side options:
         std::string a_text, b_text;
         for (const auto& l : left_line_data) a_text += l.line;
         for (const auto& l : right_line_data) b_text += l.line;
-        const auto lang_a = diffy::language_for_path(opts.left_file_name);
-        const auto lang_b = diffy::language_for_path(opts.right_file_name);
+        // --language / -L forces both sides; otherwise detect from the file names.
+        const auto forced = diffy::language_from_name(opts.force_language);
+        const auto lang_a = forced.empty() ? diffy::language_for_path(opts.left_file_name) : forced;
+        const auto lang_b = forced.empty() ? diffy::language_for_path(opts.right_file_name) : forced;
 
         // Syntax highlighting (colour) is optional. No-op when disabled / unknown
         // language / oversized.
@@ -510,8 +537,10 @@ Side by side options:
         std::string a_text, b_text;
         for (const auto& l : left_line_data) a_text += l.line;
         for (const auto& l : right_line_data) b_text += l.line;
-        const auto lang_a = diffy::language_for_path(opts.left_file_name);
-        const auto lang_b = diffy::language_for_path(opts.right_file_name);
+        // --language / -L forces both sides; otherwise detect from the file names.
+        const auto forced = diffy::language_from_name(opts.force_language);
+        const auto lang_a = forced.empty() ? diffy::language_for_path(opts.left_file_name) : forced;
+        const auto lang_b = forced.empty() ? diffy::language_for_path(opts.right_file_name) : forced;
 
         // git-style hunk context for the "@@ ... @@" headers — always computed so
         // the enclosing definition shows regardless of syntax highlighting (colour).

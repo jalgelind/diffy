@@ -28,6 +28,10 @@ struct ProgramOptions {
     bool ignore_whitespace = false;
     bool syntax_highlight = true;  // tree-sitter syntax highlighting (--no-highlight)
 
+    // --language / -L: force the syntax language for both sides instead of
+    // detecting it from the file names. Empty means "detect" (the default).
+    std::string force_language;
+
     std::string left_file;
     std::string right_file;
 

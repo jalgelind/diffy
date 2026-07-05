@@ -31,27 +31,11 @@ override_by_name() {
     return m;
 }
 
-}  // namespace
-
-void
-language_set_overrides(std::vector<std::pair<std::string, Language>> patterns) {
-    override_by_ext().clear();
-    override_by_name().clear();
-    for (auto& [pattern, lang] : patterns) {
-        if (pattern.empty() || lang.empty()) {
-            continue;
-        }
-        if (pattern[0] == '.') {
-            override_by_ext()[lowered(pattern)] = lang;
-        } else {
-            override_by_name()[lowered(pattern)] = lang;
-        }
-    }
-}
-
-Language
-language_for_path(std::string_view path) {
-    static const std::unordered_map<std::string, Language> by_ext = {
+// Built-in file-extension -> grammar map. Shared by language_for_path (lookup)
+// and language_list (the set of grammar names we ship detection for).
+const std::unordered_map<std::string, Language>&
+builtin_by_ext() {
+    static const std::unordered_map<std::string, Language> m = {
         {".c", "c"},
         {".h", "c"},
         {".cc", "cpp"},   {".cpp", "cpp"}, {".cxx", "cpp"}, {".c++", "cpp"},
@@ -79,16 +63,44 @@ language_for_path(std::string_view path) {
         {".mkd", "markdown"},
         {".json", "json"},
     };
-    // Languages identified by filename rather than extension. Keys must be
-    // lowercase. Dotfiles like ".bashrc" land here too: std::filesystem treats
-    // the leading dot as part of the stem, not an extension.
-    static const std::unordered_map<std::string, Language> by_name = {
+    return m;
+}
+
+// Languages identified by filename rather than extension. Keys must be
+// lowercase. Dotfiles like ".bashrc" land here too: std::filesystem treats
+// the leading dot as part of the stem, not an extension.
+const std::unordered_map<std::string, Language>&
+builtin_by_name() {
+    static const std::unordered_map<std::string, Language> m = {
         {"cmakelists.txt", "cmake"},
         {"gemfile", "ruby"},      {"rakefile", "ruby"},
         {"cargo.lock", "toml"},   {"pipfile", "toml"},
         {".bashrc", "bash"},      {".bash_profile", "bash"},
         {".zshrc", "bash"},       {".profile", "bash"},
     };
+    return m;
+}
+
+}  // namespace
+
+void
+language_set_overrides(std::vector<std::pair<std::string, Language>> patterns) {
+    override_by_ext().clear();
+    override_by_name().clear();
+    for (auto& [pattern, lang] : patterns) {
+        if (pattern.empty() || lang.empty()) {
+            continue;
+        }
+        if (pattern[0] == '.') {
+            override_by_ext()[lowered(pattern)] = lang;
+        } else {
+            override_by_name()[lowered(pattern)] = lang;
+        }
+    }
+}
+
+Language
+language_for_path(std::string_view path) {
     namespace fs = std::filesystem;
     const fs::path p{std::string(path)};
     const std::string fname = lowered(p.filename().string());
@@ -101,11 +113,43 @@ language_for_path(std::string_view path) {
     if (auto it = override_by_ext().find(ext); it != override_by_ext().end()) {
         return it->second;
     }
-    if (auto it = by_name.find(fname); it != by_name.end()) {
+    if (auto it = builtin_by_name().find(fname); it != builtin_by_name().end()) {
         return it->second;
     }
-    auto it = by_ext.find(ext);
-    return it == by_ext.end() ? Language{} : it->second;
+    auto it = builtin_by_ext().find(ext);
+    return it == builtin_by_ext().end() ? Language{} : it->second;
+}
+
+std::vector<Language>
+language_list() {
+    std::vector<Language> names;
+    for (const auto& [ext, lang] : builtin_by_ext()) {
+        (void)ext;
+        names.push_back(lang);
+    }
+    for (const auto& [name, lang] : builtin_by_name()) {
+        (void)name;
+        names.push_back(lang);
+    }
+    std::sort(names.begin(), names.end());
+    names.erase(std::unique(names.begin(), names.end()), names.end());
+    return names;
+}
+
+Language
+language_from_name(std::string_view name) {
+    std::string n = lowered(std::string(name));
+    if (n.empty()) {
+        return {};
+    }
+    // Try the token as an extension first (so "cpp", ".py", "rb" resolve like a
+    // filename would). Build a synthetic "x<ext>" so config overrides apply too.
+    const std::string ext = n[0] == '.' ? n : ("." + n);
+    if (Language l = language_for_path("x" + ext); !l.empty()) {
+        return l;
+    }
+    // Otherwise assume it's already a grammar name (c_sharp, typescript, bash).
+    return n;
 }
 
 }  // namespace diffy

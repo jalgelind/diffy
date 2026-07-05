@@ -28,6 +28,19 @@ using Language = std::string;
 Language
 language_for_path(std::string_view path);
 
+// Resolve a user-supplied language token (from --language / -L) to a grammar
+// name. Accepts either an extension-style token ("cpp", ".py", "rb"), resolved
+// through the same map as a filename, or a raw grammar name ("c_sharp",
+// "typescript"), returned as-is. Empty input yields "".
+Language
+language_from_name(std::string_view name);
+
+// The distinct grammar names diffy detects out of the box (sorted, de-duped) —
+// e.g. for --language help. Derived from the built-in extension/filename maps,
+// so it stays in sync with what language_for_path can return.
+std::vector<Language>
+language_list();
+
 // Install {pattern, language} overrides from [highlight.extensions] in
 // diffy.conf. Patterns starting with '.' match file extensions, anything else
 // matches an exact (case-insensitive) filename. Call once at startup, before
