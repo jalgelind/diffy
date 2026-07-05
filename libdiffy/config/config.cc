@@ -711,9 +711,11 @@ diffy::config_apply_theme(const std::string& theme,
     // [syntax] table (group name -> "#rrggbb"). Groups the theme omits fall back
     // to the built-in palette chosen above. Shared by all frontends; a frontend
     // may layer user overrides on top by calling set_syntax_color_override after.
-    clear_syntax_overrides();
-    if (auto syntax = config_file_table_value.lookup_value_by_path("syntax");
-        syntax && syntax->get().is_table()) {
+    auto apply_syntax_table = [](Value& tree) -> bool {
+        auto syntax = tree.lookup_value_by_path("syntax");
+        if (!syntax || !syntax->get().is_table())
+            return false;
+        bool applied = false;
         syntax->get().as_table().for_each([&](const std::string& key, Value& value) {
             if (!value.is_string())
                 return;
@@ -721,8 +723,26 @@ diffy::config_apply_theme(const std::string& theme,
             const auto color = TermColor::parse_string(value.as_string());
             if (group && *group != HighlightGroup::None && color) {
                 set_syntax_color_override(*group, HlRgb{color->r, color->g, color->b});
+                applied = true;
             }
         });
+        return applied;
+    };
+
+    clear_syntax_overrides();
+    if (!apply_syntax_table(config_file_table_value)) {
+        // The on-disk theme predates the [syntax] section (existing installs keep
+        // their file; config_write_bundled_themes won't clobber it). Fall back to
+        // the matching bundled theme's palette so old configs still get colours.
+        for (const auto& [name, content] : diffy::config_bundled_themes()) {
+            if (name != theme)
+                continue;
+            ParseResult pr;
+            Value bundled;
+            if (cfg_parse_value_tree(content, pr, bundled) && pr.is_ok())
+                apply_syntax_table(bundled);
+            break;
+        }
     }
 
     // Write the configuration to disk with default settings

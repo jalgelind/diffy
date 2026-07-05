@@ -108,3 +108,34 @@ TEST_CASE("un-themed group falls back to the built-in light vs dark palette") {
     CHECK((dark.r != light.r || dark.g != light.g || dark.b != light.b));
     clear_syntax_overrides();
 }
+
+TEST_CASE("an on-disk theme without [syntax] falls back to the bundled palette") {
+    clear_syntax_overrides();
+
+    // A theme file that predates the [syntax] section — as it exists on an
+    // existing install whose bundled .conf was written before palettes shipped.
+    // config_apply_theme won't clobber it, so it must fall back to the matching
+    // bundled theme's [syntax] by name (the migration this locks in).
+    const std::string on_disk = "[settings]\ntheme = 'theme_dracula'\n";
+    Value tree;
+    ParseResult pr;
+    REQUIRE(cfg_parse_value_tree(on_disk, pr, tree));
+    REQUIRE(pr.is_ok());
+    REQUIRE(!tree.lookup_value_by_path("syntax").has_value());  // genuinely absent
+
+    // Locate the bundled theme by name — the same lookup config_apply_theme does.
+    std::string bundled;
+    for (const auto& [name, conf] : config_bundled_themes())
+        if (name == "theme_dracula")
+            bundled = conf;
+    REQUIRE(!bundled.empty());
+    CHECK(apply_theme_syntax(bundled) > 0);
+
+    // Dracula's keyword palette is live even though the on-disk file lacked it.
+    HlRgb kw = syntax_color(HighlightGroup::Keyword, /*light=*/false);
+    CHECK(kw.r == 0xff);
+    CHECK(kw.g == 0x79);
+    CHECK(kw.b == 0xc6);
+
+    clear_syntax_overrides();
+}
