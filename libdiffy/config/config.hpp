@@ -1,0 +1,189 @@
+#pragma once
+
+#include "algorithms/algorithm.hpp"  // Algo, algo_from_string
+#include "util/color.hpp"
+
+#include <string>
+#include <filesystem>
+#include <utility>
+#include <vector>
+
+#include <config_parser/config_parser.hpp>
+
+namespace diffy {
+
+struct ProgramOptions {
+    bool debug = false;
+    bool help = false;
+    bool column_view = false;
+    bool line_granularity = false;
+    bool unified = false;
+    Algo algorithm = Algo::kPatience;
+    int64_t context_lines = 3;
+    int64_t width = 0;
+
+    std::string theme = "theme_default";
+
+    bool ignore_line_endings = false;
+    bool ignore_whitespace = false;
+    bool syntax_highlight = true;  // tree-sitter syntax highlighting (--no-highlight)
+
+    std::string left_file;
+    std::string right_file;
+
+    std::optional<std::filesystem::perms> left_file_permissions;
+    std::optional<std::filesystem::perms> right_file_permissions;
+
+    std::string left_file_name;
+    std::string right_file_name;
+};
+
+struct ColumnViewTextStyle {
+    // clang-format off
+    // Base background painted under every cell. Specific styles below layer on
+    // top, so a fully inverted ("filled background") theme can be expressed by
+    // setting this single key. kNone by default → no background, byte-identical
+    // to the historical fg-only rendering.
+    TermStyle background = TermStyle {
+        TermColor::kNone,
+        TermColor::kNone,
+        TermStyle::Attribute::None
+    };
+
+    TermStyle header = TermStyle {
+        TermColor::kWhite,
+        TermColor::kNone,
+        TermStyle::Attribute::Underline
+    };
+
+    TermStyle header_background = TermStyle {
+        TermColor::kWhite,
+        TermColor::kNone,
+        TermStyle::Attribute::Underline
+    };
+
+    TermStyle delete_line = TermStyle {
+        TermColor::kNone,
+        TermColor::kNone,
+        TermStyle::Attribute::None
+    };
+
+    TermStyle delete_token = TermStyle {
+        TermColor::kRed,
+        TermColor::kNone,
+        TermStyle::Attribute::Bold
+    };
+
+    TermStyle delete_line_number = TermStyle {
+        TermColor::kRed,
+        TermColor::kNone,
+        TermStyle::Attribute::Bold
+    };
+
+    TermStyle insert_line = TermStyle {
+        TermColor::kNone,
+        TermColor::kNone,
+        TermStyle::Attribute::None
+    };
+
+    TermStyle insert_token = TermStyle {
+        TermColor::kGreen,
+        TermColor::kNone,
+        TermStyle::Attribute::Bold
+    };
+
+    TermStyle insert_line_number = TermStyle {
+        TermColor::kGreen,
+        TermColor::kNone,
+        TermStyle::Attribute::Bold
+    };
+
+    TermStyle common_line = TermStyle {
+        TermColor::kNone,
+        TermColor::kNone,
+        TermStyle::Attribute::None
+    };
+
+    TermStyle common_line_number = TermStyle {
+        TermColor::kNone,
+        TermColor::kNone,
+        TermStyle::Attribute::None
+    };
+
+    TermStyle frame = TermStyle {
+        TermColor::kNone,
+        TermColor::kNone,
+        TermStyle::Attribute::None
+    };
+
+    TermStyle empty_cell = TermStyle {
+        TermColor::kNone,
+        TermColor::kNone,
+        TermStyle::Attribute::None
+    };
+    // clang-format on
+};
+
+struct ColumnViewTextStyleEscapeCodes {
+    std::string background;
+    std::string header;
+    std::string delete_line;
+    std::string delete_token;
+    std::string delete_line_number;
+    std::string insert_line;
+    std::string insert_token;
+    std::string insert_line_number;
+    std::string common_line;
+    std::string common_line_number;
+    std::string frame;
+    std::string empty_cell;
+};
+
+struct ColumnViewCharacters {
+    std::string column_separator = " │";
+    std::string edge_separator = "";
+
+    std::string tab_replacement = "→   ";
+    std::string cr_replacement = "←";  // ␍
+    std::string lf_replacement = "↓";
+    std::string crlf_replacement = "↵";  // ␤
+    std::string space_replacement = "·";
+};
+
+struct ColumnViewSettings {
+    bool show_line_numbers = true;
+    bool context_colored_line_numbers = true;
+    bool word_wrap = true;
+    bool line_number_align_right = false;
+};
+
+std::string
+config_get_directory();
+
+// The bundled, self-contained example themes seeded on first-run setup, as
+// {file-stem, .conf-content} pairs (e.g. {"theme_dracula", "..."}). Exposed so
+// tests can validate the shipped theme content.
+std::vector<std::pair<std::string, std::string>>
+config_bundled_themes();
+
+void
+config_apply_options(diffy::ProgramOptions& program_options);
+
+// Read highlight.extensions from diffy.conf and install it as the
+// extension→grammar override map (see language_set_overrides). Entries map a
+// grammar name to one extension/filename or an array of them, e.g.:
+//   [highlight]
+//   extensions = { cpp = ['.tpp', '.ixx'], zig = '.zig' }
+// (zig here would be a drop-in: zig.dll + zig.scm in <config>/grammars/.)
+// Safe to call when the file or section is missing (no-op).
+void
+config_apply_highlight_overrides();
+
+void
+config_apply_theme(const std::string& theme,
+                   diffy::ColumnViewCharacters& cv_char_opts,
+                   diffy::ColumnViewSettings& cv_view_opts,
+                   diffy::ColumnViewTextStyle& cv_style_opts,
+                   diffy::ColumnViewTextStyleEscapeCodes& cv_style_escape_codes);
+
+}  // namespace diffy

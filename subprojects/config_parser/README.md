@@ -1,156 +1,62 @@
-Config parser:
---------------
+# config_parser
 
-The libraries I found do not handle comments when serializing. I kinda want that.
+A small TOML-ish config parser for diffy. Its reason to exist over an off-the-shelf
+library: it **preserves comments** and **key insertion order** across a
+parse → serialize round-trip, so re-writing a config file doesn't reorder or drop
+the user's edits.
 
-Those libraries did not properly retain insert-order on tables, so values in the
-configuration file would be automatically sorted when re-serializing due to key
-iteration order.
+## Format
 
-Writing this was fun, but it should probably be replaced with json or something.
+```conf
+# a comment (# or // )
+[section]
+    name    = "escaped\nstring"   # "double" quotes: \\ \" \n \r \t
+    path    = 'C:\raw\literal'    # 'single' quotes: raw, no escapes
+    blurb   = 'first line'        # multi-line: one quoted literal per line,
+              'second line'       #   aligned; parsed as "first line\nsecond line"
+    count   = 42                  # int
+    ratio   = 0.5                 # float
+    enabled = true                # bool: true/false/on/off
+    list    = [1, 2, 3]           # array (of any value, incl. tables)
+    nested  = { a = 1, b = ['x'] } # inline table
+```
 
-Known bugs/limitations:
------------------------
+**Strings.** `'single'` = raw literal (verbatim, no escapes — safe for Windows
+paths). `"double"` = escaped: `\\ \" \n \r \t`. The serializer emits a raw literal
+when a value needs no escaping and switches to a `"double"` string when it contains
+a single-quote or carriage return — so existing files stay byte-identical and
+arbitrary text still round-trips.
 
-* Some comments are lost when deserializing a file and serializing it again.
+**Multi-line strings** are written as one quoted literal per line, each aligned
+under the first line's opening quote; the parser concatenates adjacent quoted
+literals (each beginning its own line) with `\n`. Keys are always bare
+identifiers, never quoted, so a leading quote is unambiguously a value.
 
-When we deserialize into a value tree, we try to attach comments to the
-logically closest context. Some comments are not preserved, as we don't
-have anywhere to put them (trailing comments, comment to the right of the defined last
-value).
+## API
 
+```cpp
+#include <config_parser/config_parser.hpp>
+#include <config_parser/config_parser_utils.hpp>   // cfg_load_file
+#include <config_parser/config_serializer.hpp>     // cfg_serialize
 
-Example code and output
------------------------
+diffy::Value root;
+diffy::ParseResult r;
+cfg_parse_value_tree(text, r, root);   // or cfg_load_file(path, r, root)
 
-Example snippet:
+if (auto v = root.lookup_value_by_path("section.name"); v && v->get().is_string())
+    use(v->get().as_string());
 
-    std::string cfg_tmp = R"foo(
-    # 1 (above section)
-    [section] # 2 (next to section)
-    # 3 (above key, below parent section)
-    key = "value" # 4 (next to "value")
-    # 5 (above something, after key)
-    something = { # 6 (next to something)
-            # 7 (below parent something, before apa)
-            apa = "bepa" # 8 (next to "bepa")
-            # 9 (below apa, last item in table)
-    } # 10 (next to something-close-brace)
-    # 11 (trailing comment)
-    )foo";
+std::string out = cfg_serialize(root);  // sections; cfg_serialize_obj for an object
+```
 
-    fmt::print("original:\n{}\n", cfg_tmp);
+`Value` is a variant of `Table` (insertion-ordered), `Array`, `Int`, `Float`,
+`Bool`, `String` with `is_*()` / `as_*()` accessors and `operator[]`.
 
-    ParseResult result;
-    cfg_parse_dump(cfg_tmp, result);
+## Limitations
 
-    Value obj;
-    cfg_parse_value_tree(cfg_tmp, result, obj);
+- Some comments with no logical anchor (trailing, or right of the last value in a
+  block) are dropped on re-serialize.
+- A comment placed between the lines of a multi-line string breaks the
+  concatenation (put comments after the value, not inside it).
 
-    fmt::print("tree:\n");
-    fmt::print("{}", cfg_dump_value_object(obj));
-
-    fmt::print("re-serialized:\n{}\n", cfg_serialize(obj));
-
-    if (auto tmp = obj.lookup_value_by_path({"section", "something", "apa"}); tmp != std::nullopt) {
-            fmt::print("1 Found: {}\n", repr(*tmp));
-    }
-
-    if (auto tmp = obj.lookup_value_by_path({"section", "something", "nope"}); tmp != std::nullopt) {
-            fmt::print("2 Found: {}\n", repr(*tmp));
-    }
-
-    if (auto tmp = obj.lookup_value_by_path("section.something.apa"); tmp != std::nullopt) {
-            fmt::print("3 Found: {}\n", repr(*tmp));
-            if (tmp->get().is_string()) {
-                fmt::print("It's a string: {}\n", tmp->get().as_string());
-            }
-    }
-
-    if (auto tmp = obj.lookup_value_by_path("section.something.nope"); tmp != std::nullopt) {
-            fmt::print("4 Found: {}\n", repr(*tmp));
-    }
-
-
-Output:
-
-    original:
-
-    # 1 (above section)
-    [section] # 2 (next to section)
-    # 3 (above key, below parent section)
-    key = "value" # 4 (next to "value")
-    # 5 (above something, after key)
-    something = { # 6 (next to something)
-            # 7 (below parent something, before apa)
-            apa = "bepa" # 8 (next to "bepa")
-            # 9 (below apa, last item in table)
-    } # 10 (next to something-close-brace)
-    # 11 (trailing comment)
-        
-    0 | 0 Comment  1 (above section) 
-    1 | 0 Key section 
-    2 | 0 TableStart from section 
-    3 | 1     Comment  2 (next to section) 
-    4 | 1     Comment  3 (above key, below parent section) 
-    5 | 1     Key key 
-    6 | 1     Value value String
-    7 | 1     Comment  4 (next to "value") 
-    8 | 1     Comment  5 (above something, after key) 
-    9 | 1     Key something 
-    10 | 1     TableStart  
-    11 | 2         Comment  6 (next to something) 
-    12 | 2         Comment  7 (below parent something, before apa) 
-    13 | 2         Key apa 
-    14 | 2         Value bepa String
-    15 | 2         Comment  8 (next to "bepa") 
-    16 | 2         Comment  9 (below apa, last item in table) 
-    17 | 2         Comment  10 (next to something-close-brace) 
-    18 | 2         Comment  11 (trailing comment) 
-    19 | 1     TableEnd  
-    20 | 0 TableEnd  
-    tree:
-    Comments:
-        V:  1 (above section)
-    Value:
-    Table {
-        Key: 'section'
-        Comments:
-            V:  2 (next to section)
-        Value:
-            Table {
-            Key: 'key'
-                Comments:
-                    K:  3 (above key, below parent section)
-                    V:  4 (next to "value")
-                Value:
-                'value'
-
-            Key: 'something'
-                Comments:
-                    K:  5 (above something, after key)
-                    V:  6 (next to something)
-                Value:
-                Table {
-                    Key: 'apa'
-                    Comments:
-                        K:  7 (below parent something, before apa)
-                        V:  8 (next to "bepa")
-                    Value:
-                        'bepa'
-
-                }
-            }
-    }
-    re-serialized:
-    1 (above section)
-    [section] # 2 (next to section)
-
-    3 (above key, below parent section)
-    key = 'value' # 4 (next to "value")
-    5 (above something, after key)
-    something = { # 6 (next to something)
-
-    7 (below parent something, before apa)
-    apa = 'bepa' # 8 (next to "bepa")
-    }
+Tests: `*_tests.cc` (doctest), built into the top-level `diffy-test` target.
