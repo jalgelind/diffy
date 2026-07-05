@@ -162,6 +162,10 @@ main(int argc, char* argv[], char * environ[]) {
 
     diffy::ProgramOptions opts;
 
+    // Handled after the theme is applied (below), so the dump reflects the
+    // theme's colour map. parse_args only records that it was requested.
+    bool list_colors = false;
+
     auto show_help = [&](const std::string& optional_error_message) {
         // Wrap the built-in grammar names so --language help stays in sync with
         // what diffy actually detects (derived from the language maps).
@@ -179,6 +183,14 @@ main(int argc, char* argv[], char * environ[]) {
                 line += tok;
             }
             lang_help += line;
+        }
+
+        // Bundled theme names (plus the built-in default) for --theme help. Users
+        // may also have custom themes on disk in the config directory.
+        std::string theme_help = "theme_default";
+        for (const auto& [name, content] : diffy::config_bundled_themes()) {
+            (void)content;
+            theme_help += ", " + name;
         }
 
         std::string help = fmt::format((R"(
@@ -208,6 +220,10 @@ Options:
     -L, --language [lang]        force the syntax language instead of detecting it
                                  from the file names. Supported grammars:
 {2}
+    --theme [name]               use a named theme instead of the configured one.
+                                 Bundled: {3}
+                                 (plus any custom themes in the config directory)
+    --color [when]               colour unified output: auto (default), always, or never
 
     --list-colors                list all available colors available in the configuration
 
@@ -215,7 +231,7 @@ Side by side options:
     -l, --line                   line based diff instead of word based diff
     -W [width]                   maximum width in each column
 )"),
-                                       argv[0], diffy::config_get_directory(), lang_help);
+                                       argv[0], diffy::config_get_directory(), lang_help, theme_help);
 
         help += "\n";
 
@@ -230,6 +246,8 @@ Side by side options:
     // Above the ASCII range so it doesn't collide with the short options.
     constexpr int kOptNoIgnoreWhitespace = 256;
     constexpr int kOptNoHighlight = 257;
+    constexpr int kOptTheme = 258;
+    constexpr int kOptColor = 260;
 
     auto parse_args = [&](int in_argc, char* in_argv[]) {
         static struct option long_options[] = {
@@ -249,6 +267,9 @@ Side by side options:
             {"no-ignore-whitespace", no_argument, 0, kOptNoIgnoreWhitespace},
             {"no-highlight", no_argument, 0, kOptNoHighlight},
             {"disable-syntax-highlighting", no_argument, 0, kOptNoHighlight},
+            {"theme", required_argument, 0, kOptTheme},
+            {"color", required_argument, 0, kOptColor},
+            {"colour", required_argument, 0, kOptColor},
             {"list-colors", no_argument, 0, '1'},
             {0, 0, 0, 0}};
         int c = 0, option_index = 0;
@@ -261,24 +282,9 @@ Side by side options:
                 case 'h':
                     opts.help = true;
                     return true;
-                case '1': {
-                    auto cap = diffy::tty_get_capabilities();
-                    if (cap & diffy::TermColorSupport_Ansi4bit) {
-                        puts("Found support for 16 color palette");
-                    }
-                    if (cap & diffy::TermColorSupport_Ansi8bit) {
-                        puts("Found support for 256 color palette");
-                    }
-                    if (cap & diffy::TermColorSupport_Ansi24bit) {
-                        puts("Found support for true color");
-                    }
-                    if (cap & diffy::TermColorSupport_None) {
-                        puts("Found nothing. You have a terrible terminal, or the detection code is bad.");
-                    }
-                    puts("");
-                    diffy::color_dump();
-                    exit(0);
-                }
+                case '1':
+                    list_colors = true;
+                    return true;
                 case 'a':
                     opts.algorithm = diffy::algo_from_string(optarg);
                     break;
@@ -320,6 +326,27 @@ Side by side options:
                 case kOptNoHighlight:
                     opts.syntax_highlight = false;
                     break;
+                case kOptTheme:
+                    if (optarg && *optarg) {
+                        opts.theme = optarg;
+                    }
+                    break;
+                case kOptColor: {
+                    const std::string when = optarg ? optarg : "";
+                    if (when == "auto") {
+                        opts.color_mode = diffy::ColorMode::Auto;
+                    } else if (when == "always") {
+                        opts.color_mode = diffy::ColorMode::Always;
+                    } else if (when == "never") {
+                        opts.color_mode = diffy::ColorMode::Never;
+                    } else {
+                        show_help(fmt::format("error: invalid value for --color ({}); "
+                                              "expected auto, always, or never\n",
+                                              when));
+                        return false;
+                    }
+                    break;
+                }
                 case 'u':
                 case 's':
                 case 'U':
@@ -430,12 +457,9 @@ Side by side options:
         return true;
     };
 
-    // Load the global defaults before we override them with command line args
+    // Load the global defaults (incl. general.theme) before command-line args
+    // override them, then apply the resolved theme — so --theme wins over config.
     diffy::config_apply_options(opts);
-
-    diffy::ColumnViewState cv_ui_opts;
-    diffy::config_apply_theme(opts.theme, cv_ui_opts.chars, cv_ui_opts.settings, cv_ui_opts.style_config,
-                              cv_ui_opts.style);
 
     if (!parse_args(argc, argv)) {
         return 2;
@@ -443,6 +467,31 @@ Side by side options:
 
     if (opts.help) {
         show_help("");
+        return 0;
+    }
+
+    diffy::ColumnViewState cv_ui_opts;
+    diffy::config_apply_theme(opts.theme, cv_ui_opts.chars, cv_ui_opts.settings, cv_ui_opts.style_config,
+                              cv_ui_opts.style);
+
+    // --list-colors: report terminal colour support and dump the (now theme-
+    // applied) colour map, then exit.
+    if (list_colors) {
+        auto cap = diffy::tty_get_capabilities();
+        if (cap & diffy::TermColorSupport_Ansi4bit) {
+            puts("Found support for 16 color palette");
+        }
+        if (cap & diffy::TermColorSupport_Ansi8bit) {
+            puts("Found support for 256 color palette");
+        }
+        if (cap & diffy::TermColorSupport_Ansi24bit) {
+            puts("Found support for true color");
+        }
+        if (cap & diffy::TermColorSupport_None) {
+            puts("Found nothing. You have a terrible terminal, or the detection code is bad.");
+        }
+        puts("");
+        diffy::color_dump();
         return 0;
     }
 
@@ -561,10 +610,12 @@ Side by side options:
             }
         }
 
-        // Colourise for terminal viewing only. When stdout is a pipe or file
-        // (git difftool, `> foo.patch`, the test suite), stay plain so the output
-        // round-trips through `patch`.
-        const bool color = stdout_is_tty();
+        // Colourise for terminal viewing only. --color forces the decision;
+        // otherwise (auto) colour a terminal but stay plain to a pipe or file
+        // (git difftool, `> foo.patch`, the test suite) so the output round-trips
+        // through `patch`.
+        const bool color = opts.color_mode == diffy::ColorMode::Always ||
+                           (opts.color_mode == diffy::ColorMode::Auto && stdout_is_tty());
         diffy::LineHighlights a_hl, b_hl;
         if (color && opts.syntax_highlight) {
             a_hl = diffy::highlight_source(a_text, lang_a);

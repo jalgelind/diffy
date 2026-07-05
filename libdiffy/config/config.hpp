@@ -12,6 +12,11 @@
 
 namespace diffy {
 
+// --color: when to emit ANSI colour in the unified output. Auto follows the
+// tty (colour to a terminal, plain to a pipe/file so it round-trips through
+// `patch`); Always/Never force it either way (e.g. for golden snapshots).
+enum class ColorMode { Auto, Always, Never };
+
 struct ProgramOptions {
     bool debug = false;
     bool help = false;
@@ -31,6 +36,9 @@ struct ProgramOptions {
     // --language / -L: force the syntax language for both sides instead of
     // detecting it from the file names. Empty means "detect" (the default).
     std::string force_language;
+
+    // --color=auto|always|never: whether to emit ANSI colour in unified output.
+    ColorMode color_mode = ColorMode::Auto;
 
     std::string left_file;
     std::string right_file;
