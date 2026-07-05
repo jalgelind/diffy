@@ -1,0 +1,6 @@
+# The repo is developed on Windows (core.autocrlf=true) but the Makefile and
+# shell scripts are run from a POSIX shell (WSL/Linux/macOS). Force LF so make
+# doesn't choke on CRLF recipe lines after a checkout.
+Makefile     text eol=lf
+*.sh         text eol=lf
+extras/*     text eol=lf
