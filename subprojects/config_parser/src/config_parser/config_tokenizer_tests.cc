@@ -297,4 +297,149 @@ TEST_CASE("tokenizer") {
         REQUIRE(a[20].str_from(line) == "\"");
         REQUIRE((a[20].id & (TokenId_DoubleQuote)) == (TokenId_DoubleQuote));
     }
+
+    SUBCASE("plain integer") {
+        auto line = "12345";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        auto a = result.tokens;
+        REQUIRE(a.size() == 1);
+        REQUIRE(a[0].str_from(line) == "12345");
+        REQUIRE((a[0].id & TokenId_Integer) == TokenId_Integer);
+        REQUIRE(a[0].token_int_arg == 12345);
+    }
+
+    SUBCASE("float literal is tagged Float (regression D1)") {
+        auto line = "3.5";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        auto a = result.tokens;
+        REQUIRE(a.size() == 1);
+        REQUIRE(a[0].str_from(line) == "3.5");
+        REQUIRE((a[0].id & TokenId_Float) == TokenId_Float);
+        REQUIRE(a[0].token_float_arg == doctest::Approx(3.5f));
+    }
+
+    SUBCASE("digits followed by letters are an identifier, not an integer (regression D2)") {
+        auto line = "12abc";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        auto a = result.tokens;
+        REQUIRE(a.size() == 1);
+        REQUIRE(a[0].str_from(line) == "12abc");
+        REQUIRE((a[0].id & TokenId_Integer) != TokenId_Integer);
+        REQUIRE((a[0].id & TokenId_Identifier) == TokenId_Identifier);
+    }
+}
+
+TEST_CASE("escaped strings") {
+    SUBCASE("double-quoted string captures an escaped quote (doesn't terminate early)") {
+        // Text: "a\"b"  (an escaped double-quote in the middle)
+        auto line = "\"a\\\"b\"";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        REQUIRE(result.ok);
+        auto a = result.tokens;
+        REQUIRE(a.size() == 3);  // DoubleQuote, String, DoubleQuote
+        REQUIRE((a[0].id & TokenId_DoubleQuote) == TokenId_DoubleQuote);
+        REQUIRE((a[1].id & TokenId_String) == TokenId_String);
+        // Double-quoted strings are tagged escaped so the parser unescapes them.
+        REQUIRE((a[1].id & TokenId_EscapedString) == TokenId_EscapedString);
+        REQUIRE(a[1].str_from(line) == "a\\\"b");  // raw text still carries the backslash
+        REQUIRE((a[2].id & TokenId_DoubleQuote) == TokenId_DoubleQuote);
+    }
+
+    SUBCASE("single-quoted string is a raw literal (not tagged escaped)") {
+        // Text: 'a\b'  (a backslash that must be preserved verbatim, e.g. a path)
+        auto line = "'a\\b'";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        REQUIRE(result.ok);
+        auto a = result.tokens;
+        REQUIRE(a.size() == 3);
+        REQUIRE((a[1].id & TokenId_String) == TokenId_String);
+        REQUIRE((a[1].id & TokenId_EscapedString) != TokenId_EscapedString);
+        REQUIRE(a[1].str_from(line) == "a\\b");
+    }
+
+    SUBCASE("escaped backslash then closing quote terminates") {
+        // Text: "a\\"  -> content is a backslash; the \\ pair doesn't swallow the quote
+        auto line = "\"a\\\\\"";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        REQUIRE(result.ok);
+        auto a = result.tokens;
+        REQUIRE(a.size() == 3);
+        REQUIRE(a[1].str_from(line) == "a\\\\");
+    }
+
+    SUBCASE("dangling backslash at end of a double-quoted string is unterminated") {
+        auto line = "\"abc\\";  // "abc\   (backslash then EOF)
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        REQUIRE(result.ok == false);
+    }
+
+    SUBCASE("newline inside a double-quoted string is an error") {
+        auto line = "\"abc\ndef\"";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        REQUIRE(result.ok == false);
+    }
+}
+
+TEST_CASE("adjacent quoted literals (multi-line strings)") {
+    // Multi-line string values are written as one quoted literal per line; the
+    // tokenizer emits each as its own String token and flags the continuation as
+    // first-on-line, which the parser uses to concatenate them with '\n'.
+    SUBCASE("two literals on separate lines are two string tokens") {
+        auto line = "'first'\n'second'";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        REQUIRE(result.ok);
+        std::vector<Token> strings;
+        for (auto& t : result.tokens) {
+            if (t.id & TokenId_String) {
+                strings.push_back(t);
+            }
+        }
+        REQUIRE(strings.size() == 2);
+        REQUIRE(strings[0].str_from(line) == "first");
+        REQUIRE(strings[1].str_from(line) == "second");
+        // The continuation begins its own line.
+        REQUIRE((strings[1].id & TokenId_FirstOnLine) == TokenId_FirstOnLine);
+    }
+
+    SUBCASE("a newline inside a single-quoted string is an error") {
+        auto line = "'abc\ndef'";
+        ParseResult result;
+        ParseOptions options;
+        tokenize(line, options, result);
+        REQUIRE(result.ok == false);
+    }
+}
+
+TEST_CASE("escape helpers") {
+    SUBCASE("escape_string escapes the specials") {
+        REQUIRE(escape_string("a\tb\"c\\d\ne") == "a\\tb\\\"c\\\\d\\ne");
+    }
+    SUBCASE("unescape_string reverses escape_string") {
+        const std::string s = "tab\tquote\"back\\slash\nline\rcarriage";
+        REQUIRE(unescape_string(escape_string(s)) == s);
+    }
+    SUBCASE("unescape_string preserves unknown escapes") {
+        REQUIRE(unescape_string("a\\qb") == "a\\qb");
+    }
+    SUBCASE("unescape_string tolerates a trailing backslash") {
+        REQUIRE(unescape_string("abc\\") == "abc\\");
+    }
 }

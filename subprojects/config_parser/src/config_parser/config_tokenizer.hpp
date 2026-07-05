@@ -40,6 +40,7 @@ const TokenId TokenId_Comment      = 1 << 18;
 const TokenId TokenId_Terminator   = 1 << 19;
 
 const TokenId TokenId_FirstOnLine  = 1 << 20; // Only whitespace before this token
+const TokenId TokenId_EscapedString = 1 << 21; // captured from a "double"-quoted (escaped) string
 
 const TokenId TokenId_MetaValue = TokenId_Boolean | TokenId_Integer | TokenId_String;
 const TokenId TokenId_MetaObject = TokenId_OpenCurly | TokenId_OpenBracket | TokenId_MetaValue;
@@ -93,6 +94,15 @@ token_dump(std::vector<Token> tokens, const std::string& source_text);
 
 bool
 is_whitespace(char c);
+
+// Escape a string for emission inside a "double"-quoted config value
+// (\\ \" \n \r \t). Its inverse, unescape_string, is applied by the parser to
+// values captured from double-quoted (TokenId_EscapedString) tokens.
+std::string
+escape_string(const std::string& s);
+
+std::string
+unescape_string(const std::string& s);
 
 std::string
 repr(TokenId id);

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cstdlib>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -35,7 +36,11 @@ struct TokenDescriptor {
         { "Assign",       TokenId_Assign,        "=" ,          std::nullopt        , std::nullopt    },
         { "OpenCurly",    TokenId_OpenCurly,     "{" ,          std::nullopt        , std::nullopt    },
         { "CloseCurly",   TokenId_CloseCurly,    "}" ,          std::nullopt        , std::nullopt    },
-        { "DoubleQuote",  TokenId_DoubleQuote,   "\"",          TokenId_DoubleQuote , std::nullopt    },
+        // Double-quoted strings are escaped (tagged so the parser unescapes them);
+        // single-quoted strings are raw literals (backward compatible). Multi-line
+        // values are written as adjacent quoted literals (one per line), so a
+        // quoted string never spans a newline.
+        { "DoubleQuote",  TokenId_DoubleQuote,   "\"",          TokenId_DoubleQuote , (TokenId)(TokenId_String | TokenId_EscapedString) },
         { "SingleQuote",  TokenId_SingleQuote,   "'" ,          TokenId_SingleQuote , std::nullopt    },
         { "Hashtag",      TokenId_Hashtag,       "#" ,          TokenId_Newline     , TokenId_Comment },
         { "Comma",        TokenId_Comma,         "," ,          std::nullopt        , std::nullopt    },
@@ -102,6 +107,45 @@ Token::str_display_from(const std::string& input_text) const {
         }
     }
     return sanitized;
+}
+
+std::string
+diffy::config_tokenizer::escape_string(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+        switch (c) {
+            case '\\': out += "\\\\"; break;
+            case '"':  out += "\\\""; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:   out += c;
+        }
+    }
+    return out;
+}
+
+std::string
+diffy::config_tokenizer::unescape_string(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (std::size_t i = 0; i < s.size(); i++) {
+        if (s[i] == '\\' && i + 1 < s.size()) {
+            switch (s[++i]) {
+                case 'n':  out += '\n'; break;
+                case 'r':  out += '\r'; break;
+                case 't':  out += '\t'; break;
+                case '\\': out += '\\'; break;
+                case '"':  out += '"';  break;
+                case '\'': out += '\''; break;
+                default:   out += '\\'; out += s[i]; break;  // preserve unknown escapes
+            }
+        } else {
+            out += s[i];
+        }
+    }
+    return out;
 }
 
 bool
@@ -206,7 +250,14 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
 
         // inside a quoted string?
         if (capture_string) {
+            const bool escaped = string_terminator == TokenId_DoubleQuote;
             for (auto i = start_idx; i < text.size(); i++) {
+                // In an escaped ("double") string a backslash escapes the next
+                // character, so it can't terminate the string or be misread.
+                if (escaped && text[i] == '\\') {
+                    i++;  // skip the escaped char (loop's ++ skips the backslash)
+                    continue;
+                }
                 if (auto tokopt = find_token(i, text); tokopt) {
                     auto tok = *tokopt;
 
@@ -218,7 +269,8 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
                         break;
                     }
 
-                    // For non-newline terminated strings
+                    // A quoted string is single-line: a newline before its closing
+                    // quote is an error. Multi-line values use adjacent literals.
                     if (tok.id & TokenId_Newline) {
                         result.ok = false;
                         result.error =
@@ -294,7 +346,8 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
                 reject_token = true;
             } else if (options.strip_newlines && (tok.id & TokenId_Newline)) {
                 reject_token = true;
-            } else if (options.strip_quotes && (tok.id & (TokenId_DoubleQuote | TokenId_SingleQuote))) {
+            } else if (options.strip_quotes &&
+                       (tok.id & (TokenId_DoubleQuote | TokenId_SingleQuote))) {
                 reject_token = true;
             }
 
@@ -359,16 +412,22 @@ diffy::config_tokenizer::tokenize(const std::string& input_text, ParseOptions& o
             token.id = TokenId_Boolean;
             token.token_boolean_arg = tmp_bool;
         } else {
+            const char* number_begin = token_str.c_str();
+            const char* number_end = number_begin + token_str.size();
+
             int tmp_int = 0;
-            auto result = std::from_chars(token_str.data(), token_str.data() + token_str.size(), tmp_int);
-            if (result.ec != std::errc::invalid_argument) {
+            auto int_result = std::from_chars(number_begin, number_end, tmp_int);
+            // Require the whole token to parse: "12abc" and out-of-range values
+            // must not be classified as integers.
+            if (int_result.ec == std::errc{} && int_result.ptr == number_end) {
                 token.id = TokenId_Integer;
                 token.token_int_arg = tmp_int;
             } else {
-                int tmp_float = 0.0f;
-                auto result =
-                    std::from_chars(token_str.data(), token_str.data() + token_str.size(), tmp_float);
-                if (result.ec != std::errc::invalid_argument) {
+                // std::from_chars for float is not available on all standard
+                // libraries, so use strtof and require the whole token to parse.
+                char* float_end = nullptr;
+                float tmp_float = std::strtof(number_begin, &float_end);
+                if (float_end == number_end && float_end != number_begin) {
                     token.id = TokenId_Float;
                     token.token_float_arg = tmp_float;
                 } else {

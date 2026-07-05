@@ -397,22 +397,50 @@ diffy::cfg_parse(const std::string& input_data,
                 PARSER_GIVE_UP("Exhausted");
             } break;
             case State::ParseValue: {
-                PARSER_CONSUME(TokenId_MetaValue, ([&](const std::string& value) {
-                                   TbInstruction ins;
-                                   if (token.id & TokenId_Boolean) {
-                                       ins = TbInstruction::Value(token.token_boolean_arg);
-                                   } else if (token.id & TokenId_Integer) {
-                                       ins = TbInstruction::Value(token.token_int_arg);
-                                   } else if (token.id & TokenId_Float) {
-                                       ins = TbInstruction::Value(token.token_float_arg);
-                                   } else if (token.id & TokenId_String) {
-                                       ins = TbInstruction::Value(token.str_from(input_data));
-                                   } else {
-                                       assert(false && "Not reached");
-                                       ins.oparg_type = TbValueType::String;
-                                   }
-                                   emit_ins(ins);
-                               }));
+                PARSER_EXPECT(TokenId_MetaValue);
+                if (token.id & TokenId_String) {
+                    // A string value may span several lines: consecutive quoted
+                    // literals that each begin their own line are concatenated
+                    // with '\n' into one value (the readable multi-line form the
+                    // serializer emits). Keys are always identifiers, never quoted,
+                    // so a bare string here can only be a continuation.
+                    auto capture = [&](const config_tokenizer::Token& t) {
+                        // Double-quoted strings are escaped; single-quoted stay raw.
+                        return (t.id & config_tokenizer::TokenId_EscapedString)
+                                   ? config_tokenizer::unescape_string(t.str_from(input_data))
+                                   : t.str_from(input_data);
+                    };
+                    std::string acc = capture(token);
+                    in_critical_section = true;  // don't abort the capture on the terminator
+                    PARSER_NEXT_TOKEN();
+                    while ((token.id & TokenId_String) && (token.id & TokenId_FirstOnLine)) {
+                        acc += "\n";
+                        acc += capture(token);
+                        PARSER_NEXT_TOKEN();
+                    }
+                    in_critical_section = false;
+                    emit_ins(TbInstruction::Value(acc));
+                } else {
+                    TbInstruction ins;
+                    if (token.id & TokenId_Boolean) {
+                        ins = TbInstruction::Value(token.token_boolean_arg);
+                    } else if (token.id & TokenId_Integer) {
+                        ins = TbInstruction::Value(token.token_int_arg);
+                    } else if (token.id & TokenId_Float) {
+                        ins = TbInstruction::Value(token.token_float_arg);
+                    } else {
+                        assert(false && "Not reached");
+                        ins.oparg_type = TbValueType::String;
+                    }
+                    emit_ins(ins);
+                    PARSER_NEXT_TOKEN();
+                }
+
+                // The string capture ran in a critical section, so a trailing
+                // terminator wasn't caught by PARSER_NEXT_TOKEN; handle it here.
+                if (token.id & config_tokenizer::TokenId_Terminator) {
+                    PARSER_JUMP(State::Finish);
+                }
 
                 PARSER_EAT_COMMENTS();
 
