@@ -102,6 +102,31 @@ common_line         = { fg = '#f8f8f2', bg = '#282a36', attr = [] }
 common_line_number  = { fg = '#6272a4', bg = '#282a36', attr = [] }
 frame               = { fg = '#6272a4', bg = '#282a36', attr = [] }
 empty_cell          = { fg = '#6272a4', bg = '#282a36', attr = [] }
+
+# Syntax palette (tree-sitter groups). Omitted groups fall back to the built-in
+# default for the theme's light/dark.
+[syntax]
+comment          = '#6272a4'
+keyword          = '#ff79c6'
+operator         = '#ff79c6'
+punctuation      = '#f8f8f2'
+string           = '#f1fa8c'
+escape           = '#ff79c6'
+number           = '#bd93f9'
+boolean          = '#bd93f9'
+constant         = '#bd93f9'
+constant_builtin = '#bd93f9'
+function         = '#50fa7b'
+method           = '#50fa7b'
+constructor      = '#8be9fd'
+type             = '#8be9fd'
+type_builtin     = '#8be9fd'
+variable         = '#f8f8f2'
+parameter        = '#ffb86c'
+property         = '#f8f8f2'
+namespace        = '#8be9fd'
+tag              = '#ff79c6'
+attribute        = '#50fa7b'
 )foo";
 
 static std::string theme_nord_conf = R"foo(# Nord — popular arctic dark theme (https://www.nordtheme.com).
@@ -126,6 +151,31 @@ common_line         = { fg = '#d8dee9', bg = '#2e3440', attr = [] }
 common_line_number  = { fg = '#4c566a', bg = '#2e3440', attr = [] }
 frame               = { fg = '#434c5e', bg = '#2e3440', attr = [] }
 empty_cell          = { fg = '#4c566a', bg = '#2e3440', attr = [] }
+
+# Syntax palette (tree-sitter groups). Omitted groups fall back to the built-in
+# default for the theme's light/dark.
+[syntax]
+comment          = '#616e88'
+keyword          = '#81a1c1'
+operator         = '#81a1c1'
+punctuation      = '#eceff4'
+string           = '#a3be8c'
+escape           = '#ebcb8b'
+number           = '#b48ead'
+boolean          = '#81a1c1'
+constant         = '#b48ead'
+constant_builtin = '#81a1c1'
+function         = '#88c0d0'
+method           = '#88c0d0'
+constructor      = '#8fbcbb'
+type             = '#8fbcbb'
+type_builtin     = '#8fbcbb'
+variable         = '#d8dee9'
+parameter        = '#d8dee9'
+property         = '#d8dee9'
+namespace        = '#8fbcbb'
+tag              = '#81a1c1'
+attribute        = '#8fbcbb'
 )foo";
 
 static std::string theme_solarized_dark_conf =
@@ -151,6 +201,31 @@ common_line         = { fg = '#839496', bg = '#002b36', attr = [] }
 common_line_number  = { fg = '#586e75', bg = '#002b36', attr = [] }
 frame               = { fg = '#586e75', bg = '#002b36', attr = [] }
 empty_cell          = { fg = '#586e75', bg = '#002b36', attr = [] }
+
+# Syntax palette (tree-sitter groups). Omitted groups fall back to the built-in
+# default for the theme's light/dark.
+[syntax]
+comment          = '#586e75'
+keyword          = '#859900'
+operator         = '#859900'
+punctuation      = '#839496'
+string           = '#2aa198'
+escape           = '#dc322f'
+number           = '#d33682'
+boolean          = '#b58900'
+constant         = '#d33682'
+constant_builtin = '#cb4b16'
+function         = '#268bd2'
+method           = '#268bd2'
+constructor      = '#b58900'
+type             = '#b58900'
+type_builtin     = '#b58900'
+variable         = '#268bd2'
+parameter        = '#268bd2'
+property         = '#268bd2'
+namespace        = '#b58900'
+tag              = '#268bd2'
+attribute        = '#93a1a1'
 )foo";
 
 static std::string theme_github_light_conf =
@@ -181,6 +256,31 @@ common_line         = { fg = '#1f2328', bg = '#ffffff', attr = [] }
 common_line_number  = { fg = '#6e7781', bg = '#ffffff', attr = [] }
 frame               = { fg = '#d0d7de', bg = '#ffffff', attr = [] }
 empty_cell          = { fg = '#6e7781', bg = '#ffffff', attr = [] }
+
+# Syntax palette (tree-sitter groups). Omitted groups fall back to the built-in
+# default for the theme's light/dark.
+[syntax]
+comment          = '#6e7781'
+keyword          = '#cf222e'
+operator         = '#0550ae'
+punctuation      = '#1f2328'
+string           = '#0a3069'
+escape           = '#0a3069'
+number           = '#0550ae'
+boolean          = '#0550ae'
+constant         = '#0550ae'
+constant_builtin = '#0550ae'
+function         = '#8250df'
+method           = '#8250df'
+constructor      = '#8250df'
+type             = '#8250df'
+type_builtin     = '#cf222e'
+variable         = '#953800'
+parameter        = '#1f2328'
+property         = '#953800'
+namespace        = '#8250df'
+tag              = '#116329'
+attribute        = '#0550ae'
 )foo";
 
 enum class ConfigVariableType {
