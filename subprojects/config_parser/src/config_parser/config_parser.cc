@@ -578,8 +578,15 @@ diffy::cfg_parse(const std::string& input_data,
 
                 switch (scope_stack.top()) {
                     case Scope::Section: {
+                        // Another key in the section, or the section ends here. A
+                        // "[section]" header right after an inline-table value (e.g.
+                        // a [style] of { ... } entries followed by [syntax]) has to
+                        // start a new section — without the OpenBracket case it fell
+                        // through to Finish and silently dropped everything after it.
                         PARSER_TRANSITION_TO(TokenId_Identifier, State::ParseKey);
                         emit_ins(TbInstruction::TableEnd());
+                        scope_stack.pop();
+                        PARSER_TRANSITION_TO(TokenId_OpenBracket, State::ParseSection);
                     } break;
                     case Scope::Table: {
                         PARSER_JUMP(next_state);

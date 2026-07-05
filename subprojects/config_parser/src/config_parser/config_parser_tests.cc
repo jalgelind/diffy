@@ -377,7 +377,7 @@ TEST_CASE("parser") {
         // dump_instructions(instructions);
 
         // clang-format off
-        REQUIRE(instructions.size() == 27);
+        REQUIRE(instructions.size() == 55);
         REQUIRE(instructions[  0] == TbInstruction::Comment("// comment"));
         REQUIRE(instructions[  1] == TbInstruction::Key("section"));
         REQUIRE(instructions[  2] == TbInstruction::TableStart());
@@ -404,7 +404,35 @@ TEST_CASE("parser") {
         REQUIRE(instructions[ 23] ==     TbInstruction::Comment("// it wasn't"));
         REQUIRE(instructions[ 24] ==   TbInstruction::TableEnd());
         REQUIRE(instructions[ 25] == TbInstruction::TableEnd());
-        REQUIRE(instructions[ 26] == TbInstruction::TableEnd());
+        REQUIRE(instructions[ 26] == TbInstruction::Key("other"));
+        REQUIRE(instructions[ 27] == TbInstruction::TableStart());
+        REQUIRE(instructions[ 28] ==   TbInstruction::Comment("// foreground"));
+        REQUIRE(instructions[ 29] ==   TbInstruction::Key("fg"));
+        REQUIRE(instructions[ 30] ==   TbInstruction::TableStart());
+        REQUIRE(instructions[ 31] ==     TbInstruction::Key("color"));
+        REQUIRE(instructions[ 32] ==     TbInstruction::TableStart());
+        REQUIRE(instructions[ 33] ==       TbInstruction::Key("r"));
+        REQUIRE(instructions[ 34] ==       TbInstruction::Value(0));
+        REQUIRE(instructions[ 35] ==       TbInstruction::Key("g"));
+        REQUIRE(instructions[ 36] ==       TbInstruction::Value(127));
+        REQUIRE(instructions[ 37] ==       TbInstruction::Key("b"));
+        REQUIRE(instructions[ 38] ==       TbInstruction::Value(232));
+        REQUIRE(instructions[ 39] ==     TbInstruction::TableEnd());
+        REQUIRE(instructions[ 40] ==     TbInstruction::Comment("// background"));
+        REQUIRE(instructions[ 41] ==   TbInstruction::TableEnd());
+        REQUIRE(instructions[ 42] ==   TbInstruction::Key("bg"));
+        REQUIRE(instructions[ 43] ==   TbInstruction::TableStart());
+        REQUIRE(instructions[ 44] ==     TbInstruction::Key("color"));
+        REQUIRE(instructions[ 45] ==     TbInstruction::TableStart());
+        REQUIRE(instructions[ 46] ==       TbInstruction::Key("r"));
+        REQUIRE(instructions[ 47] ==       TbInstruction::Value(0));
+        REQUIRE(instructions[ 48] ==       TbInstruction::Key("g"));
+        REQUIRE(instructions[ 49] ==       TbInstruction::Value(127));
+        REQUIRE(instructions[ 50] ==       TbInstruction::Key("b"));
+        REQUIRE(instructions[ 51] ==       TbInstruction::Value(232));
+        REQUIRE(instructions[ 52] ==     TbInstruction::TableEnd());
+        REQUIRE(instructions[ 53] ==   TbInstruction::TableEnd());
+        REQUIRE(instructions[ 54] == TbInstruction::TableEnd());
         // clang-format on
     }
 
