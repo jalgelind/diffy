@@ -75,6 +75,10 @@ struct DiffPipelineOptions {
     bool ignore_whitespace = false;
     bool ignore_line_endings = false;
     bool syntax_highlight = true;  // run tree-sitter highlighting when available
+    // Force the highlight grammar for both sides instead of inferring it from
+    // the file names (the --language / -L equivalent). Accepts anything
+    // language_from_name accepts; empty = auto-detect.
+    std::string force_language;
 };
 
 // Options that only change presentation: flipping one only re-runs build_diff_view.
