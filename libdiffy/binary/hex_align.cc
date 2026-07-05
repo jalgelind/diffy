@@ -119,7 +119,14 @@ hex_align(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b, const HexAlign
     }
 
     // Fine pass: refine each changed region (a maximal run of OnlyA/OnlyB) with
-    // byte-level alignment when it's small enough; otherwise keep it coarse.
+    // byte-level alignment when its DP table fits our budget; otherwise keep it
+    // coarse. The budget is a cell count (so a tall/thin region — a big deletion
+    // against a few added bytes — still refines) plus a per-side ceiling so the
+    // (na+1)*(nb+1) table can't blow up. Both derive from byte_cap, so a square
+    // region up to byte_cap x byte_cap still refines, as before.
+    const uint64_t cap = params.byte_cap;
+    const uint64_t max_cells = cap * cap;
+    const uint64_t hard_side = cap * 16;
     size_t i = 0;
     while (i < coarse.size()) {
         const HexSegKind k = coarse[i].kind;
@@ -168,7 +175,9 @@ hex_align(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b, const HexAlign
             const uint64_t core_bl = bl - suf;
 
             if (core_al > 0 && core_bl > 0) {
-                if (core_al <= params.byte_cap && core_bl <= params.byte_cap) {
+                const bool fits = core_al <= hard_side && core_bl <= hard_side &&
+                                  core_al <= max_cells / core_bl;  // core_bl > 0 here
+                if (fits) {
                     append_byte_aligned(a.data() + as, as, static_cast<size_t>(core_al), b.data() + bs, bs,
                                         static_cast<size_t>(core_bl), out);
                 } else {

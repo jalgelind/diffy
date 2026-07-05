@@ -146,8 +146,9 @@ libdiffy/util/binary_detect.{hpp,cc}     # promoted looks_binary()
 libdiffy/binary/chunker.{hpp,cc}         # Gear/Rabin CDC -> vector<Chunk>
 libdiffy/binary/hex_align.{hpp,cc}       # tiers 1+2 -> HexAlignment
 libdiffy/algorithms/needleman_wunsch.hpp # banded/Hirschberg byte aligner (tier 2)
-libdiffy/output/hex_unified.{hpp,cc}     # mirrors output/unified.cc
-libdiffy/output/hex_column.{hpp,cc}      # mirrors output/column_view.cc
+libdiffy/output/hex_unified.{hpp,cc}     # CLI: unified hex -> ANSI lines
+libdiffy/output/hex_column.{hpp,cc}      # CLI: side-by-side hex -> ANSI lines
+libdiffy/render/hex_view_model.{hpp,cc}  # build_hex_view: HexAlignment -> DiffViewModel (GUI/embedders)
 ```
 
 ## Performance / large files
@@ -195,6 +196,16 @@ libdiffy/output/hex_column.{hpp,cc}      # mirrors output/column_view.cc
 - **Side-by-side auto bytes-per-row** picks the largest multiple of 8 that fits the
   terminal (falling back to the largest count that fits when even 8 won't); `--bytes-per-row`
   overrides. Unified defaults to 16.
+- **Structured render path for embedders.** `render/hex_view_model.hpp` (`build_hex_view`)
+  turns a `HexAlignment` into a `DiffViewModel` — the same model the text diff produces —
+  so a frontend that already renders `DiffViewModel` (the GUI) shows hex diffs with no new
+  rendering code: equal bytes are `SpanStyle::Common`, removed/added bytes are Delete/Insert
+  tokens, offsets ride as leading spans. The CLI keeps its own `hex_unified`/`hex_column`
+  ANSI renderers (golden-locked); the two paths share `hex_align` + `hex_common`. Unifying
+  the CLI onto the view model is a possible later cleanup.
+- **Refinement:** the fine-pass refine gate is a DP-cell budget (`byte_cap²`) with a
+  per-side ceiling, not a flat per-side cap — so a tall/thin changed region (a big deletion
+  against a few added bytes) still byte-refines while table memory stays bounded (~byte_cap²).
 - **mmap is implemented** via `util/mapped_file.hpp` (`FileBytes`): regular files ≥ 64 KiB
   are memory-mapped (POSIX); small files, non-regular inputs (FIFOs, `/dev/null` from git
   difftool), Windows, and any mmap failure fall back to a plain read. The hex pipeline

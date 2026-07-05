@@ -13,6 +13,7 @@ add_library(diffy_core STATIC
   binary/hex_align.cc
   render/diff_view_model.cc
   render/diff_pipeline.cc
+  render/hex_view_model.cc
   highlight/highlight_group.cc
   highlight/highlight_palette.cc
   highlight/language.cc

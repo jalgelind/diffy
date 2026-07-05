@@ -71,6 +71,11 @@ FileBytes::load(const std::string& path) {
             void* p = mmap(nullptr, len, PROT_READ, MAP_PRIVATE, fd, 0);
             close(fd);
             if (p != MAP_FAILED) {
+#if defined(MADV_SEQUENTIAL)
+                // We scan the bytes front-to-back (chunker, memcmp); hint the
+                // kernel to read ahead. Best-effort — ignore failure.
+                madvise(p, len, MADV_SEQUENTIAL);
+#endif
                 map_base_ = p;
                 map_len_ = len;
                 data_ = static_cast<const uint8_t*>(p);
