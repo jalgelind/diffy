@@ -13,3 +13,60 @@
 [submodule "subprojects/platform_folders"]
 	path = subprojects/platform_folders
 	url = https://github.com/sago007/PlatformFolders.git
+[submodule "subprojects/tree-sitter"]
+	path = subprojects/tree-sitter
+	url = https://github.com/tree-sitter/tree-sitter.git
+[submodule "subprojects/tree-sitter-c"]
+	path = subprojects/tree-sitter-c
+	url = https://github.com/tree-sitter/tree-sitter-c.git
+[submodule "subprojects/tree-sitter-cpp"]
+	path = subprojects/tree-sitter-cpp
+	url = https://github.com/tree-sitter/tree-sitter-cpp.git
+[submodule "subprojects/tree-sitter-go"]
+	path = subprojects/tree-sitter-go
+	url = https://github.com/tree-sitter/tree-sitter-go.git
+[submodule "subprojects/tree-sitter-rust"]
+	path = subprojects/tree-sitter-rust
+	url = https://github.com/tree-sitter/tree-sitter-rust.git
+[submodule "subprojects/tree-sitter-java"]
+	path = subprojects/tree-sitter-java
+	url = https://github.com/tree-sitter/tree-sitter-java.git
+[submodule "subprojects/tree-sitter-python"]
+	path = subprojects/tree-sitter-python
+	url = https://github.com/tree-sitter/tree-sitter-python.git
+[submodule "subprojects/tree-sitter-javascript"]
+	path = subprojects/tree-sitter-javascript
+	url = https://github.com/tree-sitter/tree-sitter-javascript.git
+[submodule "subprojects/tree-sitter-typescript"]
+	path = subprojects/tree-sitter-typescript
+	url = https://github.com/tree-sitter/tree-sitter-typescript.git
+[submodule "subprojects/tree-sitter-ruby"]
+	path = subprojects/tree-sitter-ruby
+	url = https://github.com/tree-sitter/tree-sitter-ruby.git
+[submodule "subprojects/tree-sitter-bash"]
+	path = subprojects/tree-sitter-bash
+	url = https://github.com/tree-sitter/tree-sitter-bash.git
+[submodule "subprojects/tree-sitter-c-sharp"]
+	path = subprojects/tree-sitter-c-sharp
+	url = https://github.com/tree-sitter/tree-sitter-c-sharp.git
+[submodule "subprojects/tree-sitter-html"]
+	path = subprojects/tree-sitter-html
+	url = https://github.com/tree-sitter/tree-sitter-html.git
+[submodule "subprojects/tree-sitter-css"]
+	path = subprojects/tree-sitter-css
+	url = https://github.com/tree-sitter/tree-sitter-css.git
+[submodule "subprojects/tree-sitter-lua"]
+	path = subprojects/tree-sitter-lua
+	url = https://github.com/tree-sitter-grammars/tree-sitter-lua.git
+[submodule "subprojects/tree-sitter-toml"]
+	path = subprojects/tree-sitter-toml
+	url = https://github.com/ikatyang/tree-sitter-toml.git
+[submodule "subprojects/tree-sitter-cmake"]
+	path = subprojects/tree-sitter-cmake
+	url = https://github.com/uyha/tree-sitter-cmake.git
+[submodule "subprojects/tree-sitter-markdown"]
+	path = subprojects/tree-sitter-markdown
+	url = https://github.com/tree-sitter-grammars/tree-sitter-markdown.git
+[submodule "subprojects/tree-sitter-json"]
+	path = subprojects/tree-sitter-json
+	url = https://github.com/tree-sitter/tree-sitter-json.git
