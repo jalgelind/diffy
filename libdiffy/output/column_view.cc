@@ -1,8 +1,8 @@
 #include "column_view.hpp"
 
+#include "highlight/highlight_palette.hpp"
 #include "processing/diff_hunk.hpp"
 #include "processing/diff_hunk_annotate.hpp"
-#include "util/tty.hpp"
 #include "util/utf8decode.hpp"
 
 #include <fcntl.h>
@@ -28,7 +28,7 @@ struct DisplayCommand {
 
     static DisplayCommand
     with_style(std::string style, std::string text) {
-        return DisplayCommand{.style = style, .text = text};
+        return DisplayCommand{.style = std::move(style), .text = std::move(text)};
     }
 };
 
@@ -49,7 +49,63 @@ struct DisplayLineSegment {
     int64_t text_len;
     TokenFlag flags;
     EditType type;
+    HighlightGroup syntax = HighlightGroup::None;
 };
+
+// Truecolor SGR foreground for a syntax group (dark palette). Empty for None.
+// Escapes carry no display width, so adding them never disturbs alignment.
+std::string
+syntax_fg(HighlightGroup group) {
+    if (group == HighlightGroup::None) {
+        return "";
+    }
+    const HlRgb c = syntax_color(group, /*light=*/false);
+    return fmt::format("\033[38;2;{};{};{}m", c.r, c.g, c.b);
+}
+
+// Append `text` (whose first byte sits at line column `base_col`) to `out`,
+// split at the boundaries of the line's syntax-highlight runs so each piece
+// carries one HighlightGroup. With no runs it appends a single None segment.
+void
+push_text_segments(std::vector<DisplayLineSegment>& out,
+                   const std::string& text,
+                   uint32_t base_col,
+                   TokenFlag flags,
+                   EditType type,
+                   const std::vector<HighlightRun>* runs) {
+    auto emit = [&](uint32_t a, uint32_t b, HighlightGroup g) {
+        if (b <= a) {
+            return;
+        }
+        std::string piece = text.substr(a - base_col, b - a);
+        out.push_back({piece, utf8_len(piece), flags, type, g});
+    };
+    if (!runs) {
+        emit(base_col, base_col + static_cast<uint32_t>(text.size()), HighlightGroup::None);
+        return;
+    }
+    const uint32_t seg_start = base_col;
+    const uint32_t seg_end = base_col + static_cast<uint32_t>(text.size());
+    uint32_t pos = seg_start;
+    for (const auto& r : *runs) {
+        if (r.end <= seg_start) {
+            continue;
+        }
+        if (r.start >= seg_end) {
+            break;
+        }
+        const uint32_t rs = r.start > seg_start ? r.start : seg_start;
+        const uint32_t re = r.end < seg_end ? r.end : seg_end;
+        if (rs > pos) {
+            emit(pos, rs, HighlightGroup::None);
+        }
+        emit(rs, re, r.group);
+        pos = re;
+    }
+    if (pos < seg_end) {
+        emit(pos, seg_end, HighlightGroup::None);
+    }
+}
 
 struct DisplayLine {
     std::vector<DisplayLineSegment> segments;
@@ -147,13 +203,15 @@ make_display_line_wrapped(const DisplayLine& input_line, int64_t limit) {
 DisplayLine
 transform_edit_line(const gsl::span<diffy::Line>& content_strings,
                     const EditLine& edit_line,
-                    const ColumnViewState config) {
+                    const ColumnViewState& config,
+                    const std::vector<HighlightRun>* runs) {
     DisplayLine display_line;
     display_line.line_number = static_cast<int>(edit_line.line_index + 1);
     display_line.type = edit_line.type;
 
     for (const auto& segment : edit_line.segments) {
         std::string text;
+        bool plain = false;  // verbatim source text (eligible for syntax splitting)
         if (segment.type != EditType::Common) {
             if (segment.flags & TokenFlagTab) {
                 for (size_t i = 0; i < segment.length; i++)
@@ -173,6 +231,7 @@ transform_edit_line(const gsl::span<diffy::Line>& content_strings,
             } else {
                 auto idx = static_cast<long>(edit_line.line_index);
                 text = content_strings[idx].line.substr(segment.start, segment.length);
+                plain = true;
             }
         } else {
             if (segment.flags & TokenFlagTab) {
@@ -190,15 +249,24 @@ transform_edit_line(const gsl::span<diffy::Line>& content_strings,
             } else {
                 auto idx = static_cast<long>(edit_line.line_index);
                 text = content_strings[idx].line.substr(segment.start, segment.length);
+                plain = true;
             }
         }
 
-        display_line.segments.push_back({
-            text,
-            utf8_len(text),
-            segment.flags,
-            segment.type,
-        });
+        // Only unchanged (Common) verbatim text gets syntax colours; changed
+        // tokens keep their add/remove emphasis. Whitespace markers stay plain.
+        if (plain && runs && segment.type == EditType::Common) {
+            push_text_segments(display_line.segments, text, segment.start, segment.flags, segment.type,
+                               runs);
+        } else {
+            display_line.segments.push_back({
+                text,
+                utf8_len(text),
+                segment.flags,
+                segment.type,
+                HighlightGroup::None,
+            });
+        }
     }
 
     display_line.line_length = std::accumulate(
@@ -211,10 +279,11 @@ transform_edit_line(const gsl::span<diffy::Line>& content_strings,
 std::vector<DisplayLine>
 make_display_lines(const gsl::span<diffy::Line>& content_strings,
                    const EditLine& line,
-                   const ColumnViewState& config) {
+                   const ColumnViewState& config,
+                   const std::vector<HighlightRun>* runs) {
 
     // TODO: So... this is the one that works on line level...
-    DisplayLine display_line = transform_edit_line(content_strings, line, config);
+    DisplayLine display_line = transform_edit_line(content_strings, line, config, runs);
 
     if (!config.settings.word_wrap) {
         return make_display_line_chopped(display_line, config.max_row_length);
@@ -302,7 +371,7 @@ color_code_file_permissions(const std::string& delete_style,
                 // Reset the style in case we enable any attributes that isn't set in the normal style
                 styled_left += delete_style + left[i] + "\033[0m" + normal_style;
              }
-            styled_right += insert_style + right[i] + + "\033[0m" + normal_style;
+            styled_right += insert_style + right[i] + "\033[0m" + normal_style;
         } else {
             styled_left += left[i];
             styled_right += right[i];
@@ -393,8 +462,12 @@ make_header_columns(const std::string& left_name,
     auto a = shorten(left_name, left_perm_width + num_extra_perm_chars);
     auto b = shorten(right_name, right_perm_width + num_extra_perm_chars);
 
-    auto alen = utf8_len(a) + left_perm_width + num_extra_perm_chars;
-    auto blen = utf8_len(b) + right_perm_width + num_extra_perm_chars;
+    // Display width of the header cell. Count the permission suffix only when it
+    // is actually appended below. Otherwise an added/deleted file (empty name +
+    // no permissions) over-counts by the reserved perm width, so the cell renders
+    // too short and the column separator shifts left for that header row.
+    auto alen = utf8_len(a);
+    auto blen = utf8_len(b);
 
     const auto &[left_perm_color, right_perm_color] = color_code_file_permissions(
         config.style.delete_token,
@@ -405,10 +478,12 @@ make_header_columns(const std::string& left_name,
 
     if (!left_perm_color.empty()) {
         a += fmt::format(" ({})", left_perm_color);
+        alen += left_perm_width + num_extra_perm_chars;
     }
 
     if (!right_perm_color.empty()) {
         b += fmt::format(" ({})", right_perm_color);
+        blen += right_perm_width + num_extra_perm_chars;
     }
 
     col_left.push_back({DisplayLine{{{config.style.header + a + "\033[0m", alen, 0, EditType::Meta}}, alen}});
@@ -417,35 +492,22 @@ make_header_columns(const std::string& left_name,
     return {{ col_left, col_right }};
 }
 
-std::vector<DisplayColumns>
-make_display_columns(const DiffInput<diffy::Line>& diff_input,
-                     const std::vector<AnnotatedHunk>& hunks,
-                     const ColumnViewState& config,
-                     const ProgramOptions& options) {
-    std::vector<DisplayColumns> hunk_columns;
-
-    std::string a_title = diff_input.A_name;
-    auto a_permissions = options.left_file_permissions;
-    std::string b_title = diff_input.B_name;
-    auto b_permissions = options.right_file_permissions;
-
-    for (const auto& column : make_header_columns(a_title, a_permissions, b_title, b_permissions, config)) {
-        hunk_columns.push_back(column);
-    }
-
-    if (hunks.empty()) {
-        // TODO: output a descriptive message mentioning that the files differ in permissions?
-        //       there might also be other issues:
-        //         * ?
-        // TODO: would be nice to support borders and customization of the empty space between hunks
-        // TODO: some hunk context? maybe iterate up until line avg(indentation of changed lines) < something above it
-        return hunk_columns;
-    }
-
-    auto make_rows = [&config](const auto& content_strings, const auto& lines) {
+// Build the display rows for a single hunk: both panes, aligned and padded.
+DisplayColumns
+make_hunk_columns(const DiffInput<diffy::Line>& diff_input,
+                  const AnnotatedHunk& hunk,
+                  const ColumnViewState& config,
+                  const LineHighlights* a_highlights,
+                  const LineHighlights* b_highlights) {
+    auto make_rows = [&config](const auto& content_strings, const auto& lines,
+                               const LineHighlights* hl) {
         std::vector<DisplayLine> rows;
         for (const auto& line : lines) {
-            const auto& display_lines = make_display_lines(content_strings, line, config);
+            const std::vector<HighlightRun>* runs = nullptr;
+            if (hl && line.line_index < hl->size() && !(*hl)[line.line_index].empty()) {
+                runs = &(*hl)[line.line_index];
+            }
+            const auto& display_lines = make_display_lines(content_strings, line, config, runs);
             for (const auto& display_line : display_lines) {
                 rows.push_back(display_line);
             }
@@ -454,209 +516,234 @@ make_display_columns(const DiffInput<diffy::Line>& diff_input,
         if (rows.empty()) {
             // Empty line between hunks
             // TODO(ja): doesn't work
-            //std::string squiggles = "﹏﹏﹏﹏﹏﹏";
-            //DisplayLine squiggly_line {{{squiggles, utf8_len(squiggles), 0, EditType::Meta}}, utf8_len(squiggles)};
-            //rows.push_back(squiggly_line);
-            rows.push_back(DisplayLine {});
+            rows.push_back(DisplayLine{});
         }
 
         return rows;
     };
 
-    for (const auto& hunk : hunks) {
-        DisplayColumns columns{
-            make_rows(diff_input.A, hunk.a_lines),
-            make_rows(diff_input.B, hunk.b_lines),
-        };
+    DisplayColumns columns{
+        make_rows(diff_input.A, hunk.a_lines, a_highlights),
+        make_rows(diff_input.B, hunk.b_lines, b_highlights),
+    };
 
-        insert_alignment_rows(columns);
+    insert_alignment_rows(columns);
 
-        // @cleanup
-        auto diff = static_cast<int64_t>(columns[0].size()) - static_cast<int64_t>(columns[1].size());
+    // @cleanup
+    auto diff = static_cast<int64_t>(columns[0].size()) - static_cast<int64_t>(columns[1].size());
 
-        if (diff < 0) {
-            for (int i = 0; i < -diff; i++) {
-                columns[0].push_back({});
-            }
-        } else if (diff > 0) {
-            for (int i = 0; i < diff; i++) {
-                columns[1].push_back({});
-            }
+    if (diff < 0) {
+        for (int i = 0; i < -diff; i++) {
+            columns[0].push_back({});
         }
-
-        assert(columns[0].size() == columns[1].size());
-
-        hunk_columns.push_back(columns);
+    } else if (diff > 0) {
+        for (int i = 0; i < diff; i++) {
+            columns[1].push_back({});
+        }
     }
 
-    return hunk_columns;
+    assert(columns[0].size() == columns[1].size());
+
+    return columns;
 }
 
-// Transform the segments into a list of display commands, i.e "set color", "write text"
+// The base style (background tint) for a whole row of the given edit type.
+// Used for padding and as the layer under each body segment, so an inverted
+// theme fills the full column width with the line's own color. Returns "" for
+// the historical fg-only themes (delete_line/insert_line/common_line unset),
+// keeping output byte-identical for them.
+const std::string&
+line_style(const ColumnViewState& config, EditType type) {
+    switch (type) {
+        case EditType::Insert:
+            return config.style.insert_line;
+        case EditType::Delete:
+            return config.style.delete_line;
+        case EditType::Common:
+            return config.style.common_line;
+        default:
+            return config.style.empty_cell;
+    }
+}
+
+// Transform the segments into a list of display commands, i.e "set color", "write text".
+// Each segment is painted with the line's base style (its background) and, for changed
+// tokens, the token style layered on top — so token highlights sit over the line tint
+// rather than clearing it back to the terminal default.
 void
 render_display_line(const ColumnViewState& config,
                     std::vector<DisplayCommand>* output,
                     const DisplayLine& line) {
+    // Compose the layered token styles once per line, not once per segment: the
+    // line's base tint with the token style on top, so highlights sit over the
+    // tint instead of clearing it.
+    const std::string& base = line_style(config, line.type);
+    const std::string insert_style = base + config.style.insert_token;
+    const std::string delete_style = base + config.style.delete_token;
     for (const auto& segment : line.segments) {
-        std::string style = "";
         switch (segment.type) {
             case EditType::Insert:
-                style = config.style.insert_token;
+                output->push_back(DisplayCommand::with_style(insert_style, segment.text));
                 break;
             case EditType::Delete:
-                style = config.style.delete_token;
+                output->push_back(DisplayCommand::with_style(delete_style, segment.text));
                 break;
-            case EditType::Common:
-                style = config.style.common_line;
-                break;
-            case EditType::Meta:
-                // TODO: We need DisplayType or something, "Meta" is a hack that doesn't scale
-                // style = config.style.header;
-                break;
+            // Common (unchanged) and Meta segments keep the line's own background,
+            // with the syntax-highlight foreground layered on top when present.
+            // TODO: "Meta" is a hack that doesn't scale; it needs its own DisplayType.
             default:
+                output->push_back(DisplayCommand::with_style(base + syntax_fg(segment.syntax), segment.text));
                 break;
         }
-        output->push_back(DisplayCommand::with_style(style, segment.text));
     }
 }
 
-void
-print_display_columns_tty(const std::vector<DisplayColumns>& rows, const ColumnViewState& config) {
-    auto print_display_lines = [](const DisplayLine& left, const DisplayLine& right,
-                                  const ColumnViewState& config) {
-        std::vector<DisplayCommand> display_commands;
+// Render one left/right row pair into a single styled string.
+std::string
+render_display_line_pair(const DisplayLine& left, const DisplayLine& right, const ColumnViewState& config) {
+    std::vector<DisplayCommand> display_commands;
 
-        // color stack? do we have the line meta data somewhere here to decide if we should
-        // push header_background or content_background?
+    // color stack? do we have the line meta data somewhere here to decide if we should
+    // push header_background or content_background?
 
-        // Left side
-        display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell,
-            config.chars.edge_separator));
-        if (config.settings.show_line_numbers) {
-            std::string style = "";
-            if (config.settings.context_colored_line_numbers) {
-                switch (left.type) {
-                    case EditType::Insert:
-                        style = config.style.insert_line_number;
-                        break;
-                    case EditType::Delete:
-                        style = config.style.delete_line_number;
-                        break;
-                    case EditType::Common:
-                        style = config.style.common_line_number;
-                        break;
-                    case EditType::Meta:
-                        style = config.style.empty_cell;
-                        break;
-                    default:
-                        break;
-                }
-            }
-            display_commands.push_back(DisplayCommand::with_style(
-                style, format_line_number(left.line_number, config.line_number_digits_count,
-                                          config.settings.line_number_align_right)));
-            display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell, " "));
-        }
-
-        render_display_line(config, &display_commands, left);
-        assert(config.max_row_length >= left.line_length);
-
-        display_commands.push_back(DisplayCommand::with_style(
-            config.style.common_line, std::string(config.max_row_length - left.line_length, ' ')));
-
-        // Middle
+    // Left side
+    display_commands.push_back(
+        DisplayCommand::with_style(config.style.empty_cell, config.chars.edge_separator));
+    if (config.settings.show_line_numbers) {
+        // Fall back to the row's base style (not "") so the number cell still
+        // carries a background under an inverted theme when not context-colored.
+        std::string style = line_style(config, left.type);
         if (config.settings.context_colored_line_numbers) {
-            display_commands.push_back(
-                DisplayCommand::with_style(config.style.frame, config.chars.column_separator));
-        } else {
-            display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell,
-                config.chars.column_separator));
-        }
-
-        // Right side
-
-        if (config.settings.show_line_numbers) {
-            std::string style = "";
-            if (config.settings.context_colored_line_numbers) {
-                switch (right.type) {
-                    case EditType::Insert:
-                        style = config.style.insert_line_number;
-                        break;
-                    case EditType::Delete:
-                        style = config.style.delete_line_number;
-                        break;
-                    case EditType::Common:
-                        style = config.style.common_line_number;
-                        break;
-                    case EditType::Meta:
-                        style = config.style.empty_cell;
-                        break;
-                    default:
-                        break;
-                }
+            switch (left.type) {
+                case EditType::Insert:
+                    style = config.style.insert_line_number;
+                    break;
+                case EditType::Delete:
+                    style = config.style.delete_line_number;
+                    break;
+                case EditType::Common:
+                    style = config.style.common_line_number;
+                    break;
+                case EditType::Meta:
+                    style = config.style.empty_cell;
+                    break;
+                default:
+                    break;
             }
-            display_commands.push_back(DisplayCommand::with_style(
-                style, format_line_number(right.line_number, config.line_number_digits_count,
-                                          config.settings.line_number_align_right)));
-            display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell, " "));
         }
-
-        render_display_line(config, &display_commands, right);
-        assert(config.max_row_length >= right.line_length);
-
         display_commands.push_back(DisplayCommand::with_style(
-            config.style.common_line, std::string(config.max_row_length - right.line_length, ' ')));
+            style, format_line_number(left.line_number, config.line_number_digits_count,
+                                      config.settings.line_number_align_right)));
+        display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell, " "));
+    }
 
-        display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell,
-            config.chars.edge_separator));
+    render_display_line(config, &display_commands, left);
+    assert(config.max_row_length >= left.line_length);
 
-        std::string full;
-        for (auto& command : display_commands) {
-            if (command.style.empty()) {
-                full += command.text;
-            } else {
-                full += command.style + command.text + "\033[0m";
+    // Pad with the row's own style so a delete/insert highlight spans the full
+    // column width, not just the text.
+    display_commands.push_back(DisplayCommand::with_style(
+        line_style(config, left.type), std::string(config.max_row_length - left.line_length, ' ')));
+
+    // Middle
+    if (config.settings.context_colored_line_numbers) {
+        display_commands.push_back(
+            DisplayCommand::with_style(config.style.frame, config.chars.column_separator));
+    } else {
+        display_commands.push_back(
+            DisplayCommand::with_style(config.style.empty_cell, config.chars.column_separator));
+    }
+
+    // Right side
+
+    if (config.settings.show_line_numbers) {
+        // Fall back to the row's base style (not "") so the number cell still
+        // carries a background under an inverted theme when not context-colored.
+        std::string style = line_style(config, right.type);
+        if (config.settings.context_colored_line_numbers) {
+            switch (right.type) {
+                case EditType::Insert:
+                    style = config.style.insert_line_number;
+                    break;
+                case EditType::Delete:
+                    style = config.style.delete_line_number;
+                    break;
+                case EditType::Common:
+                    style = config.style.common_line_number;
+                    break;
+                case EditType::Meta:
+                    style = config.style.empty_cell;
+                    break;
+                default:
+                    break;
             }
         }
-        puts(full.c_str());
-    };  // print_display_lines
+        display_commands.push_back(DisplayCommand::with_style(
+            style, format_line_number(right.line_number, config.line_number_digits_count,
+                                      config.settings.line_number_align_right)));
+        display_commands.push_back(DisplayCommand::with_style(config.style.empty_cell, " "));
+    }
 
-    for (const auto& columns : rows) {
-        const auto& left = columns[0];
-        const auto& right = columns[1];
-        auto max_idx = std::max(left.size(), right.size());
-        for (size_t idx = 0; idx < max_idx; idx++) {
-            print_display_lines(left[idx], right[idx], config);
+    render_display_line(config, &display_commands, right);
+    assert(config.max_row_length >= right.line_length);
+
+    // Pad with the row's own style so a delete/insert highlight spans the full
+    // column width, not just the text.
+    display_commands.push_back(DisplayCommand::with_style(
+        line_style(config, right.type), std::string(config.max_row_length - right.line_length, ' ')));
+
+    display_commands.push_back(
+        DisplayCommand::with_style(config.style.empty_cell, config.chars.edge_separator));
+
+    // A single base background, painted under every cell, lets a fully inverted
+    // theme be expressed with one key; per-cell styles layer on top. Empty when
+    // unset, so default (fg-only) themes stay byte-identical.
+    const std::string& background = config.style.background;
+
+    std::string full;
+    for (const auto& command : display_commands) {
+        if (command.style.empty() && background.empty()) {
+            full += command.text;
+        } else {
+            full += background;
+            full += command.style;
+            full += command.text;
+            full += "\033[0m";
         }
-        // Empty line between hunks.
-        // TODO(ja): doesn't work
-        if (columns.empty()) {
-            DisplayLine dl;
-            print_display_lines(dl, dl, config);
-        }
+    }
+    return full;
+}
+
+// Render every visual row of one DisplayColumns, handing each to `emit`.
+template <typename Emit>
+void
+emit_columns(const DisplayColumns& columns, const ColumnViewState& config, Emit& emit) {
+    const auto& left = columns[0];
+    const auto& right = columns[1];
+    auto max_idx = std::max(left.size(), right.size());
+    for (size_t idx = 0; idx < max_idx; idx++) {
+        emit(render_display_line_pair(left[idx], right[idx], config));
+    }
+    // Empty line between hunks.
+    // TODO(ja): doesn't work
+    if (columns.empty()) {
+        DisplayLine dl;
+        emit(render_display_line_pair(dl, dl, config));
     }
 }
-}  // namespace
 
+// Render the column view one hunk at a time, handing each row to `emit`. Peak
+// memory stays bounded to a single hunk rather than the whole diff.
+template <typename Emit>
 void
-diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
-                               const std::vector<AnnotatedHunk>& hunks,
-                               ColumnViewState& config,
-                               const diffy::ProgramOptions& options) {
-    int64_t width = options.width;
-    int dummy_height = 0;
-    if (width == 0) {
-        int tmp_width = 0;
-        tty_get_term_size(&dummy_height, &tmp_width);
-        width = static_cast<int64_t>(tmp_width);
-    }
-
-    // If we fail to figure out the width of the terminal, default to 80.
-    // NOTE: We hit this when running in lldb.
-    if (width == 0) {
-        width = 80;
-    }
-
+column_view_render_streaming(const DiffInput<diffy::Line>& diff_input,
+                             const std::vector<AnnotatedHunk>& hunks,
+                             ColumnViewState& config,
+                             const ProgramOptions& options,
+                             int64_t width,
+                             const LineHighlights* a_highlights,
+                             const LineHighlights* b_highlights,
+                             Emit emit) {
     int64_t frame_characters = 0;
     if (!config.chars.column_separator.empty()) {
         frame_characters += utf8_len(config.chars.column_separator);
@@ -687,7 +774,51 @@ diffy::column_view_diff_render(const DiffInput<diffy::Line>& diff_input,
     if (config.max_row_length < 5)
         config.max_row_length = 5;
 
-    auto display_columns = make_display_columns(diff_input, hunks, config, options);
+    // Header first, then each hunk built, emitted, and freed before the next.
+    for (const auto& column :
+         make_header_columns(diff_input.A_name, options.left_file_permissions, diff_input.B_name,
+                             options.right_file_permissions, config)) {
+        emit_columns(column, config, emit);
+    }
 
-    print_display_columns_tty(display_columns, config);
+    for (const auto& hunk : hunks) {
+        // git-style hunk context: the enclosing definition, shown as a header
+        // line above the hunk. Only emitted when a caller filled it in (e.g. the
+        // CLI after tree-sitter scope analysis), so default output is unchanged.
+        // Painted full-width with the theme background so a light theme doesn't
+        // leave a ragged black tail past the label.
+        if (!hunk.context.empty()) {
+            const int64_t gutter =
+                config.settings.show_line_numbers ? (config.line_number_digits_count + 1) : 0;
+            const int64_t row_width = 2 * config.max_row_length + 2 * gutter +
+                                      utf8_len(config.chars.column_separator) +
+                                      2 * utf8_len(config.chars.edge_separator);
+            std::string label = hunk.context;
+            const int64_t avail = row_width > 2 ? row_width - 2 : 0;
+            if (static_cast<int64_t>(utf8_len(label)) > avail) {
+                label = label.substr(0, utf8_advance_by(label, 0, static_cast<size_t>(avail)));
+            }
+            const std::string visible = "  " + label;
+            const int64_t pad = row_width - static_cast<int64_t>(utf8_len(visible));
+            emit(config.style.background + config.style.frame + visible +
+                 (pad > 0 ? std::string(static_cast<size_t>(pad), ' ') : std::string()) + "\033[0m");
+        }
+        emit_columns(make_hunk_columns(diff_input, hunk, config, a_highlights, b_highlights), config,
+                     emit);
+    }
+}
+}  // namespace
+
+std::vector<std::string>
+diffy::column_view_render_lines(const DiffInput<diffy::Line>& diff_input,
+                                const std::vector<AnnotatedHunk>& hunks,
+                                ColumnViewState& config,
+                                const diffy::ProgramOptions& options,
+                                int64_t width,
+                                const LineHighlights* a_highlights,
+                                const LineHighlights* b_highlights) {
+    std::vector<std::string> out;
+    column_view_render_streaming(diff_input, hunks, config, options, width, a_highlights, b_highlights,
+                                 [&out](std::string line) { out.push_back(std::move(line)); });
+    return out;
 }

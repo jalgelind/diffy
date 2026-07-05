@@ -80,7 +80,9 @@ def collect_test_cases(tests_directory):
 def run_single_crash_test(args, test_group, name, test_case):
     a_orig, b_orig = test_case
     p = Process(f"{args.diff_tool} {args.args} {a_orig} {b_orig}", ".").wait()
-    if p.return_code != 0:
+    # diffy follows `diff`'s exit convention (0 = identical, 1 = differences,
+    # 2 = error); a crash shows up as a negative code (terminating signal).
+    if p.return_code < 0 or p.return_code == 2:
         print(f"  Test '{test_group}/{name}' FAILED to execute properly")
         print(f"    {args.diff_tool} {args.args} {a_orig} {b_orig}")
         print(p.stdout)

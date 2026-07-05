@@ -117,6 +117,7 @@ diffy::compose_hunks(const std::vector<Edit>& edit_sequence, const int64_t conte
         int64_t b_insertion_point = -1;
     };
     std::vector<InsertionPoint> insertion_points;
+    insertion_points.reserve(edit_sequence.size());
     {
         int a_count = 0, b_count = 0;
         for (auto i = 0u; i < edit_sequence.size(); i++) {

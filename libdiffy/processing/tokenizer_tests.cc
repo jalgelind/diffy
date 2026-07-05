@@ -75,3 +75,17 @@ TEST_CASE("tokenizer") {
         REQUIRE(a[6].str_from(line) == "\n");
     }
 }
+
+TEST_CASE("is_whitespace / is_empty") {
+    CHECK(diffy::is_whitespace(' '));
+    CHECK(diffy::is_whitespace('\t'));
+    CHECK(diffy::is_whitespace('\n'));
+    CHECK(diffy::is_whitespace('\r'));
+    CHECK_FALSE(diffy::is_whitespace('a'));
+    CHECK_FALSE(diffy::is_whitespace('-'));
+
+    CHECK(diffy::is_empty(""));
+    CHECK(diffy::is_empty("   \t\r\n"));
+    CHECK_FALSE(diffy::is_empty("  x  "));
+    CHECK_FALSE(diffy::is_empty("x"));
+}

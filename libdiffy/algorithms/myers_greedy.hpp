@@ -3,6 +3,7 @@
 // Greedy version of Myers difference algorithm; O((M+N) D).
 
 #include "algorithm.hpp"
+#include "myers_linear.hpp"
 #include "util/bipolar_array.hpp"
 
 #include <gsl/span>
@@ -43,11 +44,19 @@ struct MyersGreedy : public Algorithm<Unit> {
 
         const int64_t max = N + M;
 
+        // Snapshots cost O(D * (N + M)); bail to linear-space Myers (-2) if the
+        // trace would exceed this budget.
+        constexpr std::size_t kMaxTraceBytes = 256ull * 1024 * 1024;
+        const std::size_t snapshot_bytes = static_cast<std::size_t>(2 * max + 1) * sizeof(IndexSizeType);
+
         trace.reserve(static_cast<std::size_t>(max));
         BipolarArray<IndexSizeType> v{-max, max};
 
         v[1] = 0;
         for (int64_t d = 0; d <= max; d++) {
+            if (static_cast<std::size_t>(trace.size() + 1) * snapshot_bytes > kMaxTraceBytes) {
+                return -2;
+            }
             for (int64_t k = -d; k <= d; k += 2) {
                 int64_t x = 0, y = 0;
                 // Move down, or right.
@@ -136,7 +145,10 @@ struct MyersGreedy : public Algorithm<Unit> {
         std::vector<BipolarArray<IndexSizeType>> trace;
         int64_t edit_distance = do_edit_distance(trace);
 
-        if (edit_distance < 0) {
+        if (edit_distance == -2) {
+            // Trace would exceed the memory budget; fall back to linear-space Myers.
+            return MyersLinear<Unit>{this->diff_input_}.compute();
+        } else if (edit_distance < 0) {
             result.status = DiffResultStatus::Failed;
             return result;
         } else if (edit_distance == 0) {
