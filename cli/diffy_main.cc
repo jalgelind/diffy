@@ -631,6 +631,9 @@ Side by side options:
                         tenv.is_tty = stdout_is_tty();
                         tenv.disabled = opts.image_render == diffy::ImageRenderMode::Never;
                         tenv.force = opts.image_render == diffy::ImageRenderMode::Always;
+                        if (const char* t = std::getenv("TERM")) tenv.term = t;
+                        if (const char* tp = std::getenv("TERM_PROGRAM")) tenv.term_program = tp;
+                        if (const char* kw = std::getenv("KITTY_WINDOW_ID")) tenv.kitty_window_id = kw;
                         const diffy::TermImageProtocol proto = diffy::detect_term_image_protocol(tenv);
 
                         diffy::ImageDiffOptions dopts;
@@ -643,7 +646,7 @@ Side by side options:
                                    info.format, da.width, da.height, r.similarity * 100.0, r.changed_px,
                                    r.total_px);
 
-                        if (proto == diffy::TermImageProtocol::HalfBlock && !r.overlay_rgba.empty()) {
+                        if (proto != diffy::TermImageProtocol::None && !r.overlay_rgba.empty()) {
                             int th = 0, tw = 0;
                             diffy::tty_get_term_size(&th, &tw);
                             if (tw <= 0) tw = 80;
@@ -651,7 +654,7 @@ Side by side options:
                             int rows = th - 2;  // leave room for the summary line
                             if (rows < 1) rows = 1;
                             const std::string art =
-                                diffy::render_halfblock(r.overlay_rgba, r.width, r.height, tw, rows);
+                                diffy::render_term_image(proto, r.overlay_rgba, r.width, r.height, tw, rows);
                             if (!art.empty()) {
                                 fputs(art.c_str(), stdout);
                             }

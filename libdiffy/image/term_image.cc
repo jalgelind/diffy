@@ -4,12 +4,27 @@
 
 #include <fmt/format.h>
 
+// PNG encoding for the iTerm2 payload (single-header, public domain).
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STBI_WRITE_NO_STDIO
+#include "stb_image_write.h"
+
 namespace diffy {
 
 TermImageProtocol
 detect_term_image_protocol(const TermEnv& env) {
     if (env.disabled) {
         return TermImageProtocol::None;
+    }
+    // Crisp protocols only when we're really on that terminal (a query handshake
+    // would be more robust, but env detection covers the common terminals).
+    if (env.is_tty) {
+        if (!env.kitty_window_id.empty() || env.term.find("kitty") != std::string::npos) {
+            return TermImageProtocol::Kitty;
+        }
+        if (env.term_program == "iTerm.app" || env.term_program == "WezTerm") {
+            return TermImageProtocol::ITerm2;
+        }
     }
     if (env.force || env.is_tty) {
         return TermImageProtocol::HalfBlock;  // universal truecolor fallback
@@ -18,6 +33,32 @@ detect_term_image_protocol(const TermEnv& env) {
 }
 
 namespace {
+
+const char kB64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+std::string
+base64(const uint8_t* data, size_t n) {
+    std::string out;
+    out.reserve((n + 2) / 3 * 4);
+    size_t i = 0;
+    for (; i + 3 <= n; i += 3) {
+        const uint32_t v = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
+        out.push_back(kB64[(v >> 18) & 0x3f]);
+        out.push_back(kB64[(v >> 12) & 0x3f]);
+        out.push_back(kB64[(v >> 6) & 0x3f]);
+        out.push_back(kB64[v & 0x3f]);
+    }
+    if (i < n) {
+        const uint32_t b0 = data[i];
+        const uint32_t b1 = (i + 1 < n) ? data[i + 1] : 0;
+        const uint32_t v = (b0 << 16) | (b1 << 8);
+        out.push_back(kB64[(v >> 18) & 0x3f]);
+        out.push_back(kB64[(v >> 12) & 0x3f]);
+        out.push_back((i + 1 < n) ? kB64[(v >> 6) & 0x3f] : '=');
+        out.push_back('=');
+    }
+    return out;
+}
 
 // Box-average downscale of an RGBA8 image to tw x th. (Upscaling isn't needed —
 // callers only ever shrink to fit the terminal.)
@@ -108,6 +149,94 @@ render_halfblock(const std::vector<uint8_t>& rgba, int w, int h, int max_cols, i
         out += "\033[0m\n";
     }
     return out;
+}
+
+namespace {
+
+// Downscale so the longest side is <= max_dim, to bound transmitted data (the
+// terminal scales to `c` cells for display regardless).
+std::vector<uint8_t>
+bound_downscale(const std::vector<uint8_t>& rgba, int w, int h, int max_dim, int& tw, int& th) {
+    const int longest = std::max(w, h);
+    if (longest <= max_dim) {
+        tw = w;
+        th = h;
+        return rgba;
+    }
+    const double s = static_cast<double>(max_dim) / longest;
+    tw = std::max(1, static_cast<int>(w * s));
+    th = std::max(1, static_cast<int>(h * s));
+    return box_downscale(rgba, w, h, tw, th);
+}
+
+void
+png_collect(void* ctx, void* data, int size) {
+    auto* v = static_cast<std::vector<uint8_t>*>(ctx);
+    const uint8_t* p = static_cast<const uint8_t*>(data);
+    v->insert(v->end(), p, p + size);
+}
+
+std::string
+render_kitty(const std::vector<uint8_t>& rgba, int w, int h, int max_cols) {
+    int tw = 0, th = 0;
+    const std::vector<uint8_t> img = bound_downscale(rgba, w, h, 1024, tw, th);
+    const std::string b64 = base64(img.data(), static_cast<size_t>(tw) * th * 4);
+    const int cols = std::min(max_cols, 120);
+
+    std::string out;
+    const size_t chunk = 4096;
+    bool first = true;
+    for (size_t i = 0; i < b64.size(); i += chunk) {
+        const bool more = i + chunk < b64.size();
+        const std::string piece = b64.substr(i, chunk);
+        if (first) {
+            fmt::format_to(std::back_inserter(out), "\033_Ga=T,f=32,s={},v={},c={},m={};{}\033\\", tw, th,
+                           cols, more ? 1 : 0, piece);
+            first = false;
+        } else {
+            fmt::format_to(std::back_inserter(out), "\033_Gm={};{}\033\\", more ? 1 : 0, piece);
+        }
+    }
+    out += "\n";
+    return out;
+}
+
+std::string
+render_iterm2(const std::vector<uint8_t>& rgba, int w, int h, int max_cols) {
+    int tw = 0, th = 0;
+    const std::vector<uint8_t> img = bound_downscale(rgba, w, h, 1024, tw, th);
+    std::vector<uint8_t> png;
+    if (!stbi_write_png_to_func(png_collect, &png, tw, th, 4, img.data(), tw * 4) || png.empty()) {
+        return "";
+    }
+    const std::string b64 = base64(png.data(), png.size());
+    const int cols = std::min(max_cols, 120);
+    std::string out;
+    fmt::format_to(std::back_inserter(out),
+                   "\033]1337;File=inline=1;width={};preserveAspectRatio=1;size={}:{}\a\n", cols,
+                   png.size(), b64);
+    return out;
+}
+
+}  // namespace
+
+std::string
+render_term_image(TermImageProtocol protocol, const std::vector<uint8_t>& rgba, int w, int h,
+                  int max_cols, int max_rows) {
+    if (w <= 0 || h <= 0 || rgba.size() < static_cast<size_t>(w) * h * 4) {
+        return "";
+    }
+    switch (protocol) {
+        case TermImageProtocol::HalfBlock:
+            return render_halfblock(rgba, w, h, max_cols, max_rows);
+        case TermImageProtocol::Kitty:
+            return render_kitty(rgba, w, h, max_cols);
+        case TermImageProtocol::ITerm2:
+            return render_iterm2(rgba, w, h, max_cols);
+        case TermImageProtocol::None:
+            break;
+    }
+    return "";
 }
 
 }  // namespace diffy
