@@ -60,6 +60,46 @@ TEST_CASE("render_halfblock emits well-formed truecolor half-block lines") {
     CHECK(count(art, "\033[0m") == 4);
 }
 
+TEST_CASE("detect_term_image_protocol picks kitty / iTerm2 from env") {
+    TermEnv e;
+    e.is_tty = true;
+    e.kitty_window_id = "1";
+    CHECK(detect_term_image_protocol(e) == TermImageProtocol::Kitty);
+
+    e = {};
+    e.is_tty = true;
+    e.term = "xterm-kitty";
+    CHECK(detect_term_image_protocol(e) == TermImageProtocol::Kitty);
+
+    e = {};
+    e.is_tty = true;
+    e.term_program = "iTerm.app";
+    CHECK(detect_term_image_protocol(e) == TermImageProtocol::ITerm2);
+
+    e = {};
+    e.is_tty = true;
+    e.term = "xterm-256color";  // plain terminal -> half-block
+    CHECK(detect_term_image_protocol(e) == TermImageProtocol::HalfBlock);
+}
+
+TEST_CASE("render_term_image kitty/iTerm2 emit well-formed payloads") {
+    const auto img = solid(6, 6, 10, 200, 40);
+
+    const std::string k = render_term_image(TermImageProtocol::Kitty, img, 6, 6, 40, 20);
+    REQUIRE_FALSE(k.empty());
+    CHECK(k.rfind("\033_G", 0) == 0);                    // kitty APC intro
+    CHECK(k.find("a=T,f=32") != std::string::npos);      // transmit+display, RGBA
+    CHECK(k.find("\033\\") != std::string::npos);        // APC terminator
+
+    const std::string it = render_term_image(TermImageProtocol::ITerm2, img, 6, 6, 40, 20);
+    REQUIRE_FALSE(it.empty());
+    CHECK(it.rfind("\033]1337;File=", 0) == 0);          // iTerm2 OSC 1337
+    CHECK(it.find("inline=1") != std::string::npos);
+    CHECK(it.back() == '\n');
+
+    CHECK(render_term_image(TermImageProtocol::None, img, 6, 6, 40, 20).empty());
+}
+
 TEST_CASE("render_halfblock fits within the cell budget and rejects bad input") {
     const auto img = solid(100, 100, 10, 20, 30);
     const std::string art = render_halfblock(img, 100, 100, 10, 5);
