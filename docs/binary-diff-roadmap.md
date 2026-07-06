@@ -66,6 +66,17 @@ Impact is relative to a real user diffing a binary.
   regions; most diffs have one, so low priority.
 
 ### GUI
+- **G5 — Always show the full ASCII column (S, high).** In the GUI the hex row is
+  `offset + 16 hex bytes + |ascii|` rendered with wrapping off, so on a narrow
+  pane the ASCII gutter sits past the right edge behind horizontal scroll. Fix:
+  pass the pane width (`wrap_cols`, already in scope at the `build_hex_row_model`
+  call in `relayout`) down and auto-pick bytes-per-row = the largest multiple of 8
+  whose full row (offset+hex+ascii) fits — exactly what the CLI side-by-side
+  renderer already does via `hex_column`'s width fit, and what `build_hex_view`
+  already supports through its `bytes_per_row` param. The row then always fits with
+  no horizontal scroll, so the ASCII column is always visible; it reflows on
+  resize (relayout re-runs). Optional follow-up: cache the `HexAlignment` per file
+  so a resize only re-renders rows instead of re-aligning.
 - **G1 — Background large hex diffs (M, high).** Route hex through the same
   off-thread path as text (or a size threshold) so big binaries don't freeze the
   UI. Pairs with P1/P3 (which shrink the cost in the first place).
