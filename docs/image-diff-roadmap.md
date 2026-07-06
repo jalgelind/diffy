@@ -103,8 +103,14 @@ extension hint:
   reused by the GUI.
 - **I2 — GUI visual diff (M, high).** 2-up + difference overlay via
   `SharedPixelBuffer`. Highest user value, and Slint makes it cheap.
-- **I3 — Terminal image output (L).** One protocol via detection (or vendor chafa)
-  + Unicode fallback; render overlay, 2-up when dimensions differ.
+- **I3 — Terminal image output (L). PARTIAL: half-block shipped.** The universal
+  Unicode upper-half-block renderer (`image/term_image`) + capability detection is
+  done — the CLI draws the magenta difference overlay inline under the similarity
+  summary (`--image-render` forces it, `--no-image-render` disables). REMAINING:
+  the crisp graphics protocols (kitty / iTerm2 / sixel). These need a terminal
+  round-trip to size correctly (cell-pixel query `CSI 16 t`, or kitty's `c=/r=`)
+  and a real terminal to verify rendering — best done in a session with those
+  terminals (or by vendoring chafa/libchafa for all of them at once, LGPL).
 - **I4 — Polish (M).** GUI swipe + onion-skin sliders; `.webp` via libwebp;
   anti-alias threshold tuning; large-image downscale; native terminal encoders if
   dropping the chafa dep.
