@@ -95,3 +95,22 @@ TEST_CASE("FileBytes: missing file fails cleanly") {
     CHECK_FALSE(fb.load("/no/such/diffy/file/xyzzy.bin"));
     CHECK(fb.size() == 0);
 }
+
+TEST_CASE("FileBytes: empty file loads as zero bytes (read path, no mmap)") {
+    const std::string path = write_temp({}, "empty");
+    FileBytes fb;
+    REQUIRE(fb.load(path));
+    CHECK(fb.size() == 0);
+    CHECK(fb.bytes().empty());
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("FileBytes: non-regular input uses the read fallback") {
+    // A character device isn't a regular file, so mmap is skipped and the read
+    // path handles it (reading /dev/null yields zero bytes).
+    if (std::filesystem::exists("/dev/null")) {
+        FileBytes fb;
+        REQUIRE(fb.load("/dev/null"));
+        CHECK(fb.size() == 0);
+    }
+}
