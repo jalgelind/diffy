@@ -4,13 +4,23 @@
 //
 // Used by the binary/hex diff to align two byte regions so that a small
 // insertion opens a gap instead of shifting every following byte into "changed".
-// This is O(na*nb) time and space, so callers must only hand it BOUNDED regions
-// (see hex_align's fine/global caps). For whole large files, the chunk-level
-// pass re-synchronises first and this only refines the small changed windows.
+//
+// Two strategies, picked automatically:
+//   - Banded DP: only cells within a diagonal band of half-width r are computed
+//     (O(max(n,m)*r)). r starts small and doubles whenever the optimal path
+//     touches the band edge (meaning a wider band might do better); when the
+//     path stays inside the band the result is provably optimal. Substitution-
+//     heavy but structurally-aligned regions (the common case after prefix/
+//     suffix trimming) stay on the diagonal and finish in a tiny band.
+//   - Full DP: fallback once the band would cover the whole matrix, or for tiny
+//     inputs where banding isn't worth it. O(n*m).
+// The cost cell type is narrowed to uint8/uint16/uint32 by the max possible
+// distance (n+m), halving/quartering the DP's memory traffic.
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace diffy {
@@ -22,58 +32,42 @@ namespace diffy {
 //   InsertB  - one byte present only in B (a gap on the A side)
 enum class AlignOp : uint8_t { Equal, Replace, DeleteA, InsertB };
 
-inline std::vector<AlignOp>
-needleman_wunsch_bytes(const uint8_t* a, size_t na, const uint8_t* b, size_t nb) {
-    std::vector<AlignOp> ops;
+namespace nw_detail {
 
-    if (na == 0 && nb == 0) {
-        return ops;
-    }
-    if (na == 0) {
-        ops.assign(nb, AlignOp::InsertB);
-        return ops;
-    }
-    if (nb == 0) {
-        ops.assign(na, AlignOp::DeleteA);
-        return ops;
-    }
-
-    // cost[i*(nb+1)+j] = edit distance between a[0..i) and b[0..j).
+// Full O(na*nb) DP + traceback. Every cell is reachable, so no sentinels.
+template <typename Cost>
+void
+full_dp(const uint8_t* a, size_t na, const uint8_t* b, size_t nb, std::vector<AlignOp>& ops) {
     const size_t stride = nb + 1;
-    std::vector<int32_t> cost((na + 1) * stride);
-
+    std::vector<Cost> cost((na + 1) * stride);
     for (size_t j = 0; j <= nb; ++j) {
-        cost[j] = static_cast<int32_t>(j);
+        cost[j] = static_cast<Cost>(j);
     }
     for (size_t i = 1; i <= na; ++i) {
-        cost[i * stride] = static_cast<int32_t>(i);
+        cost[i * stride] = static_cast<Cost>(i);
         const uint8_t ai = a[i - 1];
         for (size_t j = 1; j <= nb; ++j) {
-            const int32_t sub = cost[(i - 1) * stride + (j - 1)] + (ai == b[j - 1] ? 0 : 1);
-            const int32_t del = cost[(i - 1) * stride + j] + 1;
-            const int32_t ins = cost[i * stride + (j - 1)] + 1;
-            int32_t best = sub;
+            const Cost sub = static_cast<Cost>(cost[(i - 1) * stride + (j - 1)] + (ai == b[j - 1] ? 0 : 1));
+            const Cost del = static_cast<Cost>(cost[(i - 1) * stride + j] + 1);
+            const Cost ins = static_cast<Cost>(cost[i * stride + (j - 1)] + 1);
+            Cost best = sub;
             if (del < best) best = del;
             if (ins < best) best = ins;
             cost[i * stride + j] = best;
         }
     }
-
-    // Traceback from (na, nb) to (0, 0). Prefer the diagonal on ties so runs of
-    // aligned bytes stay together rather than fragmenting into gaps.
     size_t i = na, j = nb;
     while (i > 0 || j > 0) {
         if (i > 0 && j > 0) {
-            const int32_t here = cost[i * stride + j];
-            const bool equal = a[i - 1] == b[j - 1];
-            const int32_t diag = cost[(i - 1) * stride + (j - 1)];
-            if (here == diag + (equal ? 0 : 1)) {
-                ops.push_back(equal ? AlignOp::Equal : AlignOp::Replace);
+            const Cost here = cost[i * stride + j];
+            const bool eq = a[i - 1] == b[j - 1];
+            if (here == static_cast<Cost>(cost[(i - 1) * stride + (j - 1)] + (eq ? 0 : 1))) {
+                ops.push_back(eq ? AlignOp::Equal : AlignOp::Replace);
                 --i;
                 --j;
                 continue;
             }
-            if (here == cost[(i - 1) * stride + j] + 1) {
+            if (here == static_cast<Cost>(cost[(i - 1) * stride + j] + 1)) {
                 ops.push_back(AlignOp::DeleteA);
                 --i;
                 continue;
@@ -88,9 +82,135 @@ needleman_wunsch_bytes(const uint8_t* a, size_t na, const uint8_t* b, size_t nb)
             --j;
         }
     }
-
     std::reverse(ops.begin(), ops.end());
+}
+
+// Banded DP over the diagonal band k = j - i in [klo, khi] (klo<=0<=... covers
+// the start k=0 and the end k=nb-na). Returns true iff the optimal in-band path
+// never rode the band edge — i.e. a wider band could not improve it, so the
+// result is optimal. `ops` is filled regardless (best in-band alignment).
+template <typename Cost>
+bool
+banded_dp(const uint8_t* a, size_t na, const uint8_t* b, size_t nb, int klo, int khi,
+          std::vector<AlignOp>& ops) {
+    const Cost INF = std::numeric_limits<Cost>::max();
+    const int W = khi - klo + 1;
+    std::vector<Cost> cost((na + 1) * static_cast<size_t>(W), INF);
+
+    auto idx = [&](size_t i, int k) -> size_t { return i * static_cast<size_t>(W) + static_cast<size_t>(k - klo); };
+    auto at = [&](long i, int k) -> Cost {
+        if (i < 0 || k < klo || k > khi) return INF;
+        return cost[idx(static_cast<size_t>(i), k)];
+    };
+
+    for (size_t i = 0; i <= na; ++i) {
+        for (int k = klo; k <= khi; ++k) {
+            const long j = static_cast<long>(i) + k;
+            if (j < 0 || j > static_cast<long>(nb)) continue;
+            if (i == 0 && j == 0) {
+                cost[idx(i, k)] = 0;
+                continue;
+            }
+            Cost best = INF;
+            if (i > 0 && j > 0) {  // diagonal (i-1, j-1), same k
+                const Cost d = at(static_cast<long>(i) - 1, k);
+                if (d != INF) {
+                    const Cost v = static_cast<Cost>(d + (a[i - 1] == b[static_cast<size_t>(j) - 1] ? 0 : 1));
+                    if (v < best) best = v;
+                }
+            }
+            if (i > 0) {  // up = delete A: (i-1, j), k+1
+                const Cost u = at(static_cast<long>(i) - 1, k + 1);
+                if (u != INF && static_cast<Cost>(u + 1) < best) best = static_cast<Cost>(u + 1);
+            }
+            if (j > 0) {  // left = insert B: (i, j-1), k-1
+                const Cost l = at(static_cast<long>(i), k - 1);
+                if (l != INF && static_cast<Cost>(l + 1) < best) best = static_cast<Cost>(l + 1);
+            }
+            cost[idx(i, k)] = best;
+        }
+    }
+
+    bool touched = false;
+    long i = static_cast<long>(na), j = static_cast<long>(nb);
+    while (i > 0 || j > 0) {
+        const int k = static_cast<int>(j - i);
+        if (k == klo || k == khi) touched = true;
+        if (i > 0 && j > 0) {
+            const Cost here = at(i, k);
+            const bool eq = a[static_cast<size_t>(i) - 1] == b[static_cast<size_t>(j) - 1];
+            const Cost d = at(i - 1, k);
+            if (d != INF && here == static_cast<Cost>(d + (eq ? 0 : 1))) {
+                ops.push_back(eq ? AlignOp::Equal : AlignOp::Replace);
+                --i;
+                --j;
+                continue;
+            }
+            const Cost u = at(i - 1, k + 1);
+            if (u != INF && here == static_cast<Cost>(u + 1)) {
+                ops.push_back(AlignOp::DeleteA);
+                --i;
+                continue;
+            }
+            ops.push_back(AlignOp::InsertB);
+            --j;
+        } else if (i > 0) {
+            ops.push_back(AlignOp::DeleteA);
+            --i;
+        } else {
+            ops.push_back(AlignOp::InsertB);
+            --j;
+        }
+    }
+    std::reverse(ops.begin(), ops.end());
+    return !touched;
+}
+
+template <typename Cost>
+std::vector<AlignOp>
+solve(const uint8_t* a, size_t na, const uint8_t* b, size_t nb) {
+    const int dn = static_cast<int>(static_cast<long>(nb) - static_cast<long>(na));
+    const size_t maxlen = std::max(na, nb);
+    std::vector<AlignOp> ops;
+    // Band radius starts just past the forced length difference and doubles.
+    for (int r = std::max(16, std::abs(dn) + 16); static_cast<size_t>(r) < maxlen; r *= 2) {
+        ops.clear();
+        const int klo = std::min(0, dn) - r;
+        const int khi = std::max(0, dn) + r;
+        if (banded_dp<Cost>(a, na, b, nb, klo, khi, ops)) {
+            return ops;  // path stayed inside the band => optimal
+        }
+    }
+    ops.clear();
+    full_dp<Cost>(a, na, b, nb, ops);
     return ops;
+}
+
+}  // namespace nw_detail
+
+inline std::vector<AlignOp>
+needleman_wunsch_bytes(const uint8_t* a, size_t na, const uint8_t* b, size_t nb) {
+    std::vector<AlignOp> ops;
+    if (na == 0 && nb == 0) {
+        return ops;
+    }
+    if (na == 0) {
+        ops.assign(nb, AlignOp::InsertB);
+        return ops;
+    }
+    if (nb == 0) {
+        ops.assign(na, AlignOp::DeleteA);
+        return ops;
+    }
+    // Narrow the cell type to the smallest that holds the max distance (na+nb).
+    const size_t total = na + nb;
+    if (total < 255u) {
+        return nw_detail::solve<uint8_t>(a, na, b, nb);
+    }
+    if (total < 65535u) {
+        return nw_detail::solve<uint16_t>(a, na, b, nb);
+    }
+    return nw_detail::solve<uint32_t>(a, na, b, nb);
 }
 
 }  // namespace diffy
