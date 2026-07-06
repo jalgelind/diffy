@@ -206,12 +206,19 @@ libdiffy/render/hex_view_model.{hpp,cc}  # build_hex_view: HexAlignment -> DiffV
 - **Refinement:** the fine-pass refine gate is a DP-cell budget (`byte_cap²`) with a
   per-side ceiling, not a flat per-side cap — so a tall/thin changed region (a big deletion
   against a few added bytes) still byte-refines while table memory stays bounded (~byte_cap²).
+- **Performance:** the byte aligner is now a **banded** DP (diagonal half-width doubles when
+  the optimal path touches the band edge; full-DP fallback), with the cost cell narrowed to
+  uint8/uint16/uint32 by the max distance. Substitution-heavy or structurally-aligned regions
+  finish in a tiny band — measured ~10–14× vs the old full O(n·m) on 4 KB regions. Rendering
+  uses hex/offset **lookup tables** (no per-byte `fmt::format`). The CLI also **summarises**
+  rather than dumping a hex diff when a large amount of content can't be meaningfully aligned
+  (coarse + >512 KiB, or >8 MiB changed). See `docs/binary-diff-roadmap.md` for what's left.
 - **mmap is implemented** via `util/mapped_file.hpp` (`FileBytes`): regular files ≥ 64 KiB
   are memory-mapped (POSIX); small files, non-regular inputs (FIFOs, `/dev/null` from git
   difftool), Windows, and any mmap failure fall back to a plain read. The hex pipeline
   takes `gsl::span<const uint8_t>` so it runs over either backing with no copy.
-- **Deferred:** banded / Hirschberg linear-space NW (the byte aligner is plain O(n·m)
-  bounded by `byte_cap`).
+- **Done since:** banded byte aligner + narrow DP cells (above). Still deferred: Hirschberg
+  linear-space traceback (banding already bounds memory to O(n·band) in the common case).
 
 ## Prior art referenced (algorithms only, nothing linked/vendored)
 

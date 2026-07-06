@@ -143,6 +143,87 @@ TEST_CASE("needleman_wunsch aligns an insertion without cascading") {
     CHECK(rep == 0);
 }
 
+namespace {
+// Replay an op list to reconstruct both sides; the strongest correctness check
+// for the aligner (banded or full), independent of which path ran.
+void
+check_reconstructs(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
+    const auto ops = needleman_wunsch_bytes(a.data(), a.size(), b.data(), b.size());
+    std::vector<uint8_t> ra, rb;
+    size_t ia = 0, ib = 0;
+    for (AlignOp op : ops) {
+        switch (op) {
+            case AlignOp::Equal:
+            case AlignOp::Replace:
+                ra.push_back(a[ia++]);
+                rb.push_back(b[ib++]);
+                break;
+            case AlignOp::DeleteA:
+                ra.push_back(a[ia++]);
+                break;
+            case AlignOp::InsertB:
+                rb.push_back(b[ib++]);
+                break;
+        }
+    }
+    CHECK(ia == a.size());
+    CHECK(ib == b.size());
+    CHECK(ra == a);
+    CHECK(rb == b);
+}
+}  // namespace
+
+TEST_CASE("needleman_wunsch banded path: mid insertion in a large region") {
+    // maxlen > band start (18) so the banded path runs, not full DP.
+    auto a = gen(300, 55);
+    auto b = a;
+    b.insert(b.begin() + 150, {0xAA, 0xBB, 0xCC, 0xDD, 0xEE});
+
+    const auto ops = needleman_wunsch_bytes(a.data(), a.size(), b.data(), b.size());
+    size_t eq = 0, ins = 0, del = 0, rep = 0;
+    for (AlignOp op : ops) {
+        eq += op == AlignOp::Equal;
+        ins += op == AlignOp::InsertB;
+        del += op == AlignOp::DeleteA;
+        rep += op == AlignOp::Replace;
+    }
+    CHECK(eq == 300);  // whole original matched
+    CHECK(ins == 5);   // 5 bytes inserted
+    CHECK(del == 0);
+    CHECK(rep == 0);
+    check_reconstructs(a, b);
+}
+
+TEST_CASE("needleman_wunsch stays optimal when scattered indels force band growth") {
+    // Many single-byte insertions spread through a large buffer push the optimal
+    // path off the diagonal, exercising the band-doubling fallback.
+    auto a = gen(400, 71);
+    auto b = a;
+    for (int k = 380; k >= 20; k -= 20) {  // insert late-to-early so offsets stay valid
+        b.insert(b.begin() + k, static_cast<uint8_t>(0x00));
+    }
+    check_reconstructs(a, b);  // must reconstruct exactly regardless of band width
+}
+
+TEST_CASE("needleman_wunsch: substitution-heavy region stays essentially diagonal") {
+    // Every byte differs at the same position. The optimal alignment is almost
+    // all substitutions (a few accidental matches + an indel pair can shave a
+    // little, which is fine); what matters is it does NOT explode into indels,
+    // so the band stays tight. Reconstruction must be exact.
+    auto a = gen(500, 91);
+    auto b = a;
+    for (auto& x : b) x ^= 0xFF;
+    const auto ops = needleman_wunsch_bytes(a.data(), a.size(), b.data(), b.size());
+    size_t rep = 0, indel = 0;
+    for (AlignOp op : ops) {
+        rep += op == AlignOp::Replace;
+        indel += (op == AlignOp::InsertB || op == AlignOp::DeleteA);
+    }
+    CHECK(rep >= 480);   // dominated by substitutions
+    CHECK(indel <= 20);  // not cascaded into gaps
+    check_reconstructs(a, b);
+}
+
 TEST_CASE("hex_align: identical files are one Equal segment") {
     const auto a = gen(10000, 3);
     bool truncated = false;

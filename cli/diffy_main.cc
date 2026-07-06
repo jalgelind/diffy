@@ -578,6 +578,27 @@ Side by side options:
                 return 0;  // identical
             }
 
+            // Bound pathological output: when a large amount of content couldn't
+            // be meaningfully aligned (a big region exceeded the byte-refine
+            // budget, or the total change is huge), a full hex dump would be
+            // hundreds of thousands of useless rows. Summarise instead.
+            {
+                uint64_t change_bytes = 0;
+                for (const auto& seg : alignment) {
+                    if (seg.kind != diffy::HexSegKind::Equal) {
+                        change_bytes += seg.a_len + seg.b_len;
+                    }
+                }
+                constexpr uint64_t kCoarseCap = 512ull * 1024;      // coarse + this big
+                constexpr uint64_t kHardCap = 8ull * 1024 * 1024;   // huge regardless
+                if ((truncated && change_bytes > kCoarseCap) || change_bytes > kHardCap) {
+                    fmt::print("Binary files {} and {} differ ({} bytes differ; too dissimilar "
+                               "to display a hex diff)\n",
+                               opts.left_file_name, opts.right_file_name, change_bytes);
+                    return 1;
+                }
+            }
+
             const bool color = opts.color_mode == diffy::ColorMode::Always ||
                                (opts.color_mode == diffy::ColorMode::Auto && stdout_is_tty());
 
