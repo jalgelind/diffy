@@ -9,6 +9,7 @@
 #include "image/decode.hpp"
 #include "image/image_diff.hpp"
 #include "image/image_info.hpp"
+#include "image/term_image.hpp"
 #include "output/column_view.hpp"
 #include "output/hex_column.hpp"
 #include "output/hex_unified.hpp"
@@ -241,8 +242,10 @@ Binary (hex) diff:
     --text                       force text diff even for binary-looking input
     --bytes-per-row [n]          bytes shown per hex row (default 16)
     --hex-global                 byte-align whole files instead of chunking (small files)
-    --image                      force an image diff (metadata) for the inputs
+    --image                      force an image diff for the inputs
     --no-image                   never treat image files specially (hex diff them)
+    --image-render               draw the image diff inline (half-block art) even to a pipe
+    --no-image-render            never draw inline; show only the text summary
 
 Side by side options:
     -l, --line                   line based diff instead of word based diff
@@ -271,6 +274,8 @@ Side by side options:
     constexpr int kOptHexGlobal = 264;
     constexpr int kOptImage = 265;
     constexpr int kOptNoImage = 266;
+    constexpr int kOptImageRender = 267;
+    constexpr int kOptNoImageRender = 268;
 
     auto parse_args = [&](int in_argc, char* in_argv[]) {
         static struct option long_options[] = {
@@ -299,6 +304,8 @@ Side by side options:
             {"hex-global", no_argument, 0, kOptHexGlobal},
             {"image", no_argument, 0, kOptImage},
             {"no-image", no_argument, 0, kOptNoImage},
+            {"image-render", no_argument, 0, kOptImageRender},
+            {"no-image-render", no_argument, 0, kOptNoImageRender},
             {"list-colors", no_argument, 0, '1'},
             {0, 0, 0, 0}};
         int c = 0, option_index = 0;
@@ -382,6 +389,12 @@ Side by side options:
                     break;
                 case kOptNoImage:
                     opts.image_mode = diffy::ImageMode::Never;
+                    break;
+                case kOptImageRender:
+                    opts.image_render = diffy::ImageRenderMode::Always;
+                    break;
+                case kOptNoImageRender:
+                    opts.image_render = diffy::ImageRenderMode::Never;
                     break;
                 case kOptColor: {
                     const std::string when = optarg ? optarg : "";
@@ -612,8 +625,16 @@ Side by side options:
                     const diffy::DecodedImage da = diffy::decode_image(a_bytes);
                     const diffy::DecodedImage db = diffy::decode_image(b_bytes);
                     if (da.ok && db.ok && da.width == db.width && da.height == db.height) {
+                        // Decide up front whether we'll draw the overlay inline, so
+                        // we only build the (potentially large) overlay bitmap then.
+                        diffy::TermEnv tenv;
+                        tenv.is_tty = stdout_is_tty();
+                        tenv.disabled = opts.image_render == diffy::ImageRenderMode::Never;
+                        tenv.force = opts.image_render == diffy::ImageRenderMode::Always;
+                        const diffy::TermImageProtocol proto = diffy::detect_term_image_protocol(tenv);
+
                         diffy::ImageDiffOptions dopts;
-                        dopts.compute_overlay = false;  // CLI only needs the numbers
+                        dopts.compute_overlay = proto != diffy::TermImageProtocol::None;
                         const diffy::ImageDiffResult r =
                             diffy::image_diff(da.rgba, db.rgba, da.width, da.height, dopts);
                         const diffy::ImageInfo info = diffy::image_probe(a_bytes);
@@ -621,6 +642,20 @@ Side by side options:
                                    "differ)\n",
                                    info.format, da.width, da.height, r.similarity * 100.0, r.changed_px,
                                    r.total_px);
+
+                        if (proto == diffy::TermImageProtocol::HalfBlock && !r.overlay_rgba.empty()) {
+                            int th = 0, tw = 0;
+                            diffy::tty_get_term_size(&th, &tw);
+                            if (tw <= 0) tw = 80;
+                            if (th <= 0) th = 24;
+                            int rows = th - 2;  // leave room for the summary line
+                            if (rows < 1) rows = 1;
+                            const std::string art =
+                                diffy::render_halfblock(r.overlay_rgba, r.width, r.height, tw, rows);
+                            if (!art.empty()) {
+                                fputs(art.c_str(), stdout);
+                            }
+                        }
                     } else {
                         fmt::print("Image files differ:\n  --- {}: {}\n  +++ {}: {}\n",
                                    opts.left_file_name, describe(a_bytes), opts.right_file_name,
