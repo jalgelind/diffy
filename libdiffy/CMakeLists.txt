@@ -14,6 +14,7 @@ add_library(diffy_core STATIC
   image/image_info.cc
   image/decode.cc
   image/image_diff.cc
+  image/term_image.cc
   render/diff_view_model.cc
   render/diff_pipeline.cc
   render/hex_view_model.cc
