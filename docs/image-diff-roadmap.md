@@ -109,10 +109,11 @@ extension hint:
   **half-block** (universal truecolor fallback), **kitty** (raw RGBA, sized via
   `c=<cols>`), and **iTerm2** (OSC 1337, PNG payload via stb_image_write) — all
   sized in cells so the terminal keeps aspect (no pixel query). kitty/iTerm2 are
-  unit-tested for framing but their *on-screen* look still wants a real terminal.
-  REMAINING: **sixel** (palette quantization) — genuinely needs a sixel terminal
-  to verify and adds little over half-block (most sixel terminals also do
-  truecolor); deferred, or get it free by vendoring chafa/libchafa (LGPL).
+  unit-tested for framing. **sixel** (216-colour cube, banded RLE) is now
+  implemented too, forced via `--image-protocol sixel` (sixel isn't reliably
+  env-detectable; a DA1 query would auto-detect it and is the one follow-up
+  here). All four protocols' *on-screen* look still wants a real terminal to
+  confirm. `--image-protocol <halfblock|kitty|iterm2|sixel>` forces any of them.
 - **I4 — Polish (M). MOSTLY DONE.** GUI swipe + onion-skin (with a col-resize
   cursor) and a match-threshold slider that re-runs the diff are shipped; the
   terminal renderers already downscale large images. REMAINING: `.webp` via
