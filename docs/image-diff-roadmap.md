@@ -103,17 +103,22 @@ extension hint:
   reused by the GUI.
 - **I2 — GUI visual diff (M, high).** 2-up + difference overlay via
   `SharedPixelBuffer`. Highest user value, and Slint makes it cheap.
-- **I3 — Terminal image output (L). PARTIAL: half-block shipped.** The universal
-  Unicode upper-half-block renderer (`image/term_image`) + capability detection is
-  done — the CLI draws the magenta difference overlay inline under the similarity
-  summary (`--image-render` forces it, `--no-image-render` disables). REMAINING:
-  the crisp graphics protocols (kitty / iTerm2 / sixel). These need a terminal
-  round-trip to size correctly (cell-pixel query `CSI 16 t`, or kitty's `c=/r=`)
-  and a real terminal to verify rendering — best done in a session with those
-  terminals (or by vendoring chafa/libchafa for all of them at once, LGPL).
-- **I4 — Polish (M).** GUI swipe + onion-skin sliders; `.webp` via libwebp;
-  anti-alias threshold tuning; large-image downscale; native terminal encoders if
-  dropping the chafa dep.
+- **I3 — Terminal image output (L). MOSTLY DONE.** `image/term_image` +
+  capability detection; the CLI draws the difference overlay inline under the
+  similarity summary (`--image-render` / `--no-image-render`). Protocols:
+  **half-block** (universal truecolor fallback), **kitty** (raw RGBA, sized via
+  `c=<cols>`), and **iTerm2** (OSC 1337, PNG payload via stb_image_write) — all
+  sized in cells so the terminal keeps aspect (no pixel query). kitty/iTerm2 are
+  unit-tested for framing but their *on-screen* look still wants a real terminal.
+  REMAINING: **sixel** (palette quantization) — genuinely needs a sixel terminal
+  to verify and adds little over half-block (most sixel terminals also do
+  truecolor); deferred, or get it free by vendoring chafa/libchafa (LGPL).
+- **I4 — Polish (M). MOSTLY DONE.** GUI swipe + onion-skin (with a col-resize
+  cursor) and a match-threshold slider that re-runs the diff are shipped; the
+  terminal renderers already downscale large images. REMAINING: `.webp` via
+  libwebp (an external dependency decision — stb already covers png/jpg/gif/bmp),
+  and GUI zoom/pan for pixel-level inspection (a heavier Slint interaction, best
+  built with a display to verify).
 
 ## Risks / open questions
 
