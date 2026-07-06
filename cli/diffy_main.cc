@@ -6,6 +6,8 @@
 #include "highlight/scope.hpp"
 #include "highlight/syntax_highlighter.hpp"
 #include "binary/hex_align.hpp"
+#include "image/decode.hpp"
+#include "image/image_diff.hpp"
 #include "image/image_info.hpp"
 #include "output/column_view.hpp"
 #include "output/hex_column.hpp"
@@ -605,16 +607,20 @@ Side by side options:
                         }
                         return info.format;
                     };
-                    // When only the content changed (same format + dimensions), say
-                    // so rather than printing two identical-looking lines.
-                    const diffy::ImageInfo ia = diffy::image_probe(a_bytes);
-                    const diffy::ImageInfo ib = diffy::image_probe(b_bytes);
-                    if (!a_bytes.empty() && !b_bytes.empty() && ia.ok && ib.ok &&
-                        std::strcmp(ia.format, ib.format) == 0 && ia.width == ib.width &&
-                        ia.height == ib.height && ia.width >= 0) {
-                        fmt::print("Image files differ (same format and dimensions: {}; "
-                                   "pixel data changed, {} vs {} bytes)\n",
-                                   describe(a_bytes), a_bytes.size(), b_bytes.size());
+                    // Decode both and report a real pixel-level similarity when
+                    // dimensions match; otherwise fall back to the metadata diff.
+                    const diffy::DecodedImage da = diffy::decode_image(a_bytes);
+                    const diffy::DecodedImage db = diffy::decode_image(b_bytes);
+                    if (da.ok && db.ok && da.width == db.width && da.height == db.height) {
+                        diffy::ImageDiffOptions dopts;
+                        dopts.compute_overlay = false;  // CLI only needs the numbers
+                        const diffy::ImageDiffResult r =
+                            diffy::image_diff(da.rgba, db.rgba, da.width, da.height, dopts);
+                        const diffy::ImageInfo info = diffy::image_probe(a_bytes);
+                        fmt::print("Image files differ: {} {}x{} — {:.2f}% similar ({} of {} pixels "
+                                   "differ)\n",
+                                   info.format, da.width, da.height, r.similarity * 100.0, r.changed_px,
+                                   r.total_px);
                     } else {
                         fmt::print("Image files differ:\n  --- {}: {}\n  +++ {}: {}\n",
                                    opts.left_file_name, describe(a_bytes), opts.right_file_name,

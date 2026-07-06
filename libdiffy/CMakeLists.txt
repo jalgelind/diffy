@@ -12,6 +12,8 @@ add_library(diffy_core STATIC
   binary/chunker.cc
   binary/hex_align.cc
   image/image_info.cc
+  image/decode.cc
+  image/image_diff.cc
   render/diff_view_model.cc
   render/diff_pipeline.cc
   render/hex_view_model.cc
@@ -35,6 +37,8 @@ target_include_directories(diffy_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # platform_folders' own target exposes its inner sago/ dir; we include it as
 # <sago/platform_folders.h>, so add the parent as a search root.
 target_include_directories(diffy_core PUBLIC ${DIFFY_ROOT_DIR}/subprojects/platform_folders)
+# stb_image (single-header, vendored) for image decoding — private to diffy_core.
+target_include_directories(diffy_core PRIVATE ${DIFFY_ROOT_DIR}/subprojects/stb)
 target_compile_features(diffy_core PUBLIC cxx_std_20)
 target_link_libraries(diffy_core
   PUBLIC
