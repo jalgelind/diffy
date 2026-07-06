@@ -246,6 +246,7 @@ Binary (hex) diff:
     --no-image                   never treat image files specially (hex diff them)
     --image-render               draw the image diff inline (half-block art) even to a pipe
     --no-image-render            never draw inline; show only the text summary
+    --image-protocol [p]         force inline protocol: halfblock, kitty, iterm2, sixel (default auto)
 
 Side by side options:
     -l, --line                   line based diff instead of word based diff
@@ -276,6 +277,7 @@ Side by side options:
     constexpr int kOptNoImage = 266;
     constexpr int kOptImageRender = 267;
     constexpr int kOptNoImageRender = 268;
+    constexpr int kOptImageProtocol = 269;
 
     auto parse_args = [&](int in_argc, char* in_argv[]) {
         static struct option long_options[] = {
@@ -306,6 +308,7 @@ Side by side options:
             {"no-image", no_argument, 0, kOptNoImage},
             {"image-render", no_argument, 0, kOptImageRender},
             {"no-image-render", no_argument, 0, kOptNoImageRender},
+            {"image-protocol", required_argument, 0, kOptImageProtocol},
             {"list-colors", no_argument, 0, '1'},
             {0, 0, 0, 0}};
         int c = 0, option_index = 0;
@@ -395,6 +398,9 @@ Side by side options:
                     break;
                 case kOptNoImageRender:
                     opts.image_render = diffy::ImageRenderMode::Never;
+                    break;
+                case kOptImageProtocol:
+                    opts.image_protocol = optarg ? optarg : "";
                     break;
                 case kOptColor: {
                     const std::string when = optarg ? optarg : "";
@@ -634,7 +640,12 @@ Side by side options:
                         if (const char* t = std::getenv("TERM")) tenv.term = t;
                         if (const char* tp = std::getenv("TERM_PROGRAM")) tenv.term_program = tp;
                         if (const char* kw = std::getenv("KITTY_WINDOW_ID")) tenv.kitty_window_id = kw;
-                        const diffy::TermImageProtocol proto = diffy::detect_term_image_protocol(tenv);
+                        // --image-protocol forces a specific protocol (e.g. sixel,
+                        // which isn't auto-detected); otherwise detect it.
+                        const diffy::TermImageProtocol proto =
+                            (!opts.image_protocol.empty() && opts.image_protocol != "auto")
+                                ? diffy::term_image_protocol_from_name(opts.image_protocol)
+                                : diffy::detect_term_image_protocol(tenv);
 
                         diffy::ImageDiffOptions dopts;
                         dopts.compute_overlay = proto != diffy::TermImageProtocol::None;

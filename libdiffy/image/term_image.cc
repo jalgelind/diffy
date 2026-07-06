@@ -32,6 +32,15 @@ detect_term_image_protocol(const TermEnv& env) {
     return TermImageProtocol::None;
 }
 
+TermImageProtocol
+term_image_protocol_from_name(const std::string& name) {
+    if (name == "halfblock" || name == "half-block") return TermImageProtocol::HalfBlock;
+    if (name == "kitty") return TermImageProtocol::Kitty;
+    if (name == "iterm2" || name == "iterm") return TermImageProtocol::ITerm2;
+    if (name == "sixel") return TermImageProtocol::Sixel;
+    return TermImageProtocol::None;
+}
+
 namespace {
 
 const char kB64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -218,6 +227,94 @@ render_iterm2(const std::vector<uint8_t>& rgba, int w, int h, int max_cols) {
     return out;
 }
 
+// Sixel: map each pixel to the 216-colour cube (levels 0,51,…,255 per channel;
+// magenta and pure colours land exactly, grays get 6 levels — fine for a diff
+// overlay) and emit banded, run-length-encoded sixel data.
+std::string
+render_sixel(const std::vector<uint8_t>& rgba, int w, int h, int max_cols, int max_rows) {
+    // Fit to the terminal assuming ~8x16 px cells (sixel has no cell-sizing of
+    // its own); downscale, then map to the cube.
+    const int box_w = max_cols * 8;
+    const int box_h = max_rows * 16;
+    double scale = std::min({static_cast<double>(box_w) / w, static_cast<double>(box_h) / h, 1.0});
+    int tw = std::max(1, static_cast<int>(w * scale));
+    int th = std::max(1, static_cast<int>(h * scale));
+    const std::vector<uint8_t> img =
+        (tw == w && th == h) ? rgba : box_downscale(rgba, w, h, tw, th);
+
+    auto level = [](uint8_t c) -> int { return (c + 25) / 51; };  // nearest of 0..5
+    std::vector<uint8_t> idx(static_cast<size_t>(tw) * th);
+    for (size_t p = 0; p < idx.size(); ++p) {
+        const uint8_t* px = &img[p * 4];
+        idx[p] = static_cast<uint8_t>(36 * level(px[0]) + 6 * level(px[1]) + level(px[2]));
+    }
+
+    std::string out = "\033Pq";  // sixel intro
+    fmt::format_to(std::back_inserter(out), "\"1;1;{};{}", tw, th);  // aspect + raster size
+    for (int c = 0; c < 216; ++c) {  // define the cube palette in 0..100% units
+        const int r = (c / 36) % 6, g = (c / 6) % 6, b = c % 6;
+        auto pct = [](int lvl) { return (lvl * 51 * 100 + 127) / 255; };
+        fmt::format_to(std::back_inserter(out), "#{};2;{};{};{}", c, pct(r), pct(g), pct(b));
+    }
+
+    auto emit_run = [&](char ch, int run) {
+        if (run >= 4) {
+            fmt::format_to(std::back_inserter(out), "!{}{}", run, ch);
+        } else {
+            out.append(static_cast<size_t>(run), ch);
+        }
+    };
+
+    for (int by = 0; by < th; by += 6) {
+        const int bh = std::min(6, th - by);
+        std::vector<bool> present(216, false);
+        for (int dy = 0; dy < bh; ++dy) {
+            for (int x = 0; x < tw; ++x) {
+                present[idx[(static_cast<size_t>(by + dy)) * tw + x]] = true;
+            }
+        }
+        bool first = true;
+        for (int c = 0; c < 216; ++c) {
+            if (!present[c]) {
+                continue;
+            }
+            if (!first) {
+                out += '$';  // overlay the next colour on the same band
+            }
+            first = false;
+            fmt::format_to(std::back_inserter(out), "#{}", c);
+            char prev = 0;
+            int run = 0;
+            for (int x = 0; x < tw; ++x) {
+                int bits = 0;
+                for (int dy = 0; dy < bh; ++dy) {
+                    if (idx[(static_cast<size_t>(by + dy)) * tw + x] == c) {
+                        bits |= (1 << dy);
+                    }
+                }
+                const char ch = static_cast<char>(0x3F + bits);
+                if (run == 0) {
+                    prev = ch;
+                    run = 1;
+                } else if (ch == prev) {
+                    ++run;
+                } else {
+                    emit_run(prev, run);
+                    prev = ch;
+                    run = 1;
+                }
+            }
+            if (run > 0) {
+                emit_run(prev, run);
+            }
+        }
+        out += '-';  // next band
+    }
+    out += "\033\\";  // sixel terminator
+    out += '\n';
+    return out;
+}
+
 }  // namespace
 
 std::string
@@ -233,6 +330,8 @@ render_term_image(TermImageProtocol protocol, const std::vector<uint8_t>& rgba, 
             return render_kitty(rgba, w, h, max_cols);
         case TermImageProtocol::ITerm2:
             return render_iterm2(rgba, w, h, max_cols);
+        case TermImageProtocol::Sixel:
+            return render_sixel(rgba, w, h, max_cols, max_rows);
         case TermImageProtocol::None:
             break;
     }
