@@ -59,6 +59,9 @@ struct ProgramOptions {
     ImageMode image_mode = ImageMode::Auto;
     // --image-render/--no-image-render: inline terminal rendering of the diff.
     ImageRenderMode image_render = ImageRenderMode::Auto;
+    // --image-protocol: force a specific inline protocol ("halfblock"/"kitty"/
+    // "iterm2"/"sixel"); empty or "auto" = detect from the terminal.
+    std::string image_protocol;
     // --bytes-per-row: bytes shown per hex row. 0 means auto: side-by-side picks
     // the largest multiple of 8 that fits the terminal; unified uses 16.
     int64_t bytes_per_row = 0;

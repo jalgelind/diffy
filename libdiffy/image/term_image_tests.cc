@@ -100,6 +100,24 @@ TEST_CASE("render_term_image kitty/iTerm2 emit well-formed payloads") {
     CHECK(render_term_image(TermImageProtocol::None, img, 6, 6, 40, 20).empty());
 }
 
+TEST_CASE("render_term_image sixel emits a well-formed sixel stream") {
+    const auto img = solid(12, 12, 255, 0, 255);  // pure magenta -> exact cube colour
+    const std::string s = render_term_image(TermImageProtocol::Sixel, img, 12, 12, 40, 20);
+    REQUIRE_FALSE(s.empty());
+    CHECK(s.rfind("\033Pq", 0) == 0);               // sixel introducer
+    CHECK(s.find("\"1;1;") != std::string::npos);   // raster attributes
+    CHECK(s.find("#") != std::string::npos);        // palette / colour select
+    CHECK(s.find("\033\\") != std::string::npos);   // string terminator
+}
+
+TEST_CASE("term_image_protocol_from_name maps names") {
+    CHECK(term_image_protocol_from_name("halfblock") == TermImageProtocol::HalfBlock);
+    CHECK(term_image_protocol_from_name("kitty") == TermImageProtocol::Kitty);
+    CHECK(term_image_protocol_from_name("iterm2") == TermImageProtocol::ITerm2);
+    CHECK(term_image_protocol_from_name("sixel") == TermImageProtocol::Sixel);
+    CHECK(term_image_protocol_from_name("bogus") == TermImageProtocol::None);
+}
+
 TEST_CASE("render_halfblock fits within the cell budget and rejects bad input") {
     const auto img = solid(100, 100, 10, 20, 30);
     const std::string art = render_halfblock(img, 100, 100, 10, 5);

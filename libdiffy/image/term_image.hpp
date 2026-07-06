@@ -14,7 +14,14 @@ enum class TermImageProtocol {
     HalfBlock,  // ANSI truecolor upper-half-block art
     Kitty,      // kitty graphics protocol (raw RGBA)
     ITerm2,     // iTerm2 inline image (OSC 1337, PNG payload)
+    Sixel,      // DEC sixel graphics (216-colour cube palette)
 };
+
+// Map a protocol name ("halfblock" / "kitty" / "iterm2" / "sixel" / "none") to
+// its enum, for a --image-protocol override. Returns None for anything else
+// (callers treat "auto" specially, via detection).
+TermImageProtocol
+term_image_protocol_from_name(const std::string& name);
 
 struct TermEnv {
     bool is_tty = false;    // stdout is an interactive terminal
