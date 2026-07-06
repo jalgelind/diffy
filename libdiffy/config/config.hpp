@@ -21,6 +21,10 @@ enum class ColorMode { Auto, Always, Never };
 // Auto sniffs each file for NUL bytes; Always/Never force the decision.
 enum class BinaryMode { Auto, Always, Never };
 
+// --image/--no-image: whether image files get an image diff (currently a
+// metadata diff) instead of a hex dump. Auto detects by magic bytes.
+enum class ImageMode { Auto, Always, Never };
+
 struct ProgramOptions {
     bool debug = false;
     bool help = false;
@@ -46,6 +50,8 @@ struct ProgramOptions {
 
     // --binary/--text: hex diff mode. Auto detects binary inputs by NUL sniff.
     BinaryMode binary_mode = BinaryMode::Auto;
+    // --image/--no-image: image diff (metadata) for image files. Auto by magic.
+    ImageMode image_mode = ImageMode::Auto;
     // --bytes-per-row: bytes shown per hex row. 0 means auto: side-by-side picks
     // the largest multiple of 8 that fits the terminal; unified uses 16.
     int64_t bytes_per_row = 0;

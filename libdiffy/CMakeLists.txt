@@ -11,6 +11,7 @@ add_library(diffy_core STATIC
   output/hex_column.cc
   binary/chunker.cc
   binary/hex_align.cc
+  image/image_info.cc
   render/diff_view_model.cc
   render/diff_pipeline.cc
   render/hex_view_model.cc

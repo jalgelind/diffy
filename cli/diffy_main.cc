@@ -6,6 +6,7 @@
 #include "highlight/scope.hpp"
 #include "highlight/syntax_highlighter.hpp"
 #include "binary/hex_align.hpp"
+#include "image/image_info.hpp"
 #include "output/column_view.hpp"
 #include "output/hex_column.hpp"
 #include "output/hex_unified.hpp"
@@ -27,6 +28,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <gsl/span>
@@ -237,6 +239,8 @@ Binary (hex) diff:
     --text                       force text diff even for binary-looking input
     --bytes-per-row [n]          bytes shown per hex row (default 16)
     --hex-global                 byte-align whole files instead of chunking (small files)
+    --image                      force an image diff (metadata) for the inputs
+    --no-image                   never treat image files specially (hex diff them)
 
 Side by side options:
     -l, --line                   line based diff instead of word based diff
@@ -263,6 +267,8 @@ Side by side options:
     constexpr int kOptText = 262;
     constexpr int kOptBytesPerRow = 263;
     constexpr int kOptHexGlobal = 264;
+    constexpr int kOptImage = 265;
+    constexpr int kOptNoImage = 266;
 
     auto parse_args = [&](int in_argc, char* in_argv[]) {
         static struct option long_options[] = {
@@ -289,6 +295,8 @@ Side by side options:
             {"text", no_argument, 0, kOptText},
             {"bytes-per-row", required_argument, 0, kOptBytesPerRow},
             {"hex-global", no_argument, 0, kOptHexGlobal},
+            {"image", no_argument, 0, kOptImage},
+            {"no-image", no_argument, 0, kOptNoImage},
             {"list-colors", no_argument, 0, '1'},
             {0, 0, 0, 0}};
         int c = 0, option_index = 0;
@@ -366,6 +374,12 @@ Side by side options:
                     break;
                 case kOptHexGlobal:
                     opts.hex_global = true;
+                    break;
+                case kOptImage:
+                    opts.image_mode = diffy::ImageMode::Always;
+                    break;
+                case kOptNoImage:
+                    opts.image_mode = diffy::ImageMode::Never;
                     break;
                 case kOptColor: {
                     const std::string when = optarg ? optarg : "";
@@ -561,6 +575,54 @@ Side by side options:
             }
             const auto a_bytes = a_file.bytes();
             const auto b_bytes = b_file.bytes();
+
+            // Image files: show a metadata diff (format + dimensions) rather than
+            // a hex dump. This is the always-available floor; a full visual diff
+            // is a later step. --image forces it, --no-image opts out.
+            {
+                const bool a_img = diffy::looks_image(a_bytes);
+                const bool b_img = diffy::looks_image(b_bytes);
+                const bool auto_img = (a_img || a_bytes.empty()) && (b_img || b_bytes.empty()) &&
+                                      (a_img || b_img);
+                const bool want_image = opts.image_mode == diffy::ImageMode::Always ||
+                                        (opts.image_mode == diffy::ImageMode::Auto && auto_img);
+                if (want_image) {
+                    if (a_bytes.size() == b_bytes.size() &&
+                        (a_bytes.empty() ||
+                         std::memcmp(a_bytes.data(), b_bytes.data(), a_bytes.size()) == 0)) {
+                        return 0;  // identical
+                    }
+                    auto describe = [](gsl::span<const uint8_t> bytes) -> std::string {
+                        if (bytes.empty()) {
+                            return "(absent)";
+                        }
+                        const diffy::ImageInfo info = diffy::image_probe(bytes);
+                        if (!info.ok) {
+                            return fmt::format("not an image ({} bytes)", bytes.size());
+                        }
+                        if (info.width >= 0 && info.height >= 0) {
+                            return fmt::format("{} {}x{}", info.format, info.width, info.height);
+                        }
+                        return info.format;
+                    };
+                    // When only the content changed (same format + dimensions), say
+                    // so rather than printing two identical-looking lines.
+                    const diffy::ImageInfo ia = diffy::image_probe(a_bytes);
+                    const diffy::ImageInfo ib = diffy::image_probe(b_bytes);
+                    if (!a_bytes.empty() && !b_bytes.empty() && ia.ok && ib.ok &&
+                        std::strcmp(ia.format, ib.format) == 0 && ia.width == ib.width &&
+                        ia.height == ib.height && ia.width >= 0) {
+                        fmt::print("Image files differ (same format and dimensions: {}; "
+                                   "pixel data changed, {} vs {} bytes)\n",
+                                   describe(a_bytes), a_bytes.size(), b_bytes.size());
+                    } else {
+                        fmt::print("Image files differ:\n  --- {}: {}\n  +++ {}: {}\n",
+                                   opts.left_file_name, describe(a_bytes), opts.right_file_name,
+                                   describe(b_bytes));
+                    }
+                    return 1;
+                }
+            }
 
             diffy::HexAlignParams hp;
             hp.force_global = opts.hex_global;
