@@ -81,4 +81,37 @@ ascii_char(uint8_t b) {
     return (b >= 0x20 && b <= 0x7e) ? static_cast<char>(b) : '.';
 }
 
+// How much of an Equal run to show as context around the surrounding changes.
+// Shared by all three hex renderers so their trimming can't drift: `head`/`tail`
+// rows of context are shown, `omitted` rows in between are collapsed to a
+// "@@ … @@" marker. Row-based (bytes = rows * bytes_per_row) so unified and
+// side-by-side agree. `is_first`/`is_last` suppress the head/tail at the file
+// ends (nothing to give context to).
+struct HexWindow {
+    uint64_t head = 0;     // context rows at the start of the run
+    uint64_t omitted = 0;  // rows collapsed to a marker
+    uint64_t tail = 0;     // context rows at the end of the run
+};
+
+inline HexWindow
+hex_equal_window(uint64_t len, int bytes_per_row, bool is_first, bool is_last, uint64_t ctx_rows) {
+    const uint64_t bpr = bytes_per_row > 0 ? static_cast<uint64_t>(bytes_per_row) : 16;
+    const uint64_t total = (len + bpr - 1) / bpr;
+    const bool show_head = !is_first;
+    const bool show_tail = !is_last;
+    HexWindow w;
+    if (!show_head && !show_tail) {
+        return w;  // whole-file equal run: show nothing
+    }
+    if (show_head && show_tail && total <= 2 * ctx_rows) {
+        w.head = total;  // small enough: show it all, no marker
+        return w;
+    }
+    w.head = show_head ? (ctx_rows < total ? ctx_rows : total) : 0;
+    const uint64_t rem = total - w.head;
+    w.tail = show_tail ? (ctx_rows < rem ? ctx_rows : rem) : 0;
+    w.omitted = total - w.head - w.tail;
+    return w;
+}
+
 }  // namespace diffy

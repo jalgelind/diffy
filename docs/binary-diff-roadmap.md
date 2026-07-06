@@ -86,10 +86,16 @@ Impact is relative to a real user diffing a binary.
   crafted same-checksum-different-bytes chunks (or document why it's impractical).
 
 ### Cleanup / tech-debt
-- **C1 — Unify the trimming logic (M, med).** Extract "alignment → display rows
-  (with context trim)" into one helper used by all three renderers, or route the
-  CLI through `build_hex_view` + a `DiffViewModel`→ANSI serializer (then
-  regenerate the hex goldens). Removes the row-vs-byte trim divergence.
+- **C1 — Unify the trimming logic. ✅ DONE (shared helper).** The context-trim
+  window math (head/omitted/tail rows + where the "@@" marker lands) is now one
+  helper, `hex_equal_window()` in `output/hex_common.hpp`, used by all three
+  renderers — output-preserving, and it removes the row-vs-byte drift (unified
+  was row-based, side-by-side byte-based). The three renderers still own their
+  distinct *layouts* (unified emits separate −/+ rows; side-by-side pairs them;
+  the view model emits spans). Fully collapsing the CLI onto `build_hex_view` +
+  a `DiffViewModel`→ANSI serializer is possible but has a real tradeoff — the GUI
+  wants per-byte foreground colour (`cell.type = Common`) while the CLI wants a
+  per-row background + fill-to-edge — so it's left as a larger follow-up.
 - **C2 — Expose hex params in config (S, low).** `byte_cap`, chunk sizes,
   default bytes/row, context rows via `diffy.conf`.
 
