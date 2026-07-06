@@ -152,6 +152,10 @@ GOLDEN_CASES = (
     ('bin_unified_plain', '-u --color=never',        'bin_a.bin', 'bin_b.bin'),
     ('bin_unified_color', '-u --color=always -W 80', 'bin_a.bin', 'bin_b.bin'),
     ('bin_sidebyside',    '-s --color=always -W 80', 'bin_a.bin', 'bin_b.bin'),
+    # 32 KB pair: exercises the chunk path (patience over content-defined chunks)
+    # + prefix/suffix trim + byte-level refine, which the small fixtures above skip.
+    ('bin_chunk_unified',    '-u --color=never',        'bin_chunk_a.bin', 'bin_chunk_b.bin'),
+    ('bin_chunk_sidebyside', '-s --color=never -W 100', 'bin_chunk_a.bin', 'bin_chunk_b.bin'),
 )
 
 def _show_visible(data):
