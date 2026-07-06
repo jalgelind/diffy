@@ -167,20 +167,14 @@ build_side_by_side(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b, const
                 add_cell({false, true, 0, b[seg.b_offset + i], 0, seg.b_offset + i, HexSegKind::OnlyB});
             }
         } else {  // Equal
-            const bool show_head = si != 0;
-            const bool show_tail = si + 1 != alignment.size();
-            if (!show_head && !show_tail) {
+            const HexWindow w =
+                hex_equal_window(seg.a_len, bpr, si == 0, si + 1 == alignment.size(), ctx);
+            if (w.head == 0 && w.omitted == 0 && w.tail == 0) {
                 continue;
             }
             const uint64_t len = seg.a_len;
-            const uint64_t ctx_bytes = ctx * static_cast<uint64_t>(bpr);
-            uint64_t head = 0, tail = 0;
-            if (show_head && show_tail && len <= 2 * ctx_bytes) {
-                head = len;
-            } else {
-                head = show_head ? std::min<uint64_t>(ctx_bytes, len) : 0;
-                tail = show_tail ? std::min<uint64_t>(ctx_bytes, len - head) : 0;
-            }
+            const uint64_t head = std::min<uint64_t>(w.head * static_cast<uint64_t>(bpr), len);
+            const uint64_t tail = std::min<uint64_t>(w.tail * static_cast<uint64_t>(bpr), len - head);
             const uint64_t omitted = len - head - tail;
             for (uint64_t i = 0; i < head; ++i) {
                 add_cell({true, true, a[seg.a_offset + i], b[seg.b_offset + i], seg.a_offset + i,
@@ -243,30 +237,22 @@ build_unified(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b, const HexA
                                   b_rows, bpr, width);
                 break;
             case HexSegKind::Equal: {
-                const bool show_head = si != 0;
-                const bool show_tail = si + 1 != alignment.size();
-                if (!show_head && !show_tail) {
+                const HexWindow w = hex_equal_window(seg.a_len, bpr, si == 0,
+                                                     si + 1 == alignment.size(), ctx);
+                if (w.head == 0 && w.omitted == 0 && w.tail == 0) {
                     break;
                 }
-                if (show_head && show_tail && a_rows <= 2 * ctx) {
+                if (w.head > 0) {
                     emit_unified_rows(model, ' ', SpanStyle::Common, a.data(), seg.a_offset, seg.a_len, 0,
-                                      a_rows, bpr, width);
-                    break;
+                                      w.head, bpr, width);
                 }
-                const uint64_t head = show_head ? std::min<uint64_t>(ctx, a_rows) : 0;
-                const uint64_t tail = show_tail ? std::min<uint64_t>(ctx, a_rows - head) : 0;
-                const uint64_t omitted = a_rows - head - tail;
-                if (head > 0) {
-                    emit_unified_rows(model, ' ', SpanStyle::Common, a.data(), seg.a_offset, seg.a_len, 0,
-                                      head, bpr, width);
-                }
-                if (omitted > 0) {
-                    const uint64_t resume = (head + omitted) * static_cast<uint64_t>(bpr);
+                if (w.omitted > 0) {
+                    const uint64_t resume = (w.head + w.omitted) * static_cast<uint64_t>(bpr);
                     model.rows.push_back(header_row(seg.a_offset + resume, seg.b_offset + resume, width));
                 }
-                if (tail > 0) {
+                if (w.tail > 0) {
                     emit_unified_rows(model, ' ', SpanStyle::Common, a.data(), seg.a_offset, seg.a_len,
-                                      head + omitted, tail, bpr, width);
+                                      w.head + w.omitted, w.tail, bpr, width);
                 }
                 break;
             }

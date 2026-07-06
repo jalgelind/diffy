@@ -126,32 +126,23 @@ diffy::hex_unified_render(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b
                           (seg.b_len + bpr - 1) / bpr, bpr, width, s, fill_width);
                 break;
             case HexSegKind::Equal: {
-                const uint64_t total_rows = (seg.a_len + bpr - 1) / bpr;
-                const bool show_head = si != 0;
-                const bool show_tail = si + 1 != alignment.size();
-                if (!show_head && !show_tail) {
+                const HexWindow w = hex_equal_window(seg.a_len, bpr, si == 0, si + 1 == alignment.size(),
+                                                     ctx);
+                if (w.head == 0 && w.omitted == 0 && w.tail == 0) {
                     break;  // whole file equal: nothing to show
                 }
-                if (show_head && show_tail && total_rows <= 2 * ctx) {
-                    emit_rows(out, RowKind::Context, a.data(), seg.a_offset, seg.a_len, 0, total_rows, bpr,
+                if (w.head > 0) {
+                    emit_rows(out, RowKind::Context, a.data(), seg.a_offset, seg.a_len, 0, w.head, bpr,
                               width, s, fill_width);
-                    break;
                 }
-                const uint64_t head = show_head ? std::min<uint64_t>(ctx, total_rows) : 0;
-                const uint64_t tail = show_tail ? std::min<uint64_t>(ctx, total_rows - head) : 0;
-                const uint64_t omitted = total_rows - head - tail;
-                if (head > 0) {
-                    emit_rows(out, RowKind::Context, a.data(), seg.a_offset, seg.a_len, 0, head, bpr, width,
-                              s, fill_width);
-                }
-                if (omitted > 0) {
-                    const uint64_t resume = (head + omitted) * static_cast<uint64_t>(bpr);
+                if (w.omitted > 0) {
+                    const uint64_t resume = (w.head + w.omitted) * static_cast<uint64_t>(bpr);
                     push_header(fmt::format("@@ -{} +{} @@", hex_offset(seg.a_offset + resume, width),
                                             hex_offset(seg.b_offset + resume, width)));
                 }
-                if (tail > 0) {
-                    emit_rows(out, RowKind::Context, a.data(), seg.a_offset, seg.a_len, head + omitted, tail,
-                              bpr, width, s, fill_width);
+                if (w.tail > 0) {
+                    emit_rows(out, RowKind::Context, a.data(), seg.a_offset, seg.a_len, w.head + w.omitted,
+                              w.tail, bpr, width, s, fill_width);
                 }
                 break;
             }

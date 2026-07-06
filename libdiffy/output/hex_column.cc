@@ -161,20 +161,14 @@ diffy::hex_column_render(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b,
                 }
                 break;
             case HexSegKind::Equal: {
-                const bool show_head = si != 0;
-                const bool show_tail = si + 1 != alignment.size();
-                if (!show_head && !show_tail) {
+                const HexWindow w =
+                    hex_equal_window(seg.a_len, bpr, si == 0, si + 1 == alignment.size(), ctx);
+                if (w.head == 0 && w.omitted == 0 && w.tail == 0) {
                     break;
                 }
                 const uint64_t len = seg.a_len;
-                const uint64_t ctx_bytes = ctx * static_cast<uint64_t>(bpr);
-                uint64_t head = 0, tail = 0;
-                if (show_head && show_tail && len <= 2 * ctx_bytes) {
-                    head = len;  // small enough: show all
-                } else {
-                    head = show_head ? std::min<uint64_t>(ctx_bytes, len) : 0;
-                    tail = show_tail ? std::min<uint64_t>(ctx_bytes, len - head) : 0;
-                }
+                const uint64_t head = std::min<uint64_t>(w.head * static_cast<uint64_t>(bpr), len);
+                const uint64_t tail = std::min<uint64_t>(w.tail * static_cast<uint64_t>(bpr), len - head);
                 const uint64_t omitted = len - head - tail;
                 for (uint64_t i = 0; i < head; ++i) {
                     add_cell({true, true, a[seg.a_offset + i], b[seg.b_offset + i], seg.a_offset + i,
