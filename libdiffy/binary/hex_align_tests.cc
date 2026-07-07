@@ -224,6 +224,36 @@ TEST_CASE("needleman_wunsch: substitution-heavy region stays essentially diagona
     check_reconstructs(a, b);
 }
 
+TEST_CASE("needleman_wunsch: size-skewed region uses full DP, not a giant band (HEX-1)") {
+    // A large region against a tiny one: |dn| is huge, so an unclamped diagonal
+    // band (width ~ |dn| + 2r) is far wider than the whole matrix — (na+1)*W would
+    // be tens of GB. The aligner must clamp the band to valid diagonals and fall
+    // through to full DP (a few MB). Without the fix this bad_allocs / OOMs.
+    auto a = gen(40000, 99);
+    auto b = gen(50, 7);
+    const auto ops = needleman_wunsch_bytes(a.data(), a.size(), b.data(), b.size());
+    size_t da = 0, db = 0;
+    for (AlignOp op : ops) {
+        if (op != AlignOp::InsertB) ++da;  // Equal/Replace/DeleteA consume an A byte
+        if (op != AlignOp::DeleteA) ++db;  // Equal/Replace/InsertB consume a B byte
+    }
+    CHECK(da == a.size());
+    CHECK(db == b.size());
+    check_reconstructs(a, b);
+}
+
+TEST_CASE("hex_align: size-skewed changed region refines without exploding (HEX-1)") {
+    // A big deletion against a few added bytes is tall/thin, so it passes the
+    // refiner's cell budget and calls the byte aligner with na >> nb. That path
+    // must stay bounded (full DP), not allocate a |dn|-wide band.
+    std::vector<uint8_t> a = gen(40000, 3);
+    std::vector<uint8_t> b = gen(50, 200000);
+    bool truncated = false;
+    const auto al = hex_align(a, b, HexAlignParams{}, &truncated);
+    CHECK(!truncated);  // it fit the budget => the byte aligner actually ran
+    check_well_formed(a, b, al);
+}
+
 TEST_CASE("hex_align: identical files are one Equal segment") {
     const auto a = gen(10000, 3);
     bool truncated = false;

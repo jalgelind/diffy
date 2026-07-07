@@ -30,7 +30,9 @@ using HexAlignment = std::vector<HexSegment>;
 
 struct HexAlignParams {
     // --hex-global: byte-align the whole files instead of chunking first. Only
-    // honoured (and only feasible) when both files are within global_cap.
+    // honoured when both files fit the O(n*m) aligner's cell budget (derived from
+    // byte_cap below — the same bound the per-region refiner uses); larger inputs
+    // fall back to the chunked path so the DP table can't blow up.
     bool force_global = false;
     // Per-side byte cap for the O(n*m) byte aligner. Whole-file global alignment
     // and per-region refinement both stay under this; larger changed regions are

@@ -62,9 +62,20 @@ hex_align(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b, const HexAlign
 
     HexAlignment out;
 
-    // Whole-file byte alignment: opt-in, or automatic for files small enough that
-    // the O(n*m) aligner is cheap. Gives the tightest possible alignment.
-    if (params.force_global || (a.size() <= params.byte_cap && b.size() <= params.byte_cap)) {
+    // Whole-file byte alignment: opt-in (--hex-global), or automatic for files
+    // small enough that the O(n*m) aligner is cheap. Gives the tightest possible
+    // alignment. force_global is honoured only while the whole-file DP table stays
+    // within the same cell budget the per-region refiner trusts (below); a request
+    // for larger files falls through to the chunked path rather than allocating an
+    // unbounded matrix. Without this bound, `--hex-global` on two big files asks
+    // the aligner for tens of GB.
+    const uint64_t ga = a.size(), gb = b.size();
+    const uint64_t global_cells = static_cast<uint64_t>(params.byte_cap) * params.byte_cap;
+    const uint64_t global_side = static_cast<uint64_t>(params.byte_cap) * 16;
+    const bool global_fits =
+        ga <= global_side && gb <= global_side && (gb == 0 || ga <= global_cells / gb);
+    const bool auto_small = ga <= params.byte_cap && gb <= params.byte_cap;
+    if ((params.force_global && global_fits) || auto_small) {
         append_byte_aligned(a.data(), 0, a.size(), b.data(), 0, b.size(), out);
         return out;
     }

@@ -172,11 +172,24 @@ solve(const uint8_t* a, size_t na, const uint8_t* b, size_t nb) {
     const int dn = static_cast<int>(static_cast<long>(nb) - static_cast<long>(na));
     const size_t maxlen = std::max(na, nb);
     std::vector<AlignOp> ops;
+    // Valid diagonals are k = j - i with 0<=i<=na, 0<=j<=nb, i.e. k in [-na, nb];
+    // cells outside that range can never lie on a path. Clamp the band to it,
+    // because an unclamped band for size-skewed inputs (|dn| large) would request
+    // (na+1)*W cells with W ~ |dn| + 2r — tens of GB for e.g. 64 KB vs 100 bytes,
+    // even though full_dp for the same region is a few MB. And once the band is as
+    // wide as the whole column count (W >= nb+1) it computes no fewer cells than
+    // full_dp while spanning every diagonal, so full_dp is both smaller and
+    // bounded: fall through to it rather than allocating the giant band.
+    const int k_min = -static_cast<int>(na);
+    const int k_max = static_cast<int>(nb);
     // Band radius starts just past the forced length difference and doubles.
     for (int r = std::max(16, std::abs(dn) + 16); static_cast<size_t>(r) < maxlen; r *= 2) {
+        const int klo = std::max(k_min, std::min(0, dn) - r);
+        const int khi = std::min(k_max, std::max(0, dn) + r);
+        if (static_cast<long>(khi) - klo + 1 >= static_cast<long>(nb) + 1) {
+            break;  // band covers the full width => full_dp is smaller and bounded
+        }
         ops.clear();
-        const int klo = std::min(0, dn) - r;
-        const int khi = std::max(0, dn) + r;
         if (banded_dp<Cost>(a, na, b, nb, klo, khi, ops)) {
             return ops;  // path stayed inside the band => optimal
         }
