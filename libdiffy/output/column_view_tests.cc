@@ -84,6 +84,37 @@ TEST_CASE("column_view_render_lines — basic layout") {
     CHECK(any_contains(lines, "gamma"));
 }
 
+TEST_CASE("column_view_render_lines — hunk starting with >=2 deletes stays aligned (TXT-2)") {
+    // A changed region beginning with two deletions must pad the right pane with
+    // two blank rows so the following common lines stay aligned. The old aligner
+    // underflowed its unsigned counter here, dropped a padding row, and shifted
+    // every later row up one (so "del2" landed opposite "keep1").
+    ColumnViewState config;
+    auto lines = render_cv({"del1", "del2", "keep1", "keep2"}, {"keep1", "keep2"}, config, 80);
+
+    // Split a content row into (left, right) panes on the column separator.
+    auto panes = [](const std::string& row) -> std::pair<std::string, std::string> {
+        const std::string sep = "│";
+        auto p = row.find(sep);
+        if (p == std::string::npos)
+            return {row, ""};
+        return {row.substr(0, p), row.substr(p + sep.size())};
+    };
+
+    bool saw_del2 = false;
+    for (const auto& l : lines) {
+        auto [lp, rp] = panes(l);
+        if (lp.find("del2") != std::string::npos) {
+            saw_del2 = true;
+            CHECK(rp.find("keep") == std::string::npos);  // right pane is blank, not misaligned
+        }
+        if (lp.find("keep1") != std::string::npos) {
+            CHECK(rp.find("keep1") != std::string::npos);  // common line aligned across panes
+        }
+    }
+    CHECK(saw_del2);
+}
+
 TEST_CASE("column_view_render_lines — word wrap produces more rows than chopping") {
     std::string long_line(120, 'x');
     ColumnViewState wrap;

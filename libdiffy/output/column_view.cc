@@ -295,37 +295,50 @@ make_display_lines(const gsl::span<diffy::Line>& content_strings,
 
 void
 insert_alignment_rows(DisplayColumns& columns) {
-    std::size_t ia = 0u, ib = 0u;
-
-    DisplayLine empty;
-
     auto& left = columns[0];
     auto& right = columns[1];
+    const DisplayLine empty;
 
+    // Pad both columns with blank rows so each display row is one of: two aligned
+    // Common lines, a Delete opposite a blank, a blank opposite an Insert, or a
+    // Delete opposite an Insert (a changed line, shown on the same row). Build
+    // fresh columns in a single two-pointer pass — the previous in-place version
+    // inserted at the wrong index and used `ia -= 2` on unsigned counters, which
+    // underflowed at the start of a hunk that began with >= 2 deletes and dropped
+    // out of the loop with mismatched, misaligned columns.
+    std::vector<DisplayLine> out_left, out_right;
+    out_left.reserve(left.size() + right.size());
+    out_right.reserve(left.size() + right.size());
+
+    std::size_t ia = 0u, ib = 0u;
     while (ia < left.size() || ib < right.size()) {
-        auto left_line = ia < left.size() ? left[ia] : empty;
-        auto right_line = ib < right.size() ? right[ib] : empty;
+        const bool has_l = ia < left.size();
+        const bool has_r = ib < right.size();
+        const bool l_delete = has_l && left[ia].type == EditType::Delete;
+        const bool r_insert = has_r && right[ib].type == EditType::Insert;
 
-        auto left_type = left_line.type;
-        auto right_type = right_line.type;
-
-        if (left_type == EditType::Delete && right_type == EditType::Common) {
-            right.insert(right.begin() + ia, empty);
-            ia -= 2;
-            ib -= 2;
+        if (l_delete && !r_insert) {
+            // A deletion with no insertion to pair with: blank on the right.
+            out_left.push_back(left[ia]);
+            out_right.push_back(empty);
+            ia++;
+        } else if (r_insert && !l_delete) {
+            // An insertion with no deletion to pair with: blank on the left.
+            out_left.push_back(empty);
+            out_right.push_back(right[ib]);
+            ib++;
+        } else {
+            // Both Common (aligned context), a Delete facing an Insert (a changed
+            // line on one row), or one side already exhausted.
+            out_left.push_back(has_l ? left[ia] : empty);
+            out_right.push_back(has_r ? right[ib] : empty);
+            ia++;
+            ib++;
         }
-
-        if (right_type == EditType::Insert && left_type == EditType::Common) {
-            left.insert(left.begin() + ib,
-                                empty);  // TODO: replace `empty` with `{}` and may get stuck in an infinite
-                                         // loop. Figure out why.
-            ia -= 2;
-            ib -= 2;
-        }
-
-        ia++;
-        ib++;
     }
+
+    left = std::move(out_left);
+    right = std::move(out_right);
 }
 
 std::string
