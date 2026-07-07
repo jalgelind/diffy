@@ -48,7 +48,8 @@ resolve_edit_type_from_indices(EditIndex idx_a, EditIndex idx_b) {
     return EditType::Common;
 }
 
-AnnotatedHunk
+// Annotates `ahunk` in place (no return copy — the caller owns and moves it).
+void
 annotate_tokens_in_hunk(const DiffInput<TokenEdit>& diff_input,
                         const DiffResult& result,
                         AnnotatedHunk& ahunk,
@@ -87,8 +88,6 @@ annotate_tokens_in_hunk(const DiffInput<TokenEdit>& diff_input,
             });
         }
     }
-
-    return ahunk;
 }
 
 std::vector<AnnotatedHunk>
@@ -178,18 +177,15 @@ annotate_tokens(const DiffInput<diffy::Line>& diff_input,
         DiffInput<TokenEdit> hunk_input{a, b, "left side", "right side"};
         Patience<TokenEdit> diff_context(hunk_input);
         auto result = diff_context.compute();
-        if (result.status == diffy::DiffResultStatus::Failed) {
-            // The token-level diff failed (reachable via a hash collision in the
-            // token soup — TokenEdit::operator== compares length+hash only). Fall
-            // back to line granularity: emit the hunk with its per-line types but
-            // no intra-line segments, rather than blanking the changed text.
-            output.push_back(ahunk);
-        } else {
-            // OK or NoChanges are both valid: NoChanges means the two token
-            // streams are identical (e.g. a whitespace-only change), which
-            // annotate_tokens_in_hunk renders correctly as an all-Common hunk.
-            output.push_back(annotate_tokens_in_hunk(hunk_input, result, ahunk, ignore_whitespace));
+        // OK or NoChanges are both valid: NoChanges means the two token streams are
+        // identical (e.g. a whitespace-only change), rendered as an all-Common hunk.
+        // On Failed (reachable via a token-hash collision) fall back to line
+        // granularity: ahunk keeps its per-line types but gets no intra-line
+        // segments, rather than blanking the changed text.
+        if (result.status != diffy::DiffResultStatus::Failed) {
+            annotate_tokens_in_hunk(hunk_input, result, ahunk, ignore_whitespace);
         }
+        output.push_back(std::move(ahunk));
     }
     return output;
 }
