@@ -325,16 +325,18 @@ Side by side options:
                     list_colors = true;
                     return true;
                 case 'a':
-                    opts.algorithm = diffy::algo_from_string(optarg);
+                    // optarg is null for the space-separated form (`--algorithm a b`)
+                    // since these are optional_argument; guard before std::string use.
+                    opts.algorithm = diffy::algo_from_string(optarg ? optarg : "");
                     break;
                 case 'l':
                     opts.line_granularity = true;
                     break;
                 case 'o':
-                    opts.left_file_name = optarg;
+                    opts.left_file_name = optarg ? optarg : "";
                     break;
                 case 'n':
-                    opts.right_file_name = optarg;
+                    opts.right_file_name = optarg ? optarg : "";
                     break;
                 case 'L':
                     opts.force_language = optarg ? optarg : "";

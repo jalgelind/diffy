@@ -53,6 +53,21 @@ TEST_CASE("readlines") {
         CHECK(lines.empty());
     }
 
+    SUBCASE("embedded NUL is preserved and matches readlines_from_string") {
+        // TXT-7: std::string(line) truncated at the first NUL, so path-based
+        // readlines disagreed with readlines_from_string on binary-ish text.
+        const std::string content = std::string("a\0b\n", 4) + "tail\n";
+        auto p = write_temp("diffy_rl_nul.txt", content);
+        auto from_file = readlines(p, false);
+        auto from_str = readlines_from_string(content, false);
+        REQUIRE(from_file.size() == 2);
+        REQUIRE(from_str.size() == 2);
+        CHECK(from_file[0].line.size() == 4);              // "a\0b\n", not truncated to "a"
+        CHECK(from_file[0].line == std::string("a\0b\n", 4));
+        CHECK(from_file[0].line == from_str[0].line);
+        CHECK(from_file[0].checksum == from_str[0].checksum);
+    }
+
     SUBCASE("equal content hashes equal; different content differs") {
         auto p1 = write_temp("diffy_rl_d.txt", "same\n");
         auto p2 = write_temp("diffy_rl_e.txt", "same\n");

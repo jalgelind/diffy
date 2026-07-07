@@ -178,12 +178,18 @@ annotate_tokens(const DiffInput<diffy::Line>& diff_input,
         DiffInput<TokenEdit> hunk_input{a, b, "left side", "right side"};
         Patience<TokenEdit> diff_context(hunk_input);
         auto result = diff_context.compute();
-        if (result.status != diffy::DiffResultStatus::OK) {
-            // TODO: report error.
-            assert(0 && "bad diff");
+        if (result.status == diffy::DiffResultStatus::Failed) {
+            // The token-level diff failed (reachable via a hash collision in the
+            // token soup — TokenEdit::operator== compares length+hash only). Fall
+            // back to line granularity: emit the hunk with its per-line types but
+            // no intra-line segments, rather than blanking the changed text.
+            output.push_back(ahunk);
+        } else {
+            // OK or NoChanges are both valid: NoChanges means the two token
+            // streams are identical (e.g. a whitespace-only change), which
+            // annotate_tokens_in_hunk renders correctly as an all-Common hunk.
+            output.push_back(annotate_tokens_in_hunk(hunk_input, result, ahunk, ignore_whitespace));
         }
-
-        output.push_back(annotate_tokens_in_hunk(hunk_input, result, ahunk, ignore_whitespace));
     }
     return output;
 }

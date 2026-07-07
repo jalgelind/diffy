@@ -136,7 +136,10 @@ diffy::readlines(const std::string& path, bool ignore_line_endings, bool ignore_
 
     uint32_t i = 1;
     while ((nread = getline(&line, &len, stream)) != -1) {
-        std::string sline(line);
+        // Build from (ptr, len) so embedded NULs are preserved. std::string(line)
+        // would truncate at the first NUL, making path-based readlines disagree
+        // with readlines_from_string (which keeps them) on binary-ish text.
+        std::string sline(line, static_cast<size_t>(nread));
         if (ignore_line_endings) {
             sline = right_trim(sline);
         }
