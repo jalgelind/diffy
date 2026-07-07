@@ -17,12 +17,15 @@ decode_image(gsl::span<const uint8_t> data, int max_dim) {
     }
     const int len = static_cast<int>(data.size());
 
-    // Reject oversized images before allocating (stbi_info doesn't decode).
+    // Reject oversized images before allocating (stbi_info doesn't decode). If the
+    // header can't be read at all, fail closed instead of falling through to an
+    // unguarded stbi_load, which could allocate up to ~2 GB on hostile input.
     int w = 0, h = 0, ch = 0;
-    if (stbi_info_from_memory(data.data(), len, &w, &h, &ch)) {
-        if (w <= 0 || h <= 0 || w > max_dim || h > max_dim) {
-            return out;
-        }
+    if (!stbi_info_from_memory(data.data(), len, &w, &h, &ch)) {
+        return out;
+    }
+    if (w <= 0 || h <= 0 || w > max_dim || h > max_dim) {
+        return out;
     }
 
     int rw = 0, rh = 0, rch = 0;

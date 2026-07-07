@@ -86,7 +86,7 @@ jpeg_dims(Bytes d, int& w, int& h) {
         // SOF0..SOF15 carry dimensions, except DHT(C4)/JPG(C8)/DAC(CC).
         const bool is_sof =
             marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC;
-        if (is_sof && i + 7 < d.size()) {
+        if (is_sof && i + 8 < d.size()) {  // be16(d, i+7) reads d[i+8], so need i+8 in range
             h = be16(d, i + 5);
             w = be16(d, i + 7);
             return;
@@ -141,7 +141,9 @@ image_probe(Bytes d) {
     if (is_png(d)) {
         info.ok = true;
         info.format = "png";
-        if (d.size() >= 24) {  // 8 sig + 4 len + 4 "IHDR" + 4 w + 4 h
+        // 8 sig + 4 len + 4 "IHDR" + 4 w + 4 h. Verify the IHDR tag so a PNG whose
+        // first chunk isn't IHDR doesn't have unrelated bytes read as dimensions.
+        if (d.size() >= 24 && std::memcmp(d.data() + 12, "IHDR", 4) == 0) {
             info.width = int(be32(d, 16));
             info.height = int(be32(d, 20));
         }
@@ -160,7 +162,8 @@ image_probe(Bytes d) {
         info.ok = true;
         info.format = "bmp";
         if (d.size() >= 26) {
-            info.width = le32(d, 18);
+            const int32_t ww = le32(d, 18);
+            info.width = ww < 0 ? -ww : ww;  // clamp; width should never be negative
             const int32_t hh = le32(d, 22);
             info.height = hh < 0 ? -hh : hh;  // negative = top-down
         }

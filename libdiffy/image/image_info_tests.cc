@@ -63,6 +63,31 @@ TEST_CASE("image_probe reads JPEG dimensions from SOF0") {
     CHECK(info.width == 64);
 }
 
+TEST_CASE("image_probe: SOF truncated right after height stays in bounds (IMG-1)") {
+    // A SOF0 whose width field's second byte would be one past the buffer. The old
+    // guard (i+7 < size) admitted this and read d[i+8] out of bounds (span abort).
+    std::vector<uint8_t> jpg = {0xFF, 0xD8,        // SOI
+                                0xFF, 0xC0,        // SOF0
+                                0x00, 0x11, 0x08,  // seg len, precision
+                                0x00, 0x30,        // height 48 (i+5, i+6)
+                                0x00};             // width high byte only; its low byte is OOB
+    const auto info = image_probe(sp(jpg));        // must not read past the end
+    CHECK(info.ok);
+    CHECK(std::string(info.format) == "jpeg");
+    CHECK(info.width == -1);   // SOF couldn't be fully read -> dims left unknown
+    CHECK(info.height == -1);
+}
+
+TEST_CASE("image_probe: PNG whose first chunk isn't IHDR yields no dimensions (IMG-1)") {
+    std::vector<uint8_t> png = {0x89, 'P',  'N',  'G',  0x0D, 0x0A, 0x1A, 0x0A,
+                                0x00, 0x00, 0x00, 0x0D, 'g',  'A',  'M',  'A',  // not IHDR
+                                0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x20};
+    const auto info = image_probe(sp(png));
+    CHECK(info.ok);
+    CHECK(info.width == -1);
+    CHECK(info.height == -1);
+}
+
 TEST_CASE("looks_image rejects non-images and short input") {
     std::vector<uint8_t> text = {'h', 'e', 'l', 'l', 'o'};
     CHECK_FALSE(looks_image(sp(text)));
