@@ -90,10 +90,25 @@ hex_align(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b, const HexAlign
     DiffInput<Chunk> in{a_span, b_span, "A", "B"};
     DiffResult res = Patience<Chunk>(in).compute();
 
-    // Identical (some algorithms return an empty edit sequence for no changes).
+    // Identical: patience returns an empty edit sequence when the two chunk
+    // sequences match. That normally means the files are byte-identical, but a
+    // chunk-hash collision could produce it for differing content — so verify with
+    // a byte compare before emitting the one Equal segment that would otherwise
+    // skip the memcmp discipline every other Equal here follows (and would violate
+    // the Equal invariant a_len == b_len if the sizes differed). On mismatch, emit
+    // the region as removed + added instead.
     if (res.edit_sequence.empty()) {
-        if (!a.empty() || !b.empty()) {
-            push_merge(out, HexSegKind::Equal, 0, a.size(), 0, b.size());
+        if (a.size() == b.size() && (a.empty() || std::memcmp(a.data(), b.data(), a.size()) == 0)) {
+            if (!a.empty()) {
+                push_merge(out, HexSegKind::Equal, 0, a.size(), 0, b.size());
+            }
+        } else {
+            if (!a.empty()) {
+                push_merge(out, HexSegKind::OnlyA, 0, a.size(), 0, 0);
+            }
+            if (!b.empty()) {
+                push_merge(out, HexSegKind::OnlyB, 0, 0, 0, b.size());
+            }
         }
         return out;
     }
