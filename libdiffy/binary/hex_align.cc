@@ -62,6 +62,16 @@ hex_align(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b, const HexAlign
 
     HexAlignment out;
 
+    // Identical files: one Equal segment, skipping chunking and alignment. The
+    // size+memcmp check is O(n) and short-circuits the common "no change" case
+    // (the image path already had this; the hex path chunk-hashed regardless).
+    if (a.size() == b.size() && (a.empty() || std::memcmp(a.data(), b.data(), a.size()) == 0)) {
+        if (!a.empty()) {
+            push_merge(out, HexSegKind::Equal, 0, a.size(), 0, b.size());
+        }
+        return out;
+    }
+
     // Whole-file byte alignment: opt-in (--hex-global), or automatic for files
     // small enough that the O(n*m) aligner is cheap. Gives the tightest possible
     // alignment. force_global is honoured only while the whole-file DP table stays
