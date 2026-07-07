@@ -45,53 +45,38 @@ std::vector<HunkRange>
 extend_hunk_ranges(const std::vector<Edit>& edit_sequence,
                    const std::vector<HunkRange>& hunk_ranges,
                    const int64_t context_size) {
-    std::vector<HunkRange> context_ranges = hunk_ranges;
+    // First pass: combine hunks separated by at most `context_size` common lines
+    // on each side (so the two context windows would touch/overlap). A single
+    // forward pass into `context_ranges` chains adjacent merges without erasing
+    // mid-vector — O(H) instead of O(H^2), and no unsigned-index rewind.
+    // Merging only ever extends a range's end, so earlier starts stay valid.
+    std::vector<HunkRange> context_ranges;
+    context_ranges.reserve(hunk_ranges.size());
+    for (const HunkRange& hr : hunk_ranges) {
+        if (!context_ranges.empty() && hr.start - context_ranges.back().end < context_size * 2 + 2) {
+            context_ranges.back().end = hr.end;
+        } else {
+            context_ranges.push_back(hr);
+        }
+    }
+
+    // TODO: When two hunk ranges are separated by empty common lines (blank
+    //       lines), we might want to join them too — see ALG-2 (slider/indent
+    //       heuristic), which subsumes that idea.
+
+    // Second pass: extend each surviving hunk by `context_size` lines, clamped to
+    // the neighbouring hunks and the edit-sequence bounds. Left-to-right, so the
+    // previous hunk's end is already extended while the next hunk's start is not
+    // (its start is never moved by merging), matching the original semantics.
     for (size_t i = 0; i < context_ranges.size(); i++) {
-        const size_t context_ranges_index_max = context_ranges.size() - 1;
-        const bool last_iteration = i == context_ranges_index_max;
-
-        HunkRange* p = i == 0 ? 0 : &context_ranges[i - 1];
-        HunkRange* h = &context_ranges[i];
-        HunkRange* n = last_iteration ? 0 : &context_ranges[i + 1];
-
-        // Combine hunks if they are separated by at most ´context_size´ number
-        // of common lines. Consider that there are context lines at the end
-        // of this chunk and at the start of the next one.
-        if (n && n->start - h->end < context_size * 2 + 2) {
-            context_ranges[i] = {h->start, n->end};
-            auto erase_pos = context_ranges.begin() + static_cast<int>(i) + 1;
-            context_ranges.erase(erase_pos);
-            i -= 1;
-            continue;
-        }
-
-// TODO: When two hunk ranges are separated by empty common lines
-//       (for files they would be line breaks), we might want to join
-//       them.
-#if 0
-        if (n) {
-            int delta = n->start - h->end;
-            if (delta == 2 && edit_sequence[n->start - 1].type == EditType::Common) {
-                context_ranges[i] = {h->start, n->end};
-                context_ranges.erase(context_ranges.begin()+i+1);
-                i -= 1;
-                continue;
-            }
-        }
-#endif
-
-        // Adjust context lines for current hunk. Handle edge cases for a
-        // first hunk at the start, and a final hunk at the end.
-        {
-            const int64_t p_end = p ? p->end : 0;
-            h->start = std::max(p_end, h->start - context_size);
-
-            if (n) {
-                h->end = std::min(n->start, h->end + context_size);
-            } else {
-                // Don't extend past valid boundaries
-                h->end = std::min(h->end + context_size, static_cast<int64_t>(edit_sequence.size()) - 1);
-            }
+        const int64_t p_end = i == 0 ? 0 : context_ranges[i - 1].end;
+        context_ranges[i].start = std::max(p_end, context_ranges[i].start - context_size);
+        if (i + 1 < context_ranges.size()) {
+            context_ranges[i].end = std::min(context_ranges[i + 1].start, context_ranges[i].end + context_size);
+        } else {
+            // Don't extend past valid boundaries.
+            context_ranges[i].end =
+                std::min(context_ranges[i].end + context_size, static_cast<int64_t>(edit_sequence.size()) - 1);
         }
     }
     return context_ranges;
