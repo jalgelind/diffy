@@ -386,16 +386,34 @@ config_save(const std::string& config_root, const std::string& config_name, diff
         }
     }
 
-    FILE* f = fopen(config_name.c_str(), "wb");
+    // Write to a temp file then rename over the target, so a crash mid-write can't
+    // truncate/corrupt diffy.conf (shared with the GUI). Check the write, too.
+    const std::string tmp = config_name + ".tmp";
+    FILE* f = fopen(tmp.c_str(), "wb");
     if (!f) {
-        fmt::print(stderr, "Failed to open '{}' for writing.\n", config_name.c_str());
+        fmt::print(stderr, "Failed to open '{}' for writing.\n", tmp.c_str());
         fmt::print(stderr, "   errno ({}) = {}\n", errno, strerror(errno));
         return;
     }
 
     std::string serialized = cfg_serialize(config_value);
-    fwrite(serialized.c_str(), serialized.size(), 1, f);
-    fclose(f);
+    bool ok = serialized.empty() || fwrite(serialized.data(), 1, serialized.size(), f) == serialized.size();
+    if (fflush(f) != 0)
+        ok = false;
+    if (fclose(f) != 0)
+        ok = false;
+
+    std::error_code ec;
+    if (!ok) {
+        fmt::print(stderr, "Failed to write '{}'.\n", config_name.c_str());
+        std::filesystem::remove(tmp, ec);
+        return;
+    }
+    std::filesystem::rename(tmp, config_name, ec);
+    if (ec) {
+        fmt::print(stderr, "Failed to replace '{}': {}\n", config_name.c_str(), ec.message());
+        std::filesystem::remove(tmp, ec);
+    }
 }
 
 using OptionVector = std::vector<std::tuple<std::string, ConfigVariableType, void*>>;
