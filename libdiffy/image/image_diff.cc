@@ -161,6 +161,21 @@ image_diff(const std::vector<uint8_t>& a_rgba, const std::vector<uint8_t>& b_rgb
     const double max_delta = 35215.0 * opts.threshold * opts.threshold;
     constexpr double kDimAlpha = 0.1;  // how faintly the unchanged base shows
 
+    // Identical buffers: no changed pixels, so skip the per-pixel color-delta and
+    // antialiasing work entirely. The overlay (if requested) is the all-dimmed
+    // base — the same output the unchanged branch below produces for every pixel.
+    if (std::memcmp(a, b, need) == 0) {
+        if (opts.compute_overlay) {
+            for (size_t pos = 0; pos < need; pos += 4) {
+                const uint8_t v = static_cast<uint8_t>(std::lround(
+                    blend(rgb2y(a[pos], a[pos + 1], a[pos + 2]), kDimAlpha * a[pos + 3] / 255.0)));
+                draw(res.overlay_rgba, pos, v, v, v);
+            }
+        }
+        res.similarity = 1.0;
+        return res;
+    }
+
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             const size_t pos = (static_cast<size_t>(y) * width + x) * 4;

@@ -81,7 +81,8 @@ TermColor::parse_hex(const std::string& s) {
     }
     
     for (std::string::size_type i = 1; i < s.size(); i++) {
-        if (!std::isxdigit(s[i])) {
+        // Cast to unsigned char: std::isxdigit on a negative (high-bit) char is UB.
+        if (!std::isxdigit(static_cast<unsigned char>(s[i]))) {
             return {};
         }
     }
