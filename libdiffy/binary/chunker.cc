@@ -40,6 +40,13 @@ chunk_bytes(const uint8_t* data, size_t len, const ChunkParams& params) {
 
     const uint64_t* g = gear_table().g;
     const uint64_t mask = (params.mask_bits >= 64) ? ~0ull : ((1ull << params.mask_bits) - 1);
+    // Test the HIGH bits of the rolling hash (FastCDC), not the low ones: with a
+    // shift-add hash the low bits are dominated by the last handful of bytes, so
+    // cuts cluster on low-entropy data. The high bits are better mixed and give
+    // more uniform boundary placement. (Changes cut positions -> hex goldens.)
+    const int mask_shift =
+        (params.mask_bits == 0 || params.mask_bits >= 64) ? 0 : (64 - static_cast<int>(params.mask_bits));
+    const uint64_t boundary_mask = mask << mask_shift;
 
     size_t i = 0;
     while (i < len) {
@@ -56,7 +63,7 @@ chunk_bytes(const uint8_t* data, size_t len, const ChunkParams& params) {
         // Past the minimum, cut on the first boundary or at the maximum.
         for (; j < max_end; ++j) {
             h = (h << 1) + g[data[j]];
-            if ((h & mask) == 0) {
+            if ((h & boundary_mask) == 0) {
                 ++j;
                 break;
             }
