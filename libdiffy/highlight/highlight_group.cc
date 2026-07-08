@@ -103,6 +103,16 @@ group_for_capture(std::string_view c) {
     if (has_prefix(c, "attribute")) return HighlightGroup::Attribute;
     if (has_prefix(c, "label")) return HighlightGroup::Label;
 
+    // Prose / markup scopes (markdown & friends emit text.* / markup.*). There are
+    // no dedicated groups, so map to the nearest code groups — otherwise markdown
+    // renders almost uncoloured: headings as keywords, inline/block code as
+    // strings, links & URIs as constants, block quotes as comments.
+    if (has_prefix(c, "markup.heading") || has_prefix(c, "text.title")) return HighlightGroup::Keyword;
+    if (has_prefix(c, "markup.raw") || has_prefix(c, "text.literal")) return HighlightGroup::String;
+    if (has_prefix(c, "markup.link") || has_prefix(c, "text.uri") || has_prefix(c, "text.reference"))
+        return HighlightGroup::Constant;
+    if (has_prefix(c, "markup.quote") || has_prefix(c, "text.quote")) return HighlightGroup::Comment;
+
     return HighlightGroup::None;
 }
 

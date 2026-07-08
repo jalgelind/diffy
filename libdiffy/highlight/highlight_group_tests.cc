@@ -29,3 +29,15 @@ TEST_CASE("highlight group name <-> enum resolver") {
     CHECK_FALSE(highlight_group_from_name("").has_value());
     CHECK_FALSE(highlight_group_from_name("keyword.control").has_value());  // dotted != flat key
 }
+
+TEST_CASE("markdown / markup capture scopes map to the nearest code groups (ALG-13)") {
+    CHECK(group_for_capture("text.title") == HighlightGroup::Keyword);
+    CHECK(group_for_capture("markup.heading.1") == HighlightGroup::Keyword);
+    CHECK(group_for_capture("text.literal") == HighlightGroup::String);
+    CHECK(group_for_capture("markup.raw.block") == HighlightGroup::String);
+    CHECK(group_for_capture("text.uri") == HighlightGroup::Constant);
+    CHECK(group_for_capture("markup.link.url") == HighlightGroup::Constant);
+    CHECK(group_for_capture("text.quote") == HighlightGroup::Comment);
+    // Scopes we don't map still fall through to None.
+    CHECK(group_for_capture("text.emphasis") == HighlightGroup::None);
+}
