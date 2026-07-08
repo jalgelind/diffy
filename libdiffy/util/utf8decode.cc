@@ -74,9 +74,17 @@ diffy::utf8_len(const std::string& s, std::string::size_type start, std::string:
     // TODO: Handle out of bounds start/end.
 
     for (std::string::size_type i = start; i < end; i++) {
-        if (!utf8_decode(&state, &codepoint, static_cast<uint8_t>(s[i]))) {
+        const uint32_t st = utf8_decode(&state, &codepoint, static_cast<uint8_t>(s[i]));
+        if (st == UTF8_ACCEPT) {
             count += 1;
+        } else if (st == UTF8_REJECT) {
+            // Invalid byte: count it as one column and reset. Without the reset the
+            // DFA stays in REJECT and counts the rest of the string as width 0,
+            // desyncing the column view on Latin-1 / mixed-encoding lines.
+            count += 1;
+            state = UTF8_ACCEPT;
         }
+        // else: mid-sequence continuation byte — no column yet.
     }
 
     return static_cast<int64_t>(count);
@@ -93,12 +101,21 @@ diffy::utf8_advance_by(const std::string& s, std::string::size_type start, std::
     uint32_t state = 0;
     std::size_t count = 0;
 
+    if (s.empty()) {
+        return 0;  // avoid s.size() - 1 underflowing to SIZE_MAX
+    }
     if (start >= s.size()) {
         return s.size() - 1;
     }
 
     for (std::string::size_type i = start; i < s.size(); i++) {
-        if (!utf8_decode(&state, &codepoint, static_cast<uint8_t>(s[i]))) {
+        const uint32_t st = utf8_decode(&state, &codepoint, static_cast<uint8_t>(s[i]));
+        if (st == UTF8_ACCEPT) {
+            if (++count == index) {
+                return i + 1;
+            }
+        } else if (st == UTF8_REJECT) {
+            state = UTF8_ACCEPT;  // recover; count the malformed byte as one column
             if (++count == index) {
                 return i + 1;
             }

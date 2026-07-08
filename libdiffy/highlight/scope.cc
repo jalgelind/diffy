@@ -105,6 +105,11 @@ scope_outline(std::string_view source, Language lang) {
     if (source.empty() || source.size() > kHighlightSizeCap) {
         return out;
     }
+    // Binary guard (promised by the header): tree-sitter grammars are for source
+    // text; a NUL byte means this isn't text, so skip it rather than parse garbage.
+    if (source.find('\0') != std::string_view::npos) {
+        return out;
+    }
     const TSLanguage* ts_lang = ts_language_for(lang);
     if (!ts_lang) {
         return out;

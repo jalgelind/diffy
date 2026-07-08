@@ -23,4 +23,18 @@ TEST_CASE("unicode") {
         REQUIRE(offset == 11);
         REQUIRE(s.substr(offset, 1) == "l");
     }
+
+    SUBCASE("malformed byte recovers and counts as one column (TXT-8)") {
+        // 'a', an invalid lead byte 0xFF, then 'b' — independently 3 columns. The
+        // old DFA stuck in REJECT and counted the tail as width 0 (total 1).
+        std::string s = "a\xFF"
+                        "b";
+        REQUIRE(s.size() == 3);
+        CHECK(utf8_len(s) == 3);
+    }
+
+    SUBCASE("advance_by is safe on empty input (TXT-8)") {
+        std::string empty;
+        CHECK(utf8_advance_by(empty, 0, 1) == 0);  // must not underflow to SIZE_MAX
+    }
 }
