@@ -144,8 +144,9 @@ TEST_CASE("unified output is well-formed over the whole corpus") {
         bool prefixes_ok = true;
         for (std::size_t i = 2; i < out.size(); i++) {
             char c = out[i].empty() ? '\0' : out[i][0];
-            // hunk header '@', or a context/insert/delete body line.
-            if (c != '@' && c != ' ' && c != '+' && c != '-')
+            // hunk header '@', a context/insert/delete body line, or the
+            // "\ No newline at end of file" marker.
+            if (c != '@' && c != ' ' && c != '+' && c != '-' && c != '\\')
                 prefixes_ok = false;
         }
         REQUIRE(prefixes_ok);

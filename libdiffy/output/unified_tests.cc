@@ -35,6 +35,37 @@ contains(const std::vector<std::string>& v, const std::string& s) {
 
 }  // namespace
 
+TEST_CASE("unified_diff_render — no-newline marker follows the affected side (TXT-5)") {
+    // Right file's last line lacks a trailing newline: the marker follows the '+'.
+    auto pa = write_temp("diffy_eol_a1.txt", "same\nold\n");
+    auto pb = write_temp("diffy_eol_b1.txt", "same\nnew");  // no final newline
+    auto A = readlines(pa, false);
+    auto B = readlines(pb, false);
+    DiffInput<Line> in{gsl::span<Line>{A}, gsl::span<Line>{B}, pa, pb};
+    auto hunks = compose_hunks(Patience<Line>(in).compute().edit_sequence, 3);
+    auto out = unified_diff_render(in, hunks);
+
+    REQUIRE(contains(out, "\\ No newline at end of file\n"));
+    // The marker sits immediately after the "+new" line (the side missing the EOL),
+    // never after the "-old" line (A ends with a newline).
+    for (std::size_t i = 1; i < out.size(); ++i) {
+        if (out[i] == "\\ No newline at end of file\n") {
+            CHECK(out[i - 1].rfind("+new", 0) == 0);
+        }
+    }
+}
+
+TEST_CASE("unified_diff_render — no marker when both files end with a newline (TXT-5)") {
+    auto pa = write_temp("diffy_eol_a2.txt", "same\nold\n");
+    auto pb = write_temp("diffy_eol_b2.txt", "same\nnew\n");
+    auto A = readlines(pa, false);
+    auto B = readlines(pb, false);
+    DiffInput<Line> in{gsl::span<Line>{A}, gsl::span<Line>{B}, pa, pb};
+    auto hunks = compose_hunks(Patience<Line>(in).compute().edit_sequence, 3);
+    auto out = unified_diff_render(in, hunks);
+    CHECK_FALSE(contains(out, "\\ No newline at end of file\n"));
+}
+
 TEST_CASE("unified_diff_render") {
     auto pa = write_temp("diffy_unified_a.txt", "line one\nline two\nline three\n");
     auto pb = write_temp("diffy_unified_b.txt", "line one\nline 2\nline three\n");

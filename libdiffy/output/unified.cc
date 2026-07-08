@@ -201,33 +201,47 @@ diffy::unified_diff_render(const DiffInput<Line>& diff_input,
             else if (e.type == EditType::Delete)
                 op = "-";
 
+            // A source line lacking its trailing newline can only be a file's last
+            // line (readlines keeps '\n' on every other line), so it needs the
+            // "\ No newline at end of file" marker (TXT-5).
+            const bool no_eol = text.empty() || text.back() != '\n';
+
             if (!color) {
                 udiff.push_back(fmt::format("{:1}{}", op, text));
-                continue;
+            } else {
+                // Theme background for the line kind + tree-sitter syntax foreground.
+                const std::string& base = e.type == EditType::Insert  ? style->insert_line
+                                          : e.type == EditType::Delete ? style->delete_line
+                                                                       : style->common_line;
+                const LineHighlights* hl = from_a ? a_hl : b_hl;
+                const int64_t li =
+                    from_a ? static_cast<int64_t>(e.a_index) : static_cast<int64_t>(e.b_index);
+                const std::vector<HighlightRun>* runs = nullptr;
+                if (hl && li >= 0 && static_cast<size_t>(li) < hl->size() && !(*hl)[li].empty()) {
+                    runs = &(*hl)[li];
+                }
+
+                // Keep the trailing newline outside the coloured span so the reset
+                // lands before it (no background bleed past the line end).
+                std::string body = text;
+                std::string nl;
+                if (!body.empty() && body.back() == '\n') {
+                    nl = "\n";
+                    body.pop_back();
+                }
+                udiff.push_back(base + op + colour_runs(body, runs, base, light_theme) +
+                                fill(1 + display_cols(body)) + reset + nl);
             }
 
-            // Theme background for the line kind + tree-sitter syntax foreground.
-            const std::string& base = e.type == EditType::Insert  ? style->insert_line
-                                      : e.type == EditType::Delete ? style->delete_line
-                                                                   : style->common_line;
-            const LineHighlights* hl = from_a ? a_hl : b_hl;
-            const int64_t li =
-                from_a ? static_cast<int64_t>(e.a_index) : static_cast<int64_t>(e.b_index);
-            const std::vector<HighlightRun>* runs = nullptr;
-            if (hl && li >= 0 && static_cast<size_t>(li) < hl->size() && !(*hl)[li].empty()) {
-                runs = &(*hl)[li];
+            // Emit the marker per side, immediately after the affected +/-/context
+            // line, the way diff/patch expect it. Terminate the content line first
+            // so the marker stands on its own row (the source lacks the newline).
+            if (no_eol) {
+                if (udiff.back().empty() || udiff.back().back() != '\n') {
+                    udiff.back() += "\n";
+                }
+                udiff.push_back("\\ No newline at end of file\n");
             }
-
-            // Keep the trailing newline outside the coloured span so the reset
-            // lands before it (no background bleed past the line end).
-            std::string body = text;
-            std::string nl;
-            if (!body.empty() && body.back() == '\n') {
-                nl = "\n";
-                body.pop_back();
-            }
-            udiff.push_back(base + op + colour_runs(body, runs, base, light_theme) +
-                            fill(1 + display_cols(body)) + reset + nl);
         }
     }
 

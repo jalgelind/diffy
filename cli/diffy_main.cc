@@ -912,21 +912,9 @@ Side by side options:
                 printf("%s\n", line.c_str());
             }
         }
-
-        // TODO(ja): This differs from how ´diff´ does it. ´diff´ also warns about missing newline before
-        //           eof in the left file. When using this program with git it makes sense to skip this,
-        //           since you don't really care if the issue was present in the previous revision.
-        bool right_eof_newline = false;
-        if (right_line_data.size() > 0) {
-            const std::string& last_line = right_line_data.back().line;
-            if (!last_line.empty() && last_line.back() == '\n') {
-                right_eof_newline = true;
-            }
-        }
-
-        if (!right_eof_newline) {
-            printf("\\ No newline at end of file\n");
-        }
+        // The "\ No newline at end of file" markers are emitted per side by
+        // unified_diff_render (TXT-5), immediately after the affected line — not
+        // once globally for the right file here.
     }
 
     return exit_code;
