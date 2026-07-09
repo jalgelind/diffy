@@ -86,9 +86,15 @@ full_dp(const uint8_t* a, size_t na, const uint8_t* b, size_t nb, std::vector<Al
 }
 
 // Banded DP over the diagonal band k = j - i in [klo, khi] (klo<=0<=... covers
-// the start k=0 and the end k=nb-na). Returns true iff the optimal in-band path
-// never rode the band edge — i.e. a wider band could not improve it, so the
-// result is optimal. `ops` is filled regardless (best in-band alignment).
+// the start k=0 and the end k=nb-na). `ops` is filled with the best in-band
+// alignment. Returns a *heuristic* "looks optimal" signal — true when the
+// traceback never rode the band edge — used only to decide whether to widen the
+// band. This is not a soundness proof: a substitution-heavy diagonal path never
+// touches the edge even when a shift larger than the band radius (periodic /
+// rotated data) would be cheaper, so the band can stop early on such inputs. The
+// full_dp fallback in solve() (once the band would span the whole matrix) bounds
+// the worst case; an exact escape-cost test (widen while achieved cost >=
+// 2(r+1)-|dn|) would make it sound but defeats banding on high-cost regions.
 template <typename Cost>
 bool
 banded_dp(const uint8_t* a, size_t na, const uint8_t* b, size_t nb, int klo, int khi,

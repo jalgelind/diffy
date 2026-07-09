@@ -27,6 +27,12 @@ struct BipolarArray {
         std::memmove(arr_.get(), other.arr_.get(), other.capacity_ * sizeof(Type));
     }
 
+    // The user-declared copy-ctor above suppresses the implicit move-ctor, so
+    // vector growth and returning snapshots would deep-copy. Restore a cheap move
+    // (the unique_ptr just transfers ownership). Copy-assign is unused (the trace
+    // is read by reference) so it's fine for the move-ctor to leave it deleted.
+    BipolarArray(BipolarArray&&) noexcept = default;
+
     Type&
     operator[](int64_t index) {
         auto offset = -min_ + index;

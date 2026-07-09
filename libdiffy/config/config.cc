@@ -713,14 +713,14 @@ diffy::config_apply_theme(const std::string& theme,
     // for groups the theme's [syntax] table below doesn't override.
     {
         auto luminance = [](const TermColor& c) -> std::optional<double> {
-            switch (c.kind) {
-                case TermColor::Kind::Color4bit:
-                case TermColor::Kind::Color8bit:
-                case TermColor::Kind::Color24bit:
-                    return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
-                default:
-                    return std::nullopt;  // terminal default / no readable RGB
+            // Only 24-bit colours carry real RGB in r/g/b. For 4-bit/8-bit the
+            // fields hold SGR code / palette index numbers (e.g. white bg == code
+            // 107), so feeding them to the RGB formula misdetects the theme; treat
+            // them as "no readable RGB" and fall back to the dark palette.
+            if (c.kind == TermColor::Kind::Color24bit) {
+                return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
             }
+            return std::nullopt;
         };
         auto l = luminance(cv_style_opts.common_line.bg);
         if (!l)

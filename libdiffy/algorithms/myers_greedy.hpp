@@ -44,17 +44,36 @@ struct MyersGreedy : public Algorithm<Unit> {
 
         const int64_t max = N + M;
 
-        // Snapshots cost O(D * (N + M)); bail to linear-space Myers (-2) if the
-        // trace would exceed this budget.
+        // Snapshots cost O(D^2) total; bail to linear-space Myers (-2) if the trace
+        // would exceed this budget. Backtrack at level d only reads V[k-1], V[k+1]
+        // and V[prev_k] for k in [-d, d] — i.e. indices in [-d-1, d+1] — so each
+        // snapshot is sliced to that band (clamped to V's range) instead of the full
+        // 2*max+1 slots, which is far less memory/memcpy for small d.
         constexpr std::size_t kMaxTraceBytes = 256ull * 1024 * 1024;
-        const std::size_t snapshot_bytes = static_cast<std::size_t>(2 * max + 1) * sizeof(IndexSizeType);
+        std::size_t trace_bytes = 0;
 
         trace.reserve(static_cast<std::size_t>(max));
         BipolarArray<IndexSizeType> v{-max, max};
 
+        // The V band backtrack needs at level d. Storage for index i is at offset
+        // max+i, so [lo, hi] is the contiguous run [max+lo, max+hi].
+        auto band = [max](int64_t d) -> std::pair<int64_t, int64_t> {
+            return {std::max<int64_t>(-(d + 1), -max), std::min<int64_t>(d + 1, max)};
+        };
+        auto snapshot = [&](int64_t d) {
+            const auto [lo, hi] = band(d);
+            const std::size_t bytes = static_cast<std::size_t>(hi - lo + 1) * sizeof(IndexSizeType);
+            BipolarArray<IndexSizeType> s{lo, hi};
+            std::memcpy(s.arr_.get(), &v.arr_.get()[max + lo], bytes);
+            trace.push_back(std::move(s));
+            trace_bytes += bytes;
+        };
+
         v[1] = 0;
         for (int64_t d = 0; d <= max; d++) {
-            if (static_cast<std::size_t>(trace.size() + 1) * snapshot_bytes > kMaxTraceBytes) {
+            const auto [blo, bhi] = band(d);
+            if (trace_bytes + static_cast<std::size_t>(bhi - blo + 1) * sizeof(IndexSizeType) >
+                kMaxTraceBytes) {
                 return -2;
             }
             for (int64_t k = -d; k <= d; k += 2) {
@@ -76,11 +95,11 @@ struct MyersGreedy : public Algorithm<Unit> {
                 v[k] = static_cast<IndexSizeType>(x);
 
                 if (x >= N && y >= M) {
-                    trace.push_back(v);
+                    snapshot(d);
                     return d;
                 }
             }  // for k
-            trace.push_back(v);
+            snapshot(d);
         }  // for d
         assert(0 && "Failed to figure out edit distance");
         return -1;
