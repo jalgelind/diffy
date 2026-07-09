@@ -8,6 +8,7 @@
 
 #include <doctest.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -102,6 +103,56 @@ TEST_CASE("annotate_hunks — token granularity keeps shared tokens common") {
         }
     }
     CHECK(found_common_segment);
+}
+
+TEST_CASE("annotate_hunks — token granularity pairs similar lines (no cross-line scatter)") {
+    // Two changed lines share almost all their tokens; ALG-3 must pair each deleted
+    // line with its similar inserted line and diff within the pair, so only that
+    // line's own differing argument is highlighted — not a token borrowed from the
+    // other changed line (the old whole-hunk "token soup" failure).
+    auto A = mk({"ctx", "int alpha = compute(x);", "int beta = compute(y);", "ctx2"});
+    auto B = mk({"ctx", "int alpha = compute(z);", "int beta = compute(w);", "ctx2"});
+    DiffInput<Line> in{gsl::span<Line>{A}, gsl::span<Line>{B}, "a", "b"};
+    auto r = Patience<Line>(in).compute();
+    auto hunks = compose_hunks(r.edit_sequence, 3);
+    REQUIRE(hunks.size() == 1);
+
+    auto annotated = annotate_hunks(in, hunks, EditGranularity::Token, false);
+    REQUIRE(annotated.size() == 1);
+    check_tiling(A, annotated[0].a_lines);
+    check_tiling(B, annotated[0].b_lines);
+
+    auto changed_texts = [](const std::string& src, const EditLine& el, EditType want) {
+        std::vector<std::string> out;
+        for (const auto& seg : el.segments) {
+            if (seg.type == want) {
+                out.push_back(src.substr(seg.start, seg.length));
+            }
+        }
+        return out;
+    };
+    auto has = [](const std::vector<std::string>& v, const std::string& s) {
+        return std::find(v.begin(), v.end(), s) != v.end();
+    };
+
+    for (const auto& el : annotated[0].b_lines) {
+        if (el.type != EditType::Insert) {
+            continue;
+        }
+        const std::string& src = B[el.line_index.value].line;
+        auto ch = changed_texts(src, el, EditType::Insert);
+        // The shared identifiers must stay Common regardless of tokenization.
+        CHECK(!has(ch, "alpha"));
+        CHECK(!has(ch, "beta"));
+        CHECK(!has(ch, "compute"));
+        if (src.find("alpha") != std::string::npos) {
+            CHECK(has(ch, "z"));   // this line's own new arg
+            CHECK(!has(ch, "w"));  // never the other line's
+        } else {
+            CHECK(has(ch, "w"));
+            CHECK(!has(ch, "z"));
+        }
+    }
 }
 
 TEST_CASE("annotate_hunks — ignore_whitespace marks whitespace segments common") {

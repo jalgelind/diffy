@@ -6,6 +6,9 @@
 
 #include <fmt/format.h>
 
+#include <algorithm>
+#include <unordered_map>
+
 using namespace diffy;
 
 namespace {
@@ -48,143 +51,199 @@ resolve_edit_type_from_indices(EditIndex idx_a, EditIndex idx_b) {
     return EditType::Common;
 }
 
-// Annotates `ahunk` in place (no return copy — the caller owns and moves it).
-void
-annotate_tokens_in_hunk(const DiffInput<TokenEdit>& diff_input,
-                        const DiffResult& result,
-                        AnnotatedHunk& ahunk,
-                        bool ignore_whitespace) {
-    for (std::vector<Edit>::size_type j = 0; j < result.edit_sequence.size(); j++) {
-        auto& token_edit = result.edit_sequence[j];
-        auto a_idx = token_edit.a_index;
-        auto b_idx = token_edit.b_index;
-        auto token_edit_type = resolve_edit_type_from_indices(a_idx, b_idx);
-
-        if (a_idx.valid) {
-            const auto& iedit = diff_input.A[static_cast<long>(a_idx)];
-            const auto& token = iedit.token;
-            if (ignore_whitespace && (token.flags & (TokenFlagSpace | TokenFlagTab))) {
-                token_edit_type = EditType::Common;
-            }
-            ahunk.a_lines[iedit.hunk_line_index].segments.push_back({
-                token.start,
-                token.length,
-                token.flags,
-                token_edit_type,
-            });
+// Length-weighted token overlap (Dice coefficient), keyed by token hash so that
+// long shared identifiers count for more than the spaces/punctuation every line
+// shares. Returns 0..1 (1.0 for two empty lines). Used to decide which delete
+// line pairs with which insert line.
+double
+line_similarity(const std::vector<Token>& ta, const std::vector<Token>& tb) {
+    std::unordered_map<uint32_t, int> a_count, b_count;  // hash -> occurrences
+    std::unordered_map<uint32_t, uint32_t> len;          // hash -> token length
+    uint32_t tot_a = 0, tot_b = 0;
+    for (const auto& t : ta) {
+        a_count[t.hash]++;
+        len[t.hash] = static_cast<uint32_t>(t.length);
+        tot_a += static_cast<uint32_t>(t.length);
+    }
+    for (const auto& t : tb) {
+        b_count[t.hash]++;
+        len[t.hash] = static_cast<uint32_t>(t.length);
+        tot_b += static_cast<uint32_t>(t.length);
+    }
+    if (tot_a + tot_b == 0) {
+        return 1.0;
+    }
+    uint32_t common = 0;
+    for (const auto& [h, ca] : a_count) {
+        if (auto it = b_count.find(h); it != b_count.end()) {
+            common += static_cast<uint32_t>(std::min(ca, it->second)) * len[h];
         }
+    }
+    return (2.0 * common) / static_cast<double>(tot_a + tot_b);
+}
 
-        if (b_idx.valid) {
-            const auto& iedit = diff_input.B[static_cast<long>(b_idx)];
-            const auto& token = iedit.token;
-            if (ignore_whitespace && (token.flags & (TokenFlagSpace | TokenFlagTab))) {
-                token_edit_type = EditType::Common;
+// Every token of `line` marked `type`; for context/common lines and for changed
+// lines with no similar counterpart (a pure add or delete).
+void
+whole_line_segments(const std::string& line, EditType type, EditLine& out, bool ignore_whitespace) {
+    for (const auto& token : tokenize(line)) {
+        auto et = type;
+        if (ignore_whitespace && (token.flags & (TokenFlagSpace | TokenFlagTab))) {
+            et = EditType::Common;
+        }
+        out.segments.push_back({token.start, token.length, token.flags, et});
+    }
+}
+
+// Token-diff two single lines and append the intra-line segments to their
+// EditLines: a-side tokens come out Common (shared) or Delete, b-side Common or
+// Insert. Confining the diff to one pair keeps highlight islands from jumping
+// between unrelated lines (the old whole-hunk "token soup" bug).
+void
+diff_line_pair(const std::string& la,
+               const std::string& lb,
+               EditLine& aline,
+               EditLine& bline,
+               bool ignore_whitespace) {
+    std::vector<TokenEdit> a, b;
+    for (const auto& tk : tokenize(la)) {
+        a.push_back({0, tk, la});
+    }
+    for (const auto& tk : tokenize(lb)) {
+        b.push_back({0, tk, lb});
+    }
+    DiffInput<TokenEdit> in{a, b, "l", "r"};
+    Patience<TokenEdit> differ(in);
+    auto res = differ.compute();
+    if (res.status == diffy::DiffResultStatus::Failed) {
+        // Token-hash collision etc.: mark the whole lines changed rather than blank.
+        whole_line_segments(la, EditType::Delete, aline, ignore_whitespace);
+        whole_line_segments(lb, EditType::Insert, bline, ignore_whitespace);
+        return;
+    }
+    for (const auto& e : res.edit_sequence) {
+        const auto type = resolve_edit_type_from_indices(e.a_index, e.b_index);
+        if (e.a_index.valid) {
+            const auto& tk = a[static_cast<long>(e.a_index)].token;  // Delete or Common
+            auto et = type;
+            if (ignore_whitespace && (tk.flags & (TokenFlagSpace | TokenFlagTab))) {
+                et = EditType::Common;
             }
-            ahunk.b_lines[iedit.hunk_line_index].segments.push_back({
-                token.start,
-                token.length,
-                token.flags,
-                token_edit_type,
-            });
+            aline.segments.push_back({tk.start, tk.length, tk.flags, et});
+        }
+        if (e.b_index.valid) {
+            const auto& tk = b[static_cast<long>(e.b_index)].token;  // Insert or Common
+            auto et = type;
+            if (ignore_whitespace && (tk.flags & (TokenFlagSpace | TokenFlagTab))) {
+                et = EditType::Common;
+            }
+            bline.segments.push_back({tk.start, tk.length, tk.flags, et});
         }
     }
 }
 
+// ALG-3: intra-line highlighting by pairing changed lines. Instead of diffing all
+// of a hunk's changed tokens as one concatenated stream per side (which let a
+// unique token anchor line 1 of A to line 7 of B), pair each deleted line with
+// its most similar inserted line and token-diff within the pair; unpaired lines
+// are whole-line adds/deletes.
 std::vector<AnnotatedHunk>
 annotate_tokens(const DiffInput<diffy::Line>& diff_input,
                 const std::vector<Hunk>& hunks,
                 bool ignore_whitespace) {
-    // TODO: This could be threaded.
+    // Cap the O(deletes × inserts) similarity search so a pathological hunk can't
+    // blow up; above it, changed lines fall back to whole-line add/delete.
+    constexpr size_t kPairBudget = 4096;
+    constexpr double kPairThreshold = 0.30;  // below this, treat as unrelated add + delete
+
     std::vector<AnnotatedHunk> output;
-    std::vector<TokenEdit> a;
-    std::vector<TokenEdit> b;
-
-    for (auto& hunk : hunks) {
-        a.clear();
-        b.clear();
-
+    for (const auto& hunk : hunks) {
         AnnotatedHunk ahunk;
         ahunk.from_start = hunk.from_start;
         ahunk.from_count = hunk.from_count;
         ahunk.to_start = hunk.to_start;
         ahunk.to_count = hunk.to_count;
-
         ahunk.a_lines.resize(static_cast<size_t>(hunk.from_count));
         ahunk.b_lines.resize(static_cast<size_t>(hunk.to_count));
 
-        // Figure out how many context lines there are at the beginning and
-        // end of the hunk.
-        std::vector<Edit>::size_type context_head = 0;
-        for (auto i = 0U; i < hunk.edit_units.size(); i++) {
-            if (hunk.edit_units[i].type != EditType::Common) {
-                context_head = i;
-                break;
-            }
-        }
+        // Deleted lines (A-side) and inserted lines (B-side) are candidates for
+        // pairing; context/common lines get whole-line Common segments immediately.
+        struct ChangedLine {
+            size_t line_idx;  // index into ahunk.a_lines / b_lines
+            std::string text;
+            std::vector<Token> tokens;
+        };
+        std::vector<ChangedLine> dels, inss;
 
-        std::vector<Edit>::size_type context_tail = 0;
-        for (auto i = hunk.edit_units.size() - 1; i > 0; i--) {
-            if (hunk.edit_units[i].type != EditType::Common) {
-                context_tail = i;
-                break;
-            }
-        }
-
-        // Run diff on all tokens in the hunk, except for the context lines.
-        std::vector<Edit>::size_type edit_iter = 0;
-        std::size_t a_hunk_line_index = 0;
-        std::size_t b_hunk_line_index = 0;
-        for (; edit_iter < hunk.edit_units.size(); edit_iter++) {
-            const auto& edit = hunk.edit_units[edit_iter];
+        size_t a_i = 0, b_i = 0;
+        for (const auto& edit : hunk.edit_units) {
             if (edit.a_index.valid) {
-                const auto& input_line = diff_input.A[static_cast<long>(edit.a_index)].line;
-
-                if (edit_iter >= context_head && edit_iter <= context_tail) {
-                    for (const auto& token : tokenize(input_line)) {
-                        a.push_back({a_hunk_line_index, token, input_line});
-                    }
+                const std::string& line = diff_input.A[static_cast<long>(edit.a_index)].line;
+                ahunk.a_lines[a_i].type = edit.type;
+                ahunk.a_lines[a_i].line_index = edit.a_index;
+                if (edit.type == EditType::Delete) {
+                    dels.push_back({a_i, line, tokenize(line)});
                 } else {
-                    for (const auto& token : tokenize(input_line)) {
-                        ahunk.a_lines[a_hunk_line_index].segments.push_back(
-                            {token.start, token.length, token.flags, edit.type});
-                    }
+                    whole_line_segments(line, edit.type, ahunk.a_lines[a_i], ignore_whitespace);
                 }
-
-                ahunk.a_lines[a_hunk_line_index].type = edit.type;
-                ahunk.a_lines[a_hunk_line_index].line_index = edit.a_index;
-                a_hunk_line_index++;
+                a_i++;
             }
-
             if (edit.b_index.valid) {
-                const auto& input_line = diff_input.B[static_cast<long>(edit.b_index)].line;
-                if (edit_iter >= context_head && edit_iter <= context_tail) {
-                    for (const auto& token : tokenize(input_line)) {
-                        b.push_back({b_hunk_line_index, token, input_line});
-                    }
+                const std::string& line = diff_input.B[static_cast<long>(edit.b_index)].line;
+                ahunk.b_lines[b_i].type = edit.type;
+                ahunk.b_lines[b_i].line_index = edit.b_index;
+                if (edit.type == EditType::Insert) {
+                    inss.push_back({b_i, line, tokenize(line)});
                 } else {
-                    for (const auto& token : tokenize(input_line)) {
-                        ahunk.b_lines[b_hunk_line_index].segments.push_back(
-                            {token.start, token.length, token.flags, edit.type});
-                    }
+                    whole_line_segments(line, edit.type, ahunk.b_lines[b_i], ignore_whitespace);
                 }
-
-                ahunk.b_lines[b_hunk_line_index].type = edit.type;
-                ahunk.b_lines[b_hunk_line_index].line_index = edit.b_index;
-                b_hunk_line_index++;
+                b_i++;
             }
         }
 
-        DiffInput<TokenEdit> hunk_input{a, b, "left side", "right side"};
-        Patience<TokenEdit> diff_context(hunk_input);
-        auto result = diff_context.compute();
-        // OK or NoChanges are both valid: NoChanges means the two token streams are
-        // identical (e.g. a whitespace-only change), rendered as an all-Common hunk.
-        // On Failed (reachable via a token-hash collision) fall back to line
-        // granularity: ahunk keeps its per-line types but gets no intra-line
-        // segments, rather than blanking the changed text.
-        if (result.status != diffy::DiffResultStatus::Failed) {
-            annotate_tokens_in_hunk(hunk_input, result, ahunk, ignore_whitespace);
+        // Greedy best-match pairing: score every delete×insert pair, then assign the
+        // highest-scoring pairs first, each line used at most once.
+        std::vector<bool> del_used(dels.size(), false), ins_used(inss.size(), false);
+        if (!dels.empty() && !inss.empty() && dels.size() * inss.size() <= kPairBudget) {
+            struct Cand {
+                double sim;
+                size_t di;
+                size_t ii;
+            };
+            std::vector<Cand> cands;
+            for (size_t di = 0; di < dels.size(); di++) {
+                for (size_t ii = 0; ii < inss.size(); ii++) {
+                    const double s = line_similarity(dels[di].tokens, inss[ii].tokens);
+                    if (s >= kPairThreshold) {
+                        cands.push_back({s, di, ii});
+                    }
+                }
+            }
+            std::stable_sort(cands.begin(), cands.end(),
+                             [](const Cand& x, const Cand& y) { return x.sim > y.sim; });
+            for (const auto& c : cands) {
+                if (del_used[c.di] || ins_used[c.ii]) {
+                    continue;
+                }
+                del_used[c.di] = ins_used[c.ii] = true;
+                diff_line_pair(dels[c.di].text, inss[c.ii].text, ahunk.a_lines[dels[c.di].line_idx],
+                               ahunk.b_lines[inss[c.ii].line_idx], ignore_whitespace);
+            }
         }
+        // Unpaired changed lines are pure delete / insert.
+        for (size_t di = 0; di < dels.size(); di++) {
+            if (!del_used[di]) {
+                whole_line_segments(dels[di].text, EditType::Delete,
+                                    ahunk.a_lines[dels[di].line_idx], ignore_whitespace);
+            }
+        }
+        for (size_t ii = 0; ii < inss.size(); ii++) {
+            if (!ins_used[ii]) {
+                whole_line_segments(inss[ii].text, EditType::Insert,
+                                    ahunk.b_lines[inss[ii].line_idx], ignore_whitespace);
+            }
+        }
+
         output.push_back(std::move(ahunk));
     }
     return output;
