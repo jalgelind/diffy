@@ -254,9 +254,11 @@ transform_edit_line(const gsl::span<diffy::Line>& content_strings,
             }
         }
 
-        // Only unchanged (Common) verbatim text gets syntax colours; changed
-        // tokens keep their add/remove emphasis. Whitespace markers stay plain.
-        if (plain && runs && segment.type == EditType::Common) {
+        // Verbatim text (any edit type) is split at syntax-run boundaries so it
+        // carries its HighlightGroup: unchanged lines and — since UXP-9 — changed
+        // ones too, so added/deleted code stays syntax-coloured (the token
+        // background marks the change). Whitespace markers stay plain (None).
+        if (plain && runs) {
             push_text_segments(display_line.segments, text, segment.start, segment.flags, segment.type,
                                runs);
         } else {
@@ -595,19 +597,24 @@ render_display_line(const ColumnViewState& config,
     const std::string insert_style = base + config.style.insert_token;
     const std::string delete_style = base + config.style.delete_token;
     for (const auto& segment : line.segments) {
+        // A changed token with a syntax group keeps its token background + bold but
+        // takes the syntax foreground (SGR is cumulative, so the trailing fg wins),
+        // so added/deleted code reads as syntax-coloured code sitting on the token
+        // patch. No syntax group (plain files / highlighting off) => "" => the full
+        // token style as before. (UXP-9)
+        const std::string syntax = syntax_fg(segment.syntax, config.settings.light_theme);
         switch (segment.type) {
             case EditType::Insert:
-                output->push_back(DisplayCommand::with_style(insert_style, segment.text));
+                output->push_back(DisplayCommand::with_style(insert_style + syntax, segment.text));
                 break;
             case EditType::Delete:
-                output->push_back(DisplayCommand::with_style(delete_style, segment.text));
+                output->push_back(DisplayCommand::with_style(delete_style + syntax, segment.text));
                 break;
             // Common (unchanged) and Meta segments keep the line's own background,
             // with the syntax-highlight foreground layered on top when present.
             // TODO: "Meta" is a hack that doesn't scale; it needs its own DisplayType.
             default:
-                output->push_back(DisplayCommand::with_style(
-                    base + syntax_fg(segment.syntax, config.settings.light_theme), segment.text));
+                output->push_back(DisplayCommand::with_style(base + syntax, segment.text));
                 break;
         }
     }

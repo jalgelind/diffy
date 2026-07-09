@@ -93,10 +93,10 @@ line_number_align_right = false
 background          = { fg = '#f8f8f2', bg = '#282a36', attr = [] }
 header              = { fg = '#f8f8f2', bg = '#44475a', attr = ['bold', 'underline'] }
 delete_line         = { fg = '#f8f8f2', bg = '#5a2e3c', attr = [] }
-delete_token        = { fg = '#ff5555', bg = 'none',    attr = ['bold'] }
+delete_token        = { fg = '#ff5555', bg = '#7d3346', attr = ['bold'] }
 delete_line_number  = { fg = '#ff5555', bg = '#5a2e3c', attr = [] }
 insert_line         = { fg = '#f8f8f2', bg = '#2e4a38', attr = [] }
-insert_token        = { fg = '#50fa7b', bg = 'none',    attr = ['bold'] }
+insert_token        = { fg = '#50fa7b', bg = '#326b47', attr = ['bold'] }
 insert_line_number  = { fg = '#50fa7b', bg = '#2e4a38', attr = [] }
 common_line         = { fg = '#f8f8f2', bg = '#282a36', attr = [] }
 common_line_number  = { fg = '#6272a4', bg = '#282a36', attr = [] }
@@ -142,10 +142,10 @@ line_number_align_right = false
 background          = { fg = '#d8dee9', bg = '#2e3440', attr = [] }
 header              = { fg = '#eceff4', bg = '#434c5e', attr = ['bold', 'underline'] }
 delete_line         = { fg = '#d8dee9', bg = '#4f343f', attr = [] }
-delete_token        = { fg = '#bf616a', bg = 'none',    attr = ['bold'] }
+delete_token        = { fg = '#bf616a', bg = '#6e404f', attr = ['bold'] }
 delete_line_number  = { fg = '#bf616a', bg = '#4f343f', attr = [] }
 insert_line         = { fg = '#d8dee9', bg = '#3a4d39', attr = [] }
-insert_token        = { fg = '#a3be8c', bg = 'none',    attr = ['bold'] }
+insert_token        = { fg = '#a3be8c', bg = '#4a6b48', attr = ['bold'] }
 insert_line_number  = { fg = '#a3be8c', bg = '#3a4d39', attr = [] }
 common_line         = { fg = '#d8dee9', bg = '#2e3440', attr = [] }
 common_line_number  = { fg = '#4c566a', bg = '#2e3440', attr = [] }
@@ -192,10 +192,10 @@ line_number_align_right = false
 background          = { fg = '#839496', bg = '#002b36', attr = [] }
 header              = { fg = '#93a1a1', bg = '#073642', attr = ['bold', 'underline'] }
 delete_line         = { fg = '#839496', bg = '#46282c', attr = [] }
-delete_token        = { fg = '#dc322f', bg = 'none',    attr = ['bold'] }
+delete_token        = { fg = '#dc322f', bg = '#6b333a', attr = ['bold'] }
 delete_line_number  = { fg = '#dc322f', bg = '#46282c', attr = [] }
 insert_line         = { fg = '#839496', bg = '#25462e', attr = [] }
-insert_token        = { fg = '#859900', bg = 'none',    attr = ['bold'] }
+insert_token        = { fg = '#859900', bg = '#33663f', attr = ['bold'] }
 insert_line_number  = { fg = '#859900', bg = '#25462e', attr = [] }
 common_line         = { fg = '#839496', bg = '#002b36', attr = [] }
 common_line_number  = { fg = '#586e75', bg = '#002b36', attr = [] }
