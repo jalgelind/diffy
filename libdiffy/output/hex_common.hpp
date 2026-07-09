@@ -76,6 +76,12 @@ hex_byte(uint8_t b) {
     return std::string(hex_detail::pairs() + 2 * b, 2);
 }
 
+// One lowercase hex digit for the low nibble of `n` (for per-nibble highlighting).
+inline char
+hex_nibble(uint8_t n) {
+    return "0123456789abcdef"[n & 0x0F];
+}
+
 inline char
 ascii_char(uint8_t b) {
     return (b >= 0x20 && b <= 0x7e) ? static_cast<char>(b) : '.';

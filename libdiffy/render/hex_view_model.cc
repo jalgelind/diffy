@@ -66,7 +66,20 @@ pane_spans(const std::vector<Cell>& row, bool left, int bpr, int width) {
             continue;
         }
         const Cell& c = row[static_cast<size_t>(k)];
-        add_span(spans, hex_byte(left ? c.a : c.b) + " ", side_style(c.kind, left));
+        const uint8_t v = left ? c.a : c.b;
+        if (c.kind == HexSegKind::Replace) {
+            // Highlight only the nibble(s) that actually differ from the other side,
+            // so a single-nibble edit (e.g. 3a -> 3b) doesn't paint the whole byte.
+            const uint8_t o = left ? c.b : c.a;  // the paired byte on the other side
+            const SpanStyle changed = side_style(c.kind, left);
+            add_span(spans, std::string(1, hex_nibble(v >> 4)),
+                     ((v >> 4) == (o >> 4)) ? SpanStyle::Common : changed);
+            add_span(spans, std::string(1, hex_nibble(v)),
+                     ((v & 0x0F) == (o & 0x0F)) ? SpanStyle::Common : changed);
+            add_span(spans, " ", SpanStyle::Common);
+        } else {
+            add_span(spans, hex_byte(v) + " ", side_style(c.kind, left));
+        }
     }
 
     add_span(spans, "|", SpanStyle::Common);
