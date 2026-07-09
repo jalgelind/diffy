@@ -13,11 +13,38 @@ namespace diffy {
 
 #include <algorithm>
 #include <cstring>
+#include <map>
+#include <mutex>
 #include <string>
 
 namespace diffy {
 
 namespace {
+
+// Compiling a highlight query is ~milliseconds and the GUI re-diffs on every
+// toggle, so cache one compiled TSQuery per Language for the process lifetime.
+// TSQuery is immutable once built and the cursor only reads it, so a shared
+// instance is safe across the GUI's worker threads under this mutex.
+TSQuery*
+cached_query(Language lang, const TSLanguage* ts_lang, const std::string& query_src) {
+    static std::mutex mtx;
+    static std::map<Language, TSQuery*> cache;  // value may be nullptr (compile failed)
+    std::lock_guard<std::mutex> lock(mtx);
+    auto it = cache.find(lang);
+    if (it != cache.end()) {
+        return it->second;
+    }
+    uint32_t err_offset = 0;
+    TSQueryError err_type = TSQueryErrorNone;
+    TSQuery* query = ts_query_new(ts_lang, query_src.c_str(),
+                                  static_cast<uint32_t>(query_src.size()), &err_offset, &err_type);
+    cache.emplace(lang, query);  // cache the failure too so we don't retry a bad grammar
+    return query;
+}
+
+// Cap parse time so a pathological input can't wedge the event loop; on timeout
+// ts_parser_parse_string returns null and we fall back to no highlighting.
+constexpr uint64_t kParseTimeoutMicros = 500000;  // 0.5s
 
 // Byte offset of the start of each line, plus the buffer end, so line `i`
 // spans [starts[i], starts[i+1]). Line length excludes the trailing newline.
@@ -51,10 +78,7 @@ highlight_source(std::string_view source, Language lang) {
         return empty;
     }
 
-    uint32_t err_offset = 0;
-    TSQueryError err_type = TSQueryErrorNone;
-    TSQuery* query = ts_query_new(ts_lang, query_src.c_str(),
-                                  static_cast<uint32_t>(query_src.size()), &err_offset, &err_type);
+    TSQuery* query = cached_query(lang, ts_lang, query_src);
     if (!query) {
         return empty;  // malformed query for this grammar version — skip gracefully
     }
@@ -63,11 +87,15 @@ highlight_source(std::string_view source, Language lang) {
     if (!ts_parser_set_language(parser, ts_lang)) {
         // Grammar built for an incompatible language ABI — degrade to no-op.
         ts_parser_delete(parser);
-        ts_query_delete(query);
         return empty;
     }
+    ts_parser_set_timeout_micros(parser, kParseTimeoutMicros);
     TSTree* tree = ts_parser_parse_string(parser, nullptr, source.data(),
                                           static_cast<uint32_t>(source.size()));
+    if (!tree) {
+        ts_parser_delete(parser);  // parse timed out — cached query is owned by the cache
+        return empty;
+    }
 
     // Per-line, per-byte group (uint8_t); 0 == None.
     const std::vector<uint32_t> starts = line_starts(source);
@@ -164,7 +192,7 @@ highlight_source(std::string_view source, Language lang) {
     ts_query_cursor_delete(cursor);
     ts_tree_delete(tree);
     ts_parser_delete(parser);
-    ts_query_delete(query);
+    // query is owned by cached_query()'s cache — do not delete here.
     return result;
 }
 
