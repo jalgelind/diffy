@@ -213,6 +213,10 @@ struct Patience : public Algorithm<Unit> {
 
     DiffResult
     diff() {
+        // Refresh sizes from the (possibly prefix/suffix-trimmed) spans compute()
+        // hands us; A/B are references so they already point at the trimmed core.
+        N = static_cast<int64_t>(A.size());
+        M = static_cast<int64_t>(B.size());
         auto s = Slice{0, N, 0, M};
         DiffResult result;
         do_diff(s, result.edit_sequence);

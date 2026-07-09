@@ -185,6 +185,10 @@ struct MyersGreedy : public Algorithm<Unit> {
 
     DiffResult
     diff() {
+        // Refresh sizes from the (possibly prefix/suffix-trimmed) spans compute()
+        // hands us; A/B are references so they already point at the trimmed core.
+        N = static_cast<int64_t>(A.size());
+        M = static_cast<int64_t>(B.size());
         // Run diff implementation with smaller data type for faster memcpy operations.
         constexpr auto u8_max = std::numeric_limits<uint8_t>::max() / 2;
         constexpr auto u16_max = std::numeric_limits<uint16_t>::max() / 2;
