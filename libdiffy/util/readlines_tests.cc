@@ -83,6 +83,24 @@ TEST_CASE("readlines") {
     }
 }
 
+TEST_CASE("Line::operator== byte-verifies on checksum match (TXT-1)") {
+    // Two DIFFERENT lines forced to share a checksum must NOT compare equal — a
+    // 32-bit crc32c collision must never let the diff render changed as unchanged.
+    Line a{1, 0xDEADBEEFu, "alpha\n", "", false};
+    Line b{2, 0xDEADBEEFu, "bravo\n", "", false};
+    CHECK_FALSE(a == b);
+    Line c{3, 0xDEADBEEFu, "alpha\n", "", false};
+    CHECK(a == c);  // same checksum + same content
+
+    // Under ignore_whitespace the normalized key is compared, not the display text:
+    // reindent-only lines match; a real change differs even on a checksum collision.
+    Line d{4, 0x12345678u, "\tif (x)\n", "if(x)", true};
+    Line e{5, 0x12345678u, "    if ( x )\n", "if(x)", true};
+    CHECK(d == e);
+    Line f{6, 0x12345678u, "    if ( y )\n", "if(y)", true};
+    CHECK_FALSE(d == f);
+}
+
 TEST_CASE("readlines ignore_whitespace") {
     auto hash_of = [](const std::string& content) {
         return readlines_from_string(content, /*ignore_line_endings=*/false,
@@ -117,5 +135,16 @@ TEST_CASE("readlines ignore_whitespace") {
         REQUIRE(a.size() == 1);
         REQUIRE(b.size() == 1);
         CHECK(a[0].checksum == b[0].checksum);
+    }
+
+    SUBCASE("operator== matches on the normalized key, not the display text") {
+        auto a = hash_of("\tif (x) {\n");
+        auto b = hash_of("    if (x) {\n");  // reindented
+        auto c = hash_of("int a = 2;\n");    // genuinely different
+        REQUIRE(a.size() == 1);
+        REQUIRE(b.size() == 1);
+        REQUIRE(c.size() == 1);
+        CHECK(a[0] == b[0]);        // whitespace-only difference -> equal
+        CHECK_FALSE(a[0] == c[0]);  // real content difference -> not equal
     }
 }

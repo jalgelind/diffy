@@ -109,16 +109,25 @@ strip_whitespace(const std::string& s) {
     return out;
 }
 
-// The string a line is hashed by — the comparison key. Normally the line itself,
-// but whitespace-stripped when whitespace is ignored, so reindent-only lines hash
-// equal. The displayed line text is kept separately and is never altered here.
-uint32_t
-checksum_for(const std::string& line, bool ignore_whitespace) {
+// Build a Line from its display text. The checksum is computed over the
+// comparison key — the line itself normally, or a whitespace-stripped copy when
+// whitespace is ignored (so reindent-only lines hash equal). That key is stored
+// only when it differs from the display text, so Line::operator== can byte-verify
+// on checksum match (guarding hash collisions) without re-stripping and without
+// costing memory in the default path.
+diffy::Line
+make_line(uint32_t number, std::string display, bool ignore_whitespace) {
+    diffy::Line ln;
+    ln.line_number = number;
     if (ignore_whitespace) {
-        std::string key = strip_whitespace(line);
-        return hash::hash(key.c_str(), static_cast<uint32_t>(key.size()));
+        ln.cmp_key = strip_whitespace(display);
+        ln.has_cmp_key = true;
+        ln.checksum = hash::hash(ln.cmp_key.c_str(), static_cast<uint32_t>(ln.cmp_key.size()));
+    } else {
+        ln.checksum = hash::hash(display.c_str(), static_cast<uint32_t>(display.size()));
     }
-    return hash::hash(line.c_str(), static_cast<uint32_t>(line.size()));
+    ln.line = std::move(display);
+    return ln;
 }
 };  // namespace
 
@@ -143,8 +152,7 @@ diffy::readlines(const std::string& path, bool ignore_line_endings, bool ignore_
         if (ignore_line_endings) {
             sline = right_trim(sline);
         }
-        uint32_t hash = checksum_for(sline, ignore_whitespace);
-        lines.push_back({i, hash, std::move(sline)});
+        lines.push_back(make_line(i, std::move(sline), ignore_whitespace));
         i++;
     }
 
@@ -163,8 +171,7 @@ diffy::readlines_from_string(const std::string& content, bool ignore_line_ending
     std::string current;
     auto flush = [&]() {
         std::string sline = ignore_line_endings ? right_trim(current) : current;
-        uint32_t hash = checksum_for(sline, ignore_whitespace);
-        lines.push_back({i, hash, std::move(sline)});
+        lines.push_back(make_line(i, std::move(sline), ignore_whitespace));
         i++;
         current.clear();
     };

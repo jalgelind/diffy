@@ -12,7 +12,14 @@ namespace diffy {
 struct Line {
     uint32_t line_number;
     uint32_t checksum;
-    std::string line;
+    std::string line;  // display text, kept verbatim for rendering
+
+    // The exact bytes the checksum was computed from, stored only when they differ
+    // from `line` — i.e. under ignore_whitespace, where `line` keeps the original
+    // spacing but the checksum is over a whitespace-stripped copy. Empty (and
+    // has_cmp_key == false) otherwise, so the default path costs no extra memory.
+    std::string cmp_key;
+    bool has_cmp_key = false;
 
     uint32_t
     hash() const {
@@ -24,9 +31,21 @@ struct Line {
         return checksum < other.checksum;
     }
 
+    // Equality is checksum-first, then a byte compare of the hashed bytes. The
+    // content check guards 32-bit crc32c collisions: two *different* lines that
+    // happen to share a checksum must NOT compare equal, or the diff would show
+    // changed content as unchanged (a diff tool must never do that). It compares
+    // the whitespace-normalized key under ignore_whitespace so reindent-only lines
+    // still match, and only runs once the checksums already agree (equal lines or a
+    // rare collision), so it stays cheap.
     bool
     operator==(const Line& other) const {
-        return checksum == other.checksum;
+        if (checksum != other.checksum) {
+            return false;
+        }
+        const std::string& a = has_cmp_key ? cmp_key : line;
+        const std::string& b = other.has_cmp_key ? other.cmp_key : other.line;
+        return a == b;
     }
 };
 

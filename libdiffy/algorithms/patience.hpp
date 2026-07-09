@@ -53,8 +53,11 @@ struct Patience : public Algorithm<Unit> {
     std::vector<Match>
     index_unique_lines(const Slice& s) {
         struct record {
-            std::uint16_t a_count = 0;
-            std::uint16_t b_count = 0;
+            // 32-bit so a line repeated > 65535 times (large generated files with
+            // many blank lines) can't wrap the count back to 1 and masquerade as a
+            // unique anchor.
+            std::uint32_t a_count = 0;
+            std::uint32_t b_count = 0;
             int64_t a_index = 0;
             int64_t b_index = 0;
         };
@@ -76,7 +79,13 @@ struct Patience : public Algorithm<Unit> {
 
         std::vector<Match> matches;
         for (const auto& kv : records) {
-            if (kv.second.a_count == 1 && kv.second.b_count == 1) {
+            // A hash unique in both slices is an anchor candidate — but only if the
+            // two lines are really equal. Byte-verify (Unit::operator==) to reject a
+            // 32-bit checksum collision between two different unique lines, which
+            // would otherwise anchor them together and render changed text as
+            // unchanged (TXT-1).
+            if (kv.second.a_count == 1 && kv.second.b_count == 1 &&
+                A[kv.second.a_index] == B[kv.second.b_index]) {
                 matches.push_back({kv.second.a_index, kv.second.b_index});
             }
         }
