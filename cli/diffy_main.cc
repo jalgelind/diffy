@@ -494,11 +494,15 @@ Side by side options:
                 // both file ok: changed file
                 opts.left_file_permissions = diffy::read_file_permissions(git_base);
                 opts.left_file_name = git_base;
-                opts.right_file_permissions = diffy::read_file_permissions(opts.right_file_name);
+                // Read perms from the actual right-hand content file, not the display
+                // name (which is about to be overwritten with git_base).
+                opts.right_file_permissions = diffy::read_file_permissions(opts.right_file);
                 opts.right_file_name = git_base;
             } else {
-                assert(0 && "Both files are invalid");
-                exit(1);
+                // Difftool/diff convention: 2 means trouble, 1 means "differences
+                // found". A pair of invalid paths is trouble, not a diff result.
+                fmt::print(stderr, "diffy: both files are invalid\n");
+                exit(2);
             }
         } else {
             // Use optional names

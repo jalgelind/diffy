@@ -48,6 +48,12 @@ diffy::tty_get_term_size(int* rows, int* cols) {
 
 uint16_t
 diffy::tty_get_capabilities() {
+    // Terminal capabilities don't change within a run; cache so we don't re-probe
+    // (and re-`popen("tput colors")`) on every colour decision. CLI is single-threaded.
+    static int cached = -1;
+    if (cached >= 0) {
+        return static_cast<uint16_t>(cached);
+    }
     uint16_t compat = 0;
 
 #ifdef DIFFY_PLATFORM_WINDOWS
@@ -62,7 +68,7 @@ diffy::tty_get_capabilities() {
     //       redirecting to files.
     if (isatty(STDOUT_FILENO) == 0) {
         // TODO: clear errno
-        return TermColorSupport_None;
+        return static_cast<uint16_t>(cached = TermColorSupport_None);
     }
 
     // The COLORTERM variable is usually available to indicate 24bit color support.
@@ -96,5 +102,5 @@ diffy::tty_get_capabilities() {
         }
     }
 #endif
-    return compat;
+    return static_cast<uint16_t>(cached = compat);
 }

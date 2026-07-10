@@ -185,10 +185,12 @@ image_diff(const std::vector<uint8_t>& a_rgba, const std::vector<uint8_t>& b_rgb
                                 (antialiased(a, x, y, width, height, b) ||
                                  antialiased(b, x, y, width, height, a));
                 if (aa) {
-                    if (opts.compute_overlay) {  // AA: keep dimmed base, not flagged
-                        const uint8_t v = static_cast<uint8_t>(std::lround(
-                            blend(rgb2y(a[pos], a[pos + 1], a[pos + 2]), kDimAlpha * a[pos + 3] / 255.0)));
-                        draw(res.overlay_rgba, pos, v, v, v);
+                    // Anti-aliasing difference: not counted as a real change, but
+                    // tinted yellow so it's visible and distinct from magenta changes
+                    // (matches upstream pixelmatch's aaColor). --include-aa promotes
+                    // these to real changes instead (aa is false there).
+                    if (opts.compute_overlay) {
+                        draw(res.overlay_rgba, pos, 255, 255, 0);  // yellow
                     }
                 } else {
                     ++res.changed_px;
