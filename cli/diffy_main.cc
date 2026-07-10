@@ -209,13 +209,14 @@ Usage: {0} [options] left_file right_file
 Compare files line by line, side by side
 
 Options:
+    -h, --help                   show this help and exit
     -v, --version                show program version and exit
-    -a --algorithm [algorithm]   which algorithm to use for line diffing
+    -a, --algorithm [algorithm]  which algorithm to use for line diffing
                                     myers-linear (ml)
                                     myers-greedy (mg)
                                     patience     (p)
-    -u, -U [context_lines]       show unified output, optional context line count
-    -s, -S [context_lines]       show side-by-side column output, optional context line count
+    -u, -U, --unified [n]        show unified output, optional context line count
+    -s, -S, --side-by-side [n]   show side-by-side column output, optional context line count
 
     -o, --old-file               custom name to give the old-file (left)
     -n, --new-file               custom name to give the new-file (right)
@@ -224,7 +225,7 @@ Options:
     -I, --no-ignore-line-endings inverse of --ignore-line-endings
 
     -w, --ignore-whitespace      ignore all changes to whitespace
-    -W, --no-ignore-whitespace   inverse of --ignore-whitespace
+    --no-ignore-whitespace       inverse of --ignore-whitespace
 
     --disable-syntax-highlighting  turn off tree-sitter syntax highlighting (on by default)
     -L, --language [lang]        force the syntax language instead of detecting it
@@ -250,7 +251,7 @@ Binary (hex) diff:
 
 Side by side options:
     -l, --line                   line based diff instead of word based diff
-    -W [width]                   maximum width in each column
+    -W, --width [width]          maximum width in each column
 )"),
                                        argv[0], diffy::config_get_directory(), lang_help, theme_help);
 
