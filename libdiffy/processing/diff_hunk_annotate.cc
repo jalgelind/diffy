@@ -294,6 +294,83 @@ annotate_lines(const DiffInput<diffy::Line>& diff_input,
     return output;
 }
 
+// Tag deleted/inserted lines that form a block reappearing verbatim elsewhere in
+// the diff as a move (GAP-9): a run of >= kMinMoveLines deleted lines whose
+// content matches a run of inserted lines gets a shared move_id, and each line
+// records the counterpart block's start line so the UI can draw an arrow (within
+// the file) or a reference. Runs as a cross-hunk pass over the whole file diff.
+void
+detect_moves(const DiffInput<diffy::Line>& in, std::vector<AnnotatedHunk>& hunks) {
+    constexpr int kMinMoveLines = 3;    // blocks shorter than this are usually noise
+    constexpr size_t kMoveBudget = 1u << 22;  // skip pathological dels*inss searches
+
+    struct Ref {
+        EditLine* el;
+        uint32_t hash;
+        int64_t lineno;           // 1-based
+        const std::string* text;  // for content-verify (guards hash collisions)
+    };
+    std::vector<Ref> dels, inss;
+    for (auto& h : hunks) {
+        for (auto& el : h.a_lines) {
+            if (el.type == EditType::Delete && el.line_index.valid) {
+                const auto& L = in.A[static_cast<long>(el.line_index)];
+                dels.push_back({&el, L.checksum, static_cast<int64_t>(el.line_index) + 1, &L.line});
+            }
+        }
+        for (auto& el : h.b_lines) {
+            if (el.type == EditType::Insert && el.line_index.valid) {
+                const auto& L = in.B[static_cast<long>(el.line_index)];
+                inss.push_back({&el, L.checksum, static_cast<int64_t>(el.line_index) + 1, &L.line});
+            }
+        }
+    }
+    if (dels.empty() || inss.empty() || dels.size() * inss.size() > kMoveBudget) {
+        return;
+    }
+
+    std::unordered_multimap<uint32_t, size_t> ins_by_hash;
+    for (size_t k = 0; k < inss.size(); ++k) {
+        ins_by_hash.emplace(inss[k].hash, k);
+    }
+
+    std::vector<bool> ins_used(inss.size(), false);
+    int next_move_id = 0;
+    for (size_t di = 0; di < dels.size();) {
+        // Longest still-free insert run matching the delete run starting at di.
+        size_t best_len = 0, best_ii = 0;
+        auto range = ins_by_hash.equal_range(dels[di].hash);
+        for (auto it = range.first; it != range.second; ++it) {
+            size_t ii = it->second;
+            size_t len = 0;
+            while (di + len < dels.size() && ii + len < inss.size() && !ins_used[ii + len] &&
+                   dels[di + len].hash == inss[ii + len].hash &&
+                   *dels[di + len].text == *inss[ii + len].text) {
+                ++len;
+            }
+            if (len > best_len) {
+                best_len = len;
+                best_ii = ii;
+            }
+        }
+        if (best_len >= static_cast<size_t>(kMinMoveLines)) {
+            ++next_move_id;
+            const int64_t ins_start = inss[best_ii].lineno;
+            const int64_t del_start = dels[di].lineno;
+            for (size_t k = 0; k < best_len; ++k) {
+                dels[di + k].el->move_id = next_move_id;
+                dels[di + k].el->move_line = ins_start;  // deleted block moved *to* here
+                inss[best_ii + k].el->move_id = next_move_id;
+                inss[best_ii + k].el->move_line = del_start;  // inserted block came *from* here
+                ins_used[best_ii + k] = true;
+            }
+            di += best_len;
+        } else {
+            ++di;
+        }
+    }
+}
+
 }  // namespace
 
 // TODO: Report failure?
@@ -313,5 +390,6 @@ diffy::annotate_hunks(const DiffInput<diffy::Line>& diff_input,
         default:
             break;
     }
+    detect_moves(diff_input, hunks_annotated);
     return hunks_annotated;
 }

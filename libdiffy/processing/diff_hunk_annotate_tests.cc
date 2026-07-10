@@ -155,6 +155,56 @@ TEST_CASE("annotate_hunks — token granularity pairs similar lines (no cross-li
     }
 }
 
+TEST_CASE("annotate_hunks — detects a moved block (GAP-9)") {
+    // Two blocks swap order; the longer (x1..x4) stays the common anchor, so the
+    // shorter 3-line block (y1..y3) is what the diff sees deleted then re-inserted
+    // — exactly the moved-function case, and >= the 3-line move threshold.
+    auto A = mk({"x1", "x2", "x3", "x4", "y1", "y2", "y3"});
+    auto B = mk({"y1", "y2", "y3", "x1", "x2", "x3", "x4"});
+    DiffInput<Line> in{gsl::span<Line>{A}, gsl::span<Line>{B}, "a", "b"};
+    auto r = Patience<Line>(in).compute();
+    auto hunks = compose_hunks(r.edit_sequence, 3);
+    auto annotated = annotate_hunks(in, hunks, EditGranularity::Token, false);
+
+    int del_move = 0, ins_move = 0;
+    int64_t del_ptr = 0, ins_ptr = 0;
+    for (const auto& h : annotated) {
+        for (const auto& el : h.a_lines) {
+            if (el.type == EditType::Delete && el.move_id != 0) {
+                del_move = el.move_id;
+                del_ptr = el.move_line;
+            }
+        }
+        for (const auto& el : h.b_lines) {
+            if (el.type == EditType::Insert && el.move_id != 0) {
+                ins_move = el.move_id;
+                ins_ptr = el.move_line;
+            }
+        }
+    }
+    CHECK(del_move != 0);              // the deleted block is flagged moved
+    CHECK(del_move == ins_move);       // both ends share the move id
+    CHECK(del_ptr > 0);                // deletion points at where it moved to
+    CHECK(ins_ptr > 0);                // insertion points back at where it came from
+}
+
+TEST_CASE("annotate_hunks — a plain edit is not a move") {
+    auto A = mk({"ctx", "old value here", "ctx2"});
+    auto B = mk({"ctx", "new value here", "ctx2"});
+    DiffInput<Line> in{gsl::span<Line>{A}, gsl::span<Line>{B}, "a", "b"};
+    auto r = Patience<Line>(in).compute();
+    auto hunks = compose_hunks(r.edit_sequence, 3);
+    auto annotated = annotate_hunks(in, hunks, EditGranularity::Token, false);
+    for (const auto& h : annotated) {
+        for (const auto& el : h.a_lines) {
+            CHECK(el.move_id == 0);
+        }
+        for (const auto& el : h.b_lines) {
+            CHECK(el.move_id == 0);
+        }
+    }
+}
+
 TEST_CASE("annotate_hunks — ignore_whitespace marks whitespace segments common") {
     auto A = mk({"ctx", "value", "ctx2"});
     auto B = mk({"ctx", "value   ", "ctx2"});  // trailing whitespace added

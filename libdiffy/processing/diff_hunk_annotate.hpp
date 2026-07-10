@@ -29,6 +29,12 @@ struct EditLine {
     EditType type;
     EditIndex line_index;
     std::vector<LineSegment> segments;
+    // Moved-block detection (ALG/GAP-9): non-zero when this deleted/inserted line
+    // is part of a block that reappears verbatim elsewhere in the diff. Both ends
+    // of a move share move_id; move_line is the 1-based counterpart line (the new
+    // line a deletion moved *to*, or the old line an insertion came *from*).
+    int move_id = 0;
+    int64_t move_line = 0;
 };
 
 struct AnnotatedHunk {
