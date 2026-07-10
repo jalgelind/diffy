@@ -178,7 +178,7 @@ struct TbInstruction {
     }
 
     bool
-    get_first_on_line(bool first_on_line) const {
+    get_first_on_line() const {
         return this->first_on_line;
     }
 
@@ -207,8 +207,8 @@ struct Value {
     std::variant<Table, Array, Int, Float, Bool, String> v;
 
     // Comment lines attached to the value, or to the key it's assigned to.
-    std::vector<std::string> value_comments;
-    std::vector<std::string> key_comments;
+    std::vector<std::string> value_comments = {};
+    std::vector<std::string> key_comments = {};
 
     Value&
     operator[](std::string key) {
