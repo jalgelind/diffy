@@ -131,7 +131,10 @@ diffy::hex_unified_render(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b
                 if (w.head > 0) {
                     emit_rows(out, RowKind::Context, a.data(), rows, 0, w.head, bpr, width, s, fill_width);
                 }
-                if (w.omitted > 0) {
+                // Only mark the resume point when context actually follows: on the
+                // last segment tail == 0, so head + omitted == rows.size() and the
+                // marker would both index rows[] out of bounds and point past EOF.
+                if (w.omitted > 0 && w.tail > 0) {
                     const uint64_t resume = rows[w.head + w.omitted].offset;
                     push_header(fmt::format("@@ -{} +{} @@", hex_offset(resume, width),
                                             hex_offset(seg.b_offset + (resume - seg.a_offset), width)));

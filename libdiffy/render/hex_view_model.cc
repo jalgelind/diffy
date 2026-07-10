@@ -204,7 +204,9 @@ build_side_by_side(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b, const
                 add_cell({true, true, a[seg.a_offset + i], b[seg.b_offset + i], seg.a_offset + i,
                           seg.b_offset + i, HexSegKind::Equal});
             }
-            if (w.omitted > 0) {
+            // No resume marker on the last segment (tail == 0): it would point past
+            // EOF with no context following it.
+            if (w.omitted > 0 && w.tail > 0) {
                 flush();
                 model.rows.push_back(header_row(seg.a_offset + tail_start, seg.b_offset + tail_start,
                                                 width));
@@ -265,7 +267,9 @@ build_unified(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b, const HexA
                 if (w.head > 0) {
                     emit_unified_rows(model, ' ', SpanStyle::Common, a.data(), rows, 0, w.head, bpr, width);
                 }
-                if (w.omitted > 0) {
+                // Last segment has tail == 0, so head + omitted == rows.size(): a
+                // resume marker there would index out of bounds and point past EOF.
+                if (w.omitted > 0 && w.tail > 0) {
                     const uint64_t resume = rows[w.head + w.omitted].offset;
                     model.rows.push_back(
                         header_row(resume, seg.b_offset + (resume - seg.a_offset), width));

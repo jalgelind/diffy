@@ -186,7 +186,9 @@ diffy::hex_column_render(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b,
                     add_cell({true, true, a[seg.a_offset + i], b[seg.b_offset + i], seg.a_offset + i,
                               seg.b_offset + i, HexSegKind::Equal});
                 }
-                if (w.omitted > 0) {
+                // Skip the resume marker on the last segment (tail == 0): it would
+                // point past EOF with no context following it.
+                if (w.omitted > 0 && w.tail > 0) {
                     flush_row();
                     marker(seg.a_offset + tail_start, seg.b_offset + tail_start);
                 }
