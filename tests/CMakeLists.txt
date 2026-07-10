@@ -18,3 +18,14 @@ target_compile_definitions(diffy-test PRIVATE
   DIFFY_TEST_CASES_DIR="${DIFFY_ROOT_DIR}/tests/test_cases")
 
 add_test(NAME unit-tests COMMAND diffy-test)
+
+# Differential diff test over the repo's own git history: every real edit must
+# round-trip through `patch`, and diffy's diffs must stay within a ratio of
+# git's (an ALG-1/ALG-2 anchoring guard). Skips itself on a shallow/no-git
+# checkout. Needs python3 + patch + git on PATH.
+find_program(PYTHON3_EXE NAMES python3)
+if(PYTHON3_EXE)
+  add_test(NAME diff-corpus
+    COMMAND ${PYTHON3_EXE} ${CMAKE_CURRENT_SOURCE_DIR}/difftest_corpus.py
+            $<TARGET_FILE:diffy> --repo ${DIFFY_ROOT_DIR})
+endif()
