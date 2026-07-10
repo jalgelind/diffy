@@ -67,8 +67,11 @@ struct DiffRow {
     std::string header_text;            // populated only for HunkHeader rows
     // Moved-block info for a pure delete/insert row (GAP-9): move_id pairs the two
     // ends; move_line is the 1-based counterpart line to point an arrow/reference at.
+    // move_file names the counterpart file for a cross-file move (empty = same file);
+    // it's filled by the frontend's all-files pass, not the per-file engine.
     int move_id = 0;
     int64_t move_line = 0;
+    std::string move_file;
 };
 
 // Options that change the diff itself: flipping one must re-run compute+annotate.
