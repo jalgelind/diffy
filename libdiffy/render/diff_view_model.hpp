@@ -109,4 +109,18 @@ build_diff_view(const DiffInput<Line>& input,
                 const LineHighlights* a_highlights = nullptr,
                 const LineHighlights* b_highlights = nullptr);
 
+// One file's built diff, for cross-file move detection.
+struct CrossFileDiff {
+    std::string path;
+    DiffViewModel* model;  // mutated in place: move_id/move_line/move_file get set
+};
+
+// GAP-9 cross-file moves: across several files' diffs, a run of >= 3 pure-deleted
+// lines in one file whose content matches a run of pure-inserted lines in ANOTHER
+// file is tagged as a move (shared move_id, and each end's move_file/move_line points
+// at the counterpart). Same-file moves are handled per file by detect_moves(); this
+// only considers still-unmatched (move_id == 0) rows. Pure logic — no I/O, no threads.
+void
+detect_cross_file_moves(const std::vector<CrossFileDiff>& files);
+
 }  // namespace diffy

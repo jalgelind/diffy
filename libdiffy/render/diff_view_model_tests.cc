@@ -205,3 +205,81 @@ TEST_CASE("pipeline: force_language overrides filename-based detection") {
     CHECK(!forced.a_highlights.empty());
     CHECK(!forced.b_highlights.empty());
 }
+
+TEST_CASE("detect_cross_file_moves: a block relocated to another file is tagged") {
+    // Build two files' diffs by hand: file A deletes a 3-line block; file B inserts
+    // the identical block. Cross-file detection must pair them.
+    auto content_row = [](int64_t oldno, int64_t newno, const std::string& text) {
+        DiffRow r;
+        r.kind = RowKind::Content;
+        StyledSpan sp;
+        sp.text = text;
+        if (oldno >= 0) {
+            r.old_lineno = oldno;
+            r.left.present = true;
+            r.left.spans = {sp};
+        }
+        if (newno >= 0) {
+            r.new_lineno = newno;
+            r.right.present = true;
+            r.right.spans = {sp};
+        }
+        return r;
+    };
+
+    DiffViewModel a, b;
+    for (int i = 0; i < 3; ++i) {
+        a.rows.push_back(content_row(i + 1, -1, "block line " + std::to_string(i)));  // deleted from A
+    }
+    for (int i = 0; i < 3; ++i) {
+        b.rows.push_back(content_row(-1, i + 20, "block line " + std::to_string(i)));  // inserted in B
+    }
+
+    detect_cross_file_moves({{"a.txt", &a}, {"b.txt", &b}});
+
+    for (const auto& r : a.rows) {
+        CHECK(r.move_id != 0);
+        CHECK(r.move_file == "b.txt");  // points at where it moved to
+        CHECK(r.move_line == 20);       // the insert block's first line
+    }
+    for (const auto& r : b.rows) {
+        CHECK(r.move_id != 0);
+        CHECK(r.move_file == "a.txt");  // points back at where it came from
+        CHECK(r.move_line == 1);
+    }
+    // Both ends share the same move id.
+    CHECK(a.rows.front().move_id == b.rows.front().move_id);
+}
+
+TEST_CASE("detect_cross_file_moves: a same-file block is left for the per-file pass") {
+    // One file, delete+insert of the same block within it — cross-file must NOT tag it
+    // (same file is skipped; detect_moves handles within-file).
+    auto row = [](int64_t oldno, int64_t newno, const std::string& t) {
+        DiffRow r;
+        r.kind = RowKind::Content;
+        StyledSpan sp;
+        sp.text = t;
+        if (oldno >= 0) {
+            r.old_lineno = oldno;
+            r.left.present = true;
+            r.left.spans = {sp};
+        }
+        if (newno >= 0) {
+            r.new_lineno = newno;
+            r.right.present = true;
+            r.right.spans = {sp};
+        }
+        return r;
+    };
+    DiffViewModel m;
+    for (int i = 0; i < 3; ++i) {
+        m.rows.push_back(row(i + 1, -1, "x" + std::to_string(i)));
+    }
+    for (int i = 0; i < 3; ++i) {
+        m.rows.push_back(row(-1, i + 9, "x" + std::to_string(i)));
+    }
+    detect_cross_file_moves({{"same.txt", &m}});
+    for (const auto& r : m.rows) {
+        CHECK(r.move_id == 0);  // never cross-file tagged within one file
+    }
+}
