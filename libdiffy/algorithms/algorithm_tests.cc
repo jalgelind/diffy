@@ -226,6 +226,44 @@ TEST_CASE("patience stays correct despite suboptimal anchoring") {
     CHECK(del == 0);
 }
 
+// Histogram-style fallback (patience.hpp find_rare_anchor): when no line is
+// unique on both sides, patience used to hand the whole region to Myers. With a
+// rare-but-repeated shared line present, it now anchors on that line first. The
+// input below has only two distinct lines, so nothing is unique — the rare
+// "PIVOT" (twice a side) must still be picked as an anchor, and the result must
+// stay a valid, non-degrading diff (no worse than optimal Myers).
+TEST_CASE("patience anchors on the rarest shared line when nothing is unique") {
+    const std::vector<Line> A = make_lines({"x", "x", "PIVOT", "x", "x", "PIVOT", "x"});
+    const std::vector<Line> B = make_lines({"x", "PIVOT", "x", "x", "x", "PIVOT"});
+
+    std::vector<Line> pa = A, pb = B;
+    DiffInput<Line> pin{gsl::span<Line>{pa}, gsl::span<Line>{pb}, "a", "b"};
+    auto patience = Patience<Line>(pin).compute();
+    REQUIRE(is_valid_transform(pa, pb, patience));
+
+    int common = 0, pivot_common = 0;
+    for (const auto& e : patience.edit_sequence) {
+        if (e.type == EditType::Common) {
+            common += 1;
+            if (A[e.a_index.value].line == "PIVOT") {
+                pivot_common += 1;
+            }
+        }
+    }
+    // The rare line was actually used to anchor, not left to Myers to rediscover.
+    CHECK(pivot_common >= 1);
+
+    // Anchoring on the rare line must not cost common lines versus optimal Myers.
+    std::vector<Line> ma = A, mb = B;
+    DiffInput<Line> min_{gsl::span<Line>{ma}, gsl::span<Line>{mb}, "a", "b"};
+    auto myers = MyersLinear<Line>(min_).compute();
+    int myers_common = 0;
+    for (const auto& e : myers.edit_sequence) {
+        myers_common += e.type == EditType::Common;
+    }
+    CHECK(common == myers_common);
+}
+
 // Randomized reconstruct invariant: generated (a,b) drawn from a small alphabet —
 // so common runs, inserts and deletes all occur — checked against every
 // algorithm. A far wider input space than the fixed fixture corpus. The seed is

@@ -4,9 +4,10 @@
 #include "myers_linear.hpp"
 
 #include <gsl/span>
-#include <algorithm>  // std::reverse, std::sort
+#include <algorithm>  // std::reverse, std::sort, std::max
 #include <map>
 #include <numeric>  // std::accumulate
+#include <optional>
 #include <set>
 #include <unordered_map>
 
@@ -95,6 +96,64 @@ struct Patience : public Algorithm<Unit> {
         return matches;
     }
 
+    // Histogram-style fallback anchor. When no line is unique on both sides,
+    // patience has nothing to split on and would hand the whole slice to Myers.
+    // Instead pick the rarest line the two slices share -- the shared line with
+    // the lowest occurrence count -- and anchor on it, like git's histogram diff.
+    // The count is capped (git xdiff uses 64) so a line repeated hundreds of
+    // times can't become an O(n*m) anchor. Returns nullopt when the slices share
+    // no line within the cap, in which case the caller falls back to Myers.
+    std::optional<Match>
+    find_rare_anchor(const Slice& s) {
+        constexpr std::uint32_t kMaxOccurrences = 64;
+        struct record {
+            std::uint32_t a_count = 0;
+            std::uint32_t b_count = 0;
+            int64_t a_index = 0;  // first occurrence in A
+            int64_t b_index = 0;  // first occurrence in B
+        };
+
+        std::unordered_map<uint32_t, record> records;
+        records.reserve(static_cast<std::size_t>((s.a_high - s.a_low) + (s.b_high - s.b_low)));
+
+        for (auto i = s.a_low; i < s.a_high; i++) {
+            auto& r = records[A[i].hash()];
+            if (r.a_count == 0) {
+                r.a_index = i;
+            }
+            r.a_count++;
+        }
+        for (auto i = s.b_low; i < s.b_high; i++) {
+            auto& r = records[B[i].hash()];
+            if (r.b_count == 0) {
+                r.b_index = i;
+            }
+            r.b_count++;
+        }
+
+        std::optional<Match> best;
+        std::uint32_t best_occ = kMaxOccurrences + 1;
+        for (const auto& kv : records) {
+            const auto& r = kv.second;
+            if (r.a_count == 0 || r.b_count == 0) {
+                continue;  // not shared
+            }
+            const std::uint32_t occ = std::max(r.a_count, r.b_count);
+            if (occ > kMaxOccurrences || occ >= best_occ) {
+                continue;  // too common, or no better than what we have
+            }
+            // Byte-verify to reject a 32-bit checksum collision (same guard as
+            // index_unique_lines): a false anchor would render changed text as
+            // unchanged.
+            if (!(A[r.a_index] == B[r.b_index])) {
+                continue;
+            }
+            best = Match{r.a_index, r.b_index};
+            best_occ = occ;
+        }
+        return best;
+    }
+
     Match*
     patience_sort(std::vector<Match>& matches) {
         // Patience sort for the longest increasing subsequence of b_index
@@ -131,6 +190,17 @@ struct Patience : public Algorithm<Unit> {
         auto unique_lines = index_unique_lines(in_slice);
         auto* match = patience_sort(unique_lines);
         if (!match) {
+            // No unique anchor. Before handing the whole slice to Myers, try a
+            // histogram-style split on the rarest shared line: anchor on it, then
+            // recurse on the (strictly smaller) regions on either side. Only when
+            // the slices share nothing within the occurrence cap do we fall back.
+            if (auto anchor = find_rare_anchor(in_slice)) {
+                do_diff({in_slice.a_low, anchor->a_index, in_slice.b_low, anchor->b_index}, out);
+                out.push_back({EditType::Common, EditIndex(anchor->a_index), EditIndex(anchor->b_index)});
+                do_diff({anchor->a_index + 1, in_slice.a_high, anchor->b_index + 1, in_slice.b_high}, out);
+                return;
+            }
+
             auto a_count = in_slice.a_high - in_slice.a_low;
             auto b_count = in_slice.b_high - in_slice.b_low;
             assert(a_count >= 0 && "negative a span?");
