@@ -7,6 +7,7 @@
 #include "highlight/scope.hpp"
 #include "highlight/syntax_highlighter.hpp"
 #include "processing/diff_hunk.hpp"
+#include "processing/indent_heuristic.hpp"
 #include "processing/tokenizer.hpp"
 
 #include <utility>
@@ -82,6 +83,10 @@ compute_annotated_diff(const std::string& a_text,
     if (result.status != DiffResultStatus::OK && result.status != DiffResultStatus::NoChanges) {
         return c;
     }
+
+    // Slide equivalent add/delete groups to more readable positions (ALG-2) before
+    // grouping into hunks. Purely a placement improvement; the diff stays correct.
+    apply_indent_heuristic(input, result.edit_sequence);
 
     auto hunks = compose_hunks(result.edit_sequence, options.context_lines);
     c.hunks = annotate_hunks(input, hunks, options.granularity, options.ignore_whitespace);

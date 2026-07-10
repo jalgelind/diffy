@@ -5,6 +5,7 @@ add_library(diffy_core STATIC
   processing/tokenizer.cc
   processing/diff_hunk.cc
   processing/diff_hunk_annotate.cc
+  processing/indent_heuristic.cc
   output/unified.cc
   output/column_view.cc
   output/hex_unified.cc
