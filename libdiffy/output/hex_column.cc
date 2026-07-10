@@ -129,7 +129,12 @@ diffy::hex_column_render(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b,
     };
     auto add_cell = [&](const Cell& c) {
         row.push_back(c);
-        if (static_cast<int>(row.size()) == bpr) {
+        // Flush on the left (A) side's bytes-per-row grid boundary so equal
+        // regions realign to clean offsets after a length change (like xxd),
+        // instead of carrying the change's phase forever. Cells with no A byte
+        // (pure insertions) can't align to A, so cap their width at bpr.
+        const bool at_grid = c.has_a && (c.a_off % static_cast<uint64_t>(bpr) == static_cast<uint64_t>(bpr) - 1);
+        if (at_grid || static_cast<int>(row.size()) == bpr) {
             flush_row();
         }
     };
@@ -151,34 +156,41 @@ diffy::hex_column_render(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b,
                 }
                 break;
             case HexSegKind::OnlyA:
+                // Insertions/deletions can't share the A grid, so give them their
+                // own rows rather than desyncing the surrounding offset columns.
+                flush_row();
                 for (uint64_t i = 0; i < seg.a_len; ++i) {
                     add_cell({true, false, a[seg.a_offset + i], 0, seg.a_offset + i, 0, HexSegKind::OnlyA});
                 }
+                flush_row();
                 break;
             case HexSegKind::OnlyB:
+                flush_row();
                 for (uint64_t i = 0; i < seg.b_len; ++i) {
                     add_cell({false, true, 0, b[seg.b_offset + i], 0, seg.b_offset + i, HexSegKind::OnlyB});
                 }
+                flush_row();
                 break;
             case HexSegKind::Equal: {
+                const std::vector<HexRow> rows = hex_grid_rows(seg.a_offset, seg.a_len, bpr);
                 const HexWindow w =
-                    hex_equal_window(seg.a_len, bpr, si == 0, si + 1 == alignment.size(), ctx);
+                    hex_equal_window(rows.size(), si == 0, si + 1 == alignment.size(), ctx);
                 if (w.head == 0 && w.omitted == 0 && w.tail == 0) {
                     break;
                 }
                 const uint64_t len = seg.a_len;
-                const uint64_t head = std::min<uint64_t>(w.head * static_cast<uint64_t>(bpr), len);
-                const uint64_t tail = std::min<uint64_t>(w.tail * static_cast<uint64_t>(bpr), len - head);
-                const uint64_t omitted = len - head - tail;
+                const uint64_t head = w.head < rows.size() ? rows[w.head].offset - seg.a_offset : len;
+                const uint64_t tail_start =
+                    w.head + w.omitted < rows.size() ? rows[w.head + w.omitted].offset - seg.a_offset : len;
                 for (uint64_t i = 0; i < head; ++i) {
                     add_cell({true, true, a[seg.a_offset + i], b[seg.b_offset + i], seg.a_offset + i,
                               seg.b_offset + i, HexSegKind::Equal});
                 }
-                if (omitted > 0) {
+                if (w.omitted > 0) {
                     flush_row();
-                    marker(seg.a_offset + head + omitted, seg.b_offset + head + omitted);
+                    marker(seg.a_offset + tail_start, seg.b_offset + tail_start);
                 }
-                for (uint64_t i = len - tail; i < len; ++i) {
+                for (uint64_t i = tail_start; i < len; ++i) {
                     add_cell({true, true, a[seg.a_offset + i], b[seg.b_offset + i], seg.a_offset + i,
                               seg.b_offset + i, HexSegKind::Equal});
                 }

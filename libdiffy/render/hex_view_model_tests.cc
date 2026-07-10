@@ -3,6 +3,7 @@
 #include "binary/hex_align.hpp"
 #include "render/hex_view_model.hpp"
 
+#include <cctype>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -94,6 +95,73 @@ TEST_CASE("build_hex_view unified: uses -/+ prefixes and one column") {
     }
     CHECK(saw_minus);
     CHECK(saw_plus);
+}
+
+// Parse the leading offset column of a side-by-side pane's text. Returns -1 when
+// the pane is blank (an insertion/deletion row shows no offset on that side).
+int64_t
+pane_offset(const DiffCell& c) {
+    const std::string t = cell_text(c);
+    size_t i = 0;
+    while (i < t.size() && t[i] == ' ') {
+        ++i;
+    }
+    if (i == 0 && (t.empty() || !std::isxdigit(static_cast<unsigned char>(t[0])))) {
+        return -1;
+    }
+    size_t end = i;
+    while (end < t.size() && std::isxdigit(static_cast<unsigned char>(t[end]))) {
+        ++end;
+    }
+    if (end == i) {
+        return -1;
+    }
+    return static_cast<int64_t>(std::stoul(t.substr(i, end - i), nullptr, 16));
+}
+
+TEST_CASE("build_hex_view side-by-side: rows stay on the bytes-per-row grid across an insertion") {
+    // A = 16 sequential bytes; B inserts a full bytes-per-row block of distinct
+    // markers at the grid boundary. With grid-aligned emission every emitted row
+    // (both panes) starts on a bytes-per-row multiple, like xxd -- the insertion
+    // no longer re-phases the offset column.
+    const int bpr = 8;
+    std::vector<uint8_t> a, b;
+    for (uint8_t i = 0; i < 16; ++i) {
+        a.push_back(i);
+    }
+    for (uint8_t i = 0; i < 8; ++i) {
+        b.push_back(i);
+    }
+    for (uint8_t i = 0; i < 8; ++i) {
+        b.push_back(0xF0 + i);  // inserted block
+    }
+    for (uint8_t i = 8; i < 16; ++i) {
+        b.push_back(i);
+    }
+
+    const auto al = hex_align(a, b);
+    DiffLayoutOptions opts;
+    opts.mode = ViewMode::SideBySide;
+    const auto model = build_hex_view(a, b, al, opts, bpr, 100);
+
+    bool saw_insert_row = false;
+    for (const auto& r : model.rows) {
+        if (r.kind != RowKind::Content) {
+            continue;
+        }
+        const int64_t lo = pane_offset(r.left);
+        const int64_t ro = pane_offset(r.right);
+        if (lo >= 0) {
+            CHECK(lo % bpr == 0);
+        }
+        if (ro >= 0) {
+            CHECK(ro % bpr == 0);
+        }
+        if (lo < 0 && ro >= 0) {
+            saw_insert_row = true;  // pure-insertion row: blank left, present right
+        }
+    }
+    CHECK(saw_insert_row);
 }
 
 TEST_CASE("build_hex_view: identical input yields no change rows") {

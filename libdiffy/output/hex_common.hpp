@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace diffy {
 
@@ -87,6 +88,36 @@ ascii_char(uint8_t b) {
     return (b >= 0x20 && b <= 0x7e) ? static_cast<char>(b) : '.';
 }
 
+// One emitted hex row: `count` bytes starting at absolute file offset `offset`.
+struct HexRow {
+    uint64_t offset;
+    uint64_t count;
+};
+
+// Split a run of `len` bytes starting at file offset `base_offset` into display
+// rows aligned to the bytes-per-row grid, like xxd: the first row runs only up to
+// the next multiple of `bytes_per_row`, and every row after it starts on a grid
+// boundary. Without this a run whose start isn't a multiple of bpr (any run after
+// a length change) carries that phase forever, so the offset column jumps to
+// ...0c, ...1c, ... instead of the clean ...10, ...20 xxd shows. The one short
+// catch-up row is the price of realigning; equal regions on either side of a
+// change then line up column-for-column.
+inline std::vector<HexRow>
+hex_grid_rows(uint64_t base_offset, uint64_t len, int bytes_per_row) {
+    const uint64_t bpr = bytes_per_row > 0 ? static_cast<uint64_t>(bytes_per_row) : 16;
+    std::vector<HexRow> rows;
+    uint64_t off = base_offset;
+    uint64_t remaining = len;
+    while (remaining > 0) {
+        const uint64_t to_boundary = bpr - (off % bpr);  // room left in this grid row
+        const uint64_t n = to_boundary < remaining ? to_boundary : remaining;
+        rows.push_back({off, n});
+        off += n;
+        remaining -= n;
+    }
+    return rows;
+}
+
 // How much of an Equal run to show as context around the surrounding changes.
 // Shared by all three hex renderers so their trimming can't drift: `head`/`tail`
 // rows of context are shown, `omitted` rows in between are collapsed to a
@@ -100,9 +131,7 @@ struct HexWindow {
 };
 
 inline HexWindow
-hex_equal_window(uint64_t len, int bytes_per_row, bool is_first, bool is_last, uint64_t ctx_rows) {
-    const uint64_t bpr = bytes_per_row > 0 ? static_cast<uint64_t>(bytes_per_row) : 16;
-    const uint64_t total = (len + bpr - 1) / bpr;
+hex_equal_window(uint64_t total, bool is_first, bool is_last, uint64_t ctx_rows) {
     const bool show_head = !is_first;
     const bool show_tail = !is_last;
     HexWindow w;

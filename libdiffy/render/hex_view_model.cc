@@ -159,7 +159,11 @@ build_side_by_side(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b, const
     };
     auto add_cell = [&](const Cell& c) {
         row.push_back(c);
-        if (static_cast<int>(row.size()) == bpr) {
+        // Flush on the left (A) side's bytes-per-row grid boundary so equal
+        // regions realign to clean offsets after a length change (like xxd).
+        // Cells with no A byte (pure insertions) can't align, so cap at bpr.
+        const bool at_grid = c.has_a && (c.a_off % static_cast<uint64_t>(bpr) == static_cast<uint64_t>(bpr) - 1);
+        if (at_grid || static_cast<int>(row.size()) == bpr) {
             flush();
         }
     };
@@ -172,33 +176,40 @@ build_side_by_side(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b, const
                           seg.b_offset + i, HexSegKind::Replace});
             }
         } else if (seg.kind == HexSegKind::OnlyA) {
+            // Insertions/deletions can't share the A grid, so give them their own
+            // rows rather than desyncing the surrounding offset columns.
+            flush();
             for (uint64_t i = 0; i < seg.a_len; ++i) {
                 add_cell({true, false, a[seg.a_offset + i], 0, seg.a_offset + i, 0, HexSegKind::OnlyA});
             }
+            flush();
         } else if (seg.kind == HexSegKind::OnlyB) {
+            flush();
             for (uint64_t i = 0; i < seg.b_len; ++i) {
                 add_cell({false, true, 0, b[seg.b_offset + i], 0, seg.b_offset + i, HexSegKind::OnlyB});
             }
+            flush();
         } else {  // Equal
+            const std::vector<HexRow> rows = hex_grid_rows(seg.a_offset, seg.a_len, bpr);
             const HexWindow w =
-                hex_equal_window(seg.a_len, bpr, si == 0, si + 1 == alignment.size(), ctx);
+                hex_equal_window(rows.size(), si == 0, si + 1 == alignment.size(), ctx);
             if (w.head == 0 && w.omitted == 0 && w.tail == 0) {
                 continue;
             }
             const uint64_t len = seg.a_len;
-            const uint64_t head = std::min<uint64_t>(w.head * static_cast<uint64_t>(bpr), len);
-            const uint64_t tail = std::min<uint64_t>(w.tail * static_cast<uint64_t>(bpr), len - head);
-            const uint64_t omitted = len - head - tail;
+            const uint64_t head = w.head < rows.size() ? rows[w.head].offset - seg.a_offset : len;
+            const uint64_t tail_start =
+                w.head + w.omitted < rows.size() ? rows[w.head + w.omitted].offset - seg.a_offset : len;
             for (uint64_t i = 0; i < head; ++i) {
                 add_cell({true, true, a[seg.a_offset + i], b[seg.b_offset + i], seg.a_offset + i,
                           seg.b_offset + i, HexSegKind::Equal});
             }
-            if (omitted > 0) {
+            if (w.omitted > 0) {
                 flush();
-                model.rows.push_back(header_row(seg.a_offset + head + omitted, seg.b_offset + head + omitted,
+                model.rows.push_back(header_row(seg.a_offset + tail_start, seg.b_offset + tail_start,
                                                 width));
             }
-            for (uint64_t i = len - tail; i < len; ++i) {
+            for (uint64_t i = tail_start; i < len; ++i) {
                 add_cell({true, true, a[seg.a_offset + i], b[seg.b_offset + i], seg.a_offset + i,
                           seg.b_offset + i, HexSegKind::Equal});
             }
@@ -211,16 +222,13 @@ build_side_by_side(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b, const
 // -------- unified --------
 
 void
-emit_unified_rows(DiffViewModel& model, char prefix, SpanStyle style, const uint8_t* buf, uint64_t offset,
-                  uint64_t len, uint64_t first_row, uint64_t num_rows, int bpr, int width) {
-    for (uint64_t r = first_row; r < first_row + num_rows; ++r) {
-        const uint64_t start = r * static_cast<uint64_t>(bpr);
-        if (start >= len) {
-            break;
-        }
-        const size_t count = static_cast<size_t>(std::min<uint64_t>(bpr, len - start));
+emit_unified_rows(DiffViewModel& model, char prefix, SpanStyle style, const uint8_t* buf,
+                  const std::vector<HexRow>& rows, size_t first_row, size_t num_rows, int bpr, int width) {
+    for (size_t r = first_row; r < first_row + num_rows && r < rows.size(); ++r) {
+        const HexRow& row = rows[r];
         model.rows.push_back(content_row(
-            unified_row_spans(prefix, style, buf, offset + start, count, bpr, width), {}, false));
+            unified_row_spans(prefix, style, buf, row.offset, static_cast<size_t>(row.count), bpr, width),
+            {}, false));
     }
 }
 
@@ -232,40 +240,39 @@ build_unified(gsl::span<const uint8_t> a, gsl::span<const uint8_t> b, const HexA
 
     for (size_t si = 0; si < alignment.size(); ++si) {
         const HexSegment& seg = alignment[si];
-        const uint64_t a_rows = (seg.a_len + bpr - 1) / bpr;
-        const uint64_t b_rows = (seg.b_len + bpr - 1) / bpr;
         switch (seg.kind) {
             case HexSegKind::Replace:
-                emit_unified_rows(model, '-', SpanStyle::DeleteToken, a.data(), seg.a_offset, seg.a_len, 0,
-                                  a_rows, bpr, width);
-                emit_unified_rows(model, '+', SpanStyle::InsertToken, b.data(), seg.b_offset, seg.b_len, 0,
-                                  b_rows, bpr, width);
+                emit_unified_rows(model, '-', SpanStyle::DeleteToken, a.data(),
+                                  hex_grid_rows(seg.a_offset, seg.a_len, bpr), 0, seg.a_len, bpr, width);
+                emit_unified_rows(model, '+', SpanStyle::InsertToken, b.data(),
+                                  hex_grid_rows(seg.b_offset, seg.b_len, bpr), 0, seg.b_len, bpr, width);
                 break;
             case HexSegKind::OnlyA:
-                emit_unified_rows(model, '-', SpanStyle::DeleteToken, a.data(), seg.a_offset, seg.a_len, 0,
-                                  a_rows, bpr, width);
+                emit_unified_rows(model, '-', SpanStyle::DeleteToken, a.data(),
+                                  hex_grid_rows(seg.a_offset, seg.a_len, bpr), 0, seg.a_len, bpr, width);
                 break;
             case HexSegKind::OnlyB:
-                emit_unified_rows(model, '+', SpanStyle::InsertToken, b.data(), seg.b_offset, seg.b_len, 0,
-                                  b_rows, bpr, width);
+                emit_unified_rows(model, '+', SpanStyle::InsertToken, b.data(),
+                                  hex_grid_rows(seg.b_offset, seg.b_len, bpr), 0, seg.b_len, bpr, width);
                 break;
             case HexSegKind::Equal: {
-                const HexWindow w = hex_equal_window(seg.a_len, bpr, si == 0,
-                                                     si + 1 == alignment.size(), ctx);
+                const std::vector<HexRow> rows = hex_grid_rows(seg.a_offset, seg.a_len, bpr);
+                const HexWindow w =
+                    hex_equal_window(rows.size(), si == 0, si + 1 == alignment.size(), ctx);
                 if (w.head == 0 && w.omitted == 0 && w.tail == 0) {
                     break;
                 }
                 if (w.head > 0) {
-                    emit_unified_rows(model, ' ', SpanStyle::Common, a.data(), seg.a_offset, seg.a_len, 0,
-                                      w.head, bpr, width);
+                    emit_unified_rows(model, ' ', SpanStyle::Common, a.data(), rows, 0, w.head, bpr, width);
                 }
                 if (w.omitted > 0) {
-                    const uint64_t resume = (w.head + w.omitted) * static_cast<uint64_t>(bpr);
-                    model.rows.push_back(header_row(seg.a_offset + resume, seg.b_offset + resume, width));
+                    const uint64_t resume = rows[w.head + w.omitted].offset;
+                    model.rows.push_back(
+                        header_row(resume, seg.b_offset + (resume - seg.a_offset), width));
                 }
                 if (w.tail > 0) {
-                    emit_unified_rows(model, ' ', SpanStyle::Common, a.data(), seg.a_offset, seg.a_len,
-                                      w.head + w.omitted, w.tail, bpr, width);
+                    emit_unified_rows(model, ' ', SpanStyle::Common, a.data(), rows, w.head + w.omitted,
+                                      w.tail, bpr, width);
                 }
                 break;
             }
