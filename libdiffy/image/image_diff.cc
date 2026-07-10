@@ -1,7 +1,9 @@
 #include "image/image_diff.hpp"
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
+#include <unordered_map>
 
 // A C++ port of pixelmatch (https://github.com/mapbox/pixelmatch), ISC-licensed:
 // YIQ perceptual colour distance with anti-alias detection so AA fringes aren't
@@ -137,6 +139,121 @@ draw(std::vector<uint8_t>& out, size_t pos, uint8_t r, uint8_t g, uint8_t b) {
     out[pos + 3] = 255;
 }
 
+// Connected-component clustering of the changed mask into bounding boxes (ALG-11).
+// 8-connectivity union-find, then drop specks, merge boxes within a small gap
+// (regroups fragmented changes like text), sort largest-first, and cap the count.
+std::vector<ImageDiffRegion>
+cluster_regions(const std::vector<uint8_t>& mask, int width, int height) {
+    const int n = width * height;
+    std::vector<int> parent(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        parent[static_cast<size_t>(i)] = i;
+    }
+    auto find = [&](int x) {
+        while (parent[static_cast<size_t>(x)] != x) {
+            parent[static_cast<size_t>(x)] = parent[static_cast<size_t>(parent[static_cast<size_t>(x)])];
+            x = parent[static_cast<size_t>(x)];
+        }
+        return x;
+    };
+    auto uni = [&](int a, int b) {
+        a = find(a);
+        b = find(b);
+        if (a != b) {
+            parent[static_cast<size_t>(a)] = b;
+        }
+    };
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const int i = y * width + x;
+            if (!mask[static_cast<size_t>(i)]) {
+                continue;
+            }
+            if (x > 0 && mask[static_cast<size_t>(i - 1)]) {
+                uni(i, i - 1);
+            }
+            if (y > 0 && mask[static_cast<size_t>(i - width)]) {
+                uni(i, i - width);
+            }
+            if (y > 0 && x > 0 && mask[static_cast<size_t>(i - width - 1)]) {
+                uni(i, i - width - 1);
+            }
+            if (y > 0 && x < width - 1 && mask[static_cast<size_t>(i - width + 1)]) {
+                uni(i, i - width + 1);
+            }
+        }
+    }
+
+    struct Box {
+        int x0 = INT_MAX, y0 = INT_MAX, x1 = -1, y1 = -1, count = 0;
+    };
+    std::unordered_map<int, Box> comps;
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const int i = y * width + x;
+            if (!mask[static_cast<size_t>(i)]) {
+                continue;
+            }
+            Box& b = comps[find(i)];
+            b.x0 = std::min(b.x0, x);
+            b.y0 = std::min(b.y0, y);
+            b.x1 = std::max(b.x1, x);
+            b.y1 = std::max(b.y1, y);
+            ++b.count;
+        }
+    }
+
+    // Drop specks (noise). Threshold scales a little with image size.
+    const int min_px = std::max(4, (width * height) / 40000);
+    std::vector<Box> boxes;
+    for (auto& [root, b] : comps) {
+        if (b.count >= min_px) {
+            boxes.push_back(b);
+        }
+    }
+
+    // Merge boxes whose (gap-expanded) rects overlap, to regroup fragmented change.
+    const int gap = std::max(4, std::min(width, height) / 64);
+    bool merged = true;
+    while (merged) {
+        merged = false;
+        for (size_t a = 0; a < boxes.size(); ++a) {
+            for (size_t b = a + 1; b < boxes.size();) {
+                const bool overlap = boxes[a].x0 - gap <= boxes[b].x1 &&
+                                     boxes[b].x0 - gap <= boxes[a].x1 &&
+                                     boxes[a].y0 - gap <= boxes[b].y1 &&
+                                     boxes[b].y0 - gap <= boxes[a].y1;
+                if (overlap) {
+                    boxes[a].x0 = std::min(boxes[a].x0, boxes[b].x0);
+                    boxes[a].y0 = std::min(boxes[a].y0, boxes[b].y0);
+                    boxes[a].x1 = std::max(boxes[a].x1, boxes[b].x1);
+                    boxes[a].y1 = std::max(boxes[a].y1, boxes[b].y1);
+                    boxes[b] = boxes.back();
+                    boxes.pop_back();
+                    merged = true;
+                } else {
+                    ++b;
+                }
+            }
+        }
+    }
+
+    std::sort(boxes.begin(), boxes.end(), [](const Box& a, const Box& b) {
+        return (a.x1 - a.x0) * (a.y1 - a.y0) > (b.x1 - b.x0) * (b.y1 - b.y0);
+    });
+    constexpr size_t kMaxRegions = 64;
+    if (boxes.size() > kMaxRegions) {
+        boxes.resize(kMaxRegions);
+    }
+
+    std::vector<ImageDiffRegion> out;
+    out.reserve(boxes.size());
+    for (const auto& b : boxes) {
+        out.push_back({b.x0, b.y0, b.x1 - b.x0 + 1, b.y1 - b.y0 + 1});
+    }
+    return out;
+}
+
 }  // namespace
 
 ImageDiffResult
@@ -160,6 +277,9 @@ image_diff(const std::vector<uint8_t>& a_rgba, const std::vector<uint8_t>& b_rgb
 
     const double max_delta = 35215.0 * opts.threshold * opts.threshold;
     constexpr double kDimAlpha = 0.1;  // how faintly the unchanged base shows
+
+    // Per-pixel changed mask (real changes only, not AA), for region clustering.
+    std::vector<uint8_t> changed_mask(static_cast<size_t>(width) * static_cast<size_t>(height), 0);
 
     // Identical buffers: no changed pixels, so skip the per-pixel color-delta and
     // antialiasing work entirely. The overlay (if requested) is the all-dimmed
@@ -194,6 +314,7 @@ image_diff(const std::vector<uint8_t>& a_rgba, const std::vector<uint8_t>& b_rgb
                     }
                 } else {
                     ++res.changed_px;
+                    changed_mask[static_cast<size_t>(y) * width + x] = 1;
                     if (opts.compute_overlay) {
                         draw(res.overlay_rgba, pos, 255, 0, 255);  // magenta
                     }
@@ -206,6 +327,9 @@ image_diff(const std::vector<uint8_t>& a_rgba, const std::vector<uint8_t>& b_rgb
         }
     }
 
+    if (res.changed_px > 0) {
+        res.regions = cluster_regions(changed_mask, width, height);
+    }
     res.similarity = res.total_px ? 1.0 - static_cast<double>(res.changed_px) / res.total_px : 1.0;
     return res;
 }

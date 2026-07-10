@@ -14,6 +14,14 @@ struct ImageDiffOptions {
     bool compute_overlay = true;
 };
 
+// Bounding box (pixels) of a cluster of changed pixels; x/y are the top-left.
+struct ImageDiffRegion {
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+};
+
 struct ImageDiffResult {
     bool comparable = false;  // false when dimensions differ / inputs unusable
     int width = 0;
@@ -24,6 +32,9 @@ struct ImageDiffResult {
     // width*height*4 RGBA: changed pixels magenta over a dimmed grayscale base.
     // Empty when !comparable or compute_overlay is false.
     std::vector<uint8_t> overlay_rgba;
+    // Bounding boxes of the connected clusters of changed pixels (ALG-11), largest
+    // first, capped; a navigator can jump/zoom to each. Empty when nothing changed.
+    std::vector<ImageDiffRegion> regions;
 };
 
 // Per-pixel perceptual image diff (a C++ port of the pixelmatch algorithm:

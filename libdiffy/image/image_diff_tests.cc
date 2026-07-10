@@ -32,6 +32,40 @@ TEST_CASE("image_diff: identical images are 100% similar, 0 changed") {
     CHECK(r.overlay_rgba.size() == 8u * 8u * 4u);
 }
 
+TEST_CASE("image_diff: two separate changes cluster into two regions (ALG-11)") {
+    const int W = 40, H = 40;
+    auto a = solid(W, H, 0, 0, 0);
+    auto b = a;
+    auto fill = [&](int x0, int y0, int s) {
+        for (int y = y0; y < y0 + s; ++y) {
+            for (int x = x0; x < x0 + s; ++x) {
+                const size_t p = static_cast<size_t>(y * W + x) * 4;
+                b[p] = 255;
+                b[p + 1] = 255;
+                b[p + 2] = 255;
+            }
+        }
+    };
+    fill(3, 3, 8);    // top-left block
+    fill(28, 28, 8);  // bottom-right block, far enough not to merge
+
+    auto r = image_diff(a, b, W, H);
+    REQUIRE(r.comparable);
+    CHECK(r.regions.size() == 2);
+    bool tl = false, br = false;
+    for (const auto& rg : r.regions) {
+        const int cx = rg.x + rg.w / 2, cy = rg.y + rg.h / 2;
+        if (cx < W / 2 && cy < H / 2) {
+            tl = true;
+        }
+        if (cx > W / 2 && cy > H / 2) {
+            br = true;
+        }
+    }
+    CHECK(tl);
+    CHECK(br);
+}
+
 TEST_CASE("image_diff: a single flipped pixel counts as one change") {
     auto a = solid(4, 4, 0, 0, 0);
     auto b = a;
