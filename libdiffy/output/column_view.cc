@@ -114,7 +114,12 @@ struct DisplayLine {
     int64_t line_number = -1;
     bool is_word_wrapped = false;
     EditType type = EditType::Meta;
+    int move_id = 0;  // non-zero => a relocated (moved) line; tint its number (GAP-9)
 };
+
+// Foreground SGR that flags a moved line's number (violet #a371f7). Layered after
+// the number's own style so it keeps the background but recolours the digits.
+constexpr const char* kMovedNumberFg = "\033[38;2;163;113;247m";
 
 using DisplayColumns = std::vector<std::vector<DisplayLine>>;
 
@@ -123,6 +128,7 @@ make_display_line_chopped(const DisplayLine& input_line, int64_t limit) {
     DisplayLine line;
     line.line_number = input_line.line_number;
     line.type = input_line.type;
+    line.move_id = input_line.move_id;
 
     int64_t pos = 0;
     for (const auto& input_segment : input_line.segments) {
@@ -154,6 +160,7 @@ make_display_line_wrapped(const DisplayLine& input_line, int64_t limit) {
     DisplayLine line;
     line.line_number = input_line.line_number;
     line.type = input_line.type;
+    line.move_id = input_line.move_id;
 
     auto segments = input_line.segments;
     auto segments_count = segments.size();
@@ -186,6 +193,7 @@ make_display_line_wrapped(const DisplayLine& input_line, int64_t limit) {
             lines.push_back(line);
             line = {};
             line.type = input_line.type;
+        line.move_id = input_line.move_id;
             line.is_word_wrapped = true;
         }
     }
@@ -209,6 +217,7 @@ transform_edit_line(const gsl::span<diffy::Line>& content_strings,
     DisplayLine display_line;
     display_line.line_number = static_cast<int>(edit_line.line_index + 1);
     display_line.type = edit_line.type;
+    display_line.move_id = edit_line.move_id;
 
     for (const auto& segment : edit_line.segments) {
         std::string text;
@@ -653,6 +662,9 @@ render_display_line_pair(const DisplayLine& left, const DisplayLine& right, cons
                     break;
             }
         }
+        if (left.move_id != 0) {
+            style += kMovedNumberFg;  // recolour a moved line's number (GAP-9)
+        }
         display_commands.push_back(DisplayCommand::with_style(
             style, format_line_number(left.line_number, config.line_number_digits_count,
                                       config.settings.line_number_align_right)));
@@ -699,6 +711,9 @@ render_display_line_pair(const DisplayLine& left, const DisplayLine& right, cons
                 default:
                     break;
             }
+        }
+        if (right.move_id != 0) {
+            style += kMovedNumberFg;  // recolour a moved line's number (GAP-9)
         }
         display_commands.push_back(DisplayCommand::with_style(
             style, format_line_number(right.line_number, config.line_number_digits_count,
