@@ -33,6 +33,33 @@ TEST_CASE("scope_outline finds enclosing functions") {
 #endif
 }
 
+TEST_CASE("scope_outline captures classes and structs by name") {
+    const std::string src =
+        "class Widget {\n"        // 0
+        "  public:\n"             // 1
+        "    void draw();\n"      // 2
+        "};\n"                    // 3
+        "\n"                      // 4
+        "struct Point {\n"        // 5
+        "    int x;\n"            // 6
+        "    int y;\n"            // 7
+        "};\n"                    // 8
+        "\n"                      // 9
+        "Widget make() {\n"       // 10
+        "    Point p;\n"          // 11  uses of Widget + Point resolve to their defs
+        "    return Widget{};\n"  // 12
+        "}\n";                    // 13
+    auto outline = scope_outline(src, language_for_path("x.cpp"));
+#ifdef DIFFY_ENABLE_HIGHLIGHT
+    auto w = resolve_definition(outline, "Widget", 11);
+    REQUIRE(w.has_value());
+    CHECK(w->start_line == 0);
+    auto p = resolve_definition(outline, "Point", 11);
+    REQUIRE(p.has_value());
+    CHECK(p->start_line == 5);
+#endif
+}
+
 TEST_CASE("local_defs captures params and locals with visibility scopes") {
     const std::string src =
         "int add(int a, int b) {\n"   // 0  params a, b
