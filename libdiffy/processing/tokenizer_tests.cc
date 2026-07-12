@@ -20,6 +20,28 @@ TEST_CASE("tokenizer") {
         REQUIRE(a[0].str_from(line) == "\n");
     }
 
+    SUBCASE("form_feed_and_vertical_tab_terminate") {
+        // Regression: \f and \v are whitespace but aren't one of the four whitespace
+        // chars tokenize handles explicitly, so they used to fall into the word
+        // branch (which won't consume whitespace) and spin forever pushing zero-width
+        // tokens. Each must be consumed as a single token and the call must return.
+        auto ff = " * \ffile\r\n";  // form-feed mid-line, as seen in some C headers
+        auto a = diffy::tokenize(ff);
+        REQUIRE(a.size() > 0);
+        std::string joined;
+        for (const auto& t : a) {
+            joined += t.str_from(ff);
+        }
+        REQUIRE(joined == ff);  // every byte accounted for, none duplicated/dropped
+
+        auto vt = "a\vb";
+        auto b = diffy::tokenize(vt);
+        REQUIRE(b.size() == 3);
+        REQUIRE(b[0].str_from(vt) == "a");
+        REQUIRE(b[1].str_from(vt) == "\v");
+        REQUIRE(b[2].str_from(vt) == "b");
+    }
+
     SUBCASE("multiple_newlines") {
         auto line = "apa\nbepa\n";
         auto a = diffy::tokenize(line);

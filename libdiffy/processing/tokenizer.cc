@@ -89,6 +89,15 @@ diffy::tokenize(const std::string& text) {
             };
         }
 
+        // Guarantee forward progress. Whitespace that none of the explicit branches
+        // handle — form-feed (\f) and vertical-tab (\v), e.g. page breaks in some C
+        // headers — is whitespace, so the word branch above won't consume it and
+        // seeker stalls, spinning out zero-width tokens forever (OOM/hang). Consume
+        // any such char as a single token so the loop always advances.
+        if (seeker == start_idx) {
+            seeker++;
+        }
+
         // Combine CR+LF into single token.
         bool combine_crlf =
             (token_flags & TokenFlagLF) && !result.empty() && result.back().flags & TokenFlagCR;

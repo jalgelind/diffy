@@ -14,6 +14,7 @@
 #include "highlight/language.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -24,11 +25,18 @@ struct CodeScope {
     int64_t start_line;  // 0-based, inclusive
     int64_t end_line;    // 0-based, inclusive
     std::string label;   // the definition's header line, trimmed (e.g. a signature)
+    std::string name;    // the defined identifier (unqualified), or "" if none found
 };
 
 // All definition/scope spans in `source`, in document order.
 std::vector<CodeScope>
 scope_outline(std::string_view source, Language lang);
+
+// The definition named `name` (exact, unqualified match), preferring the one
+// nearest `near_line` (pass -1 for none). Nullopt when no scope matches. Purely
+// name-based: no scoping/shadowing awareness — the nearest same-named def wins.
+std::optional<CodeScope>
+resolve_definition(const std::vector<CodeScope>& outline, std::string_view name, int64_t near_line = -1);
 
 // Label of the innermost scope containing `line` (0-based), or "" if none.
 std::string

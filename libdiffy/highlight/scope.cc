@@ -97,6 +97,58 @@ header_label(std::string_view src, uint32_t start_byte) {
     return out;
 }
 
+// Text of a node, clamped to the source bounds.
+std::string
+node_text(TSNode n, std::string_view src) {
+    const uint32_t a = ts_node_start_byte(n);
+    const uint32_t b = ts_node_end_byte(n);
+    if (a <= b && b <= src.size()) {
+        return std::string(src.substr(a, b - a));
+    }
+    return {};
+}
+
+// Node types that name a definition (the identifier we'd jump to). Substrings
+// aren't enough here — we want the exact leaf, so match whole type names.
+bool
+is_name_type(const char* t) {
+    return std::strcmp(t, "identifier") == 0 || std::strcmp(t, "type_identifier") == 0 ||
+           std::strcmp(t, "field_identifier") == 0 || std::strcmp(t, "constant") == 0 ||
+           std::strcmp(t, "word") == 0;  // bash/cmake grammars call it "word"
+}
+
+// The defined identifier for a scope node. Prefers the grammar's "name" field
+// (Python/Rust/Go/JS/… expose it); falls back to descending C/C++ "declarator"
+// fields to reach the innermost identifier. A qualified name (Foo::bar) is
+// reduced to its final component so a click on the unqualified use resolves.
+std::string
+definition_name(TSNode node, std::string_view src) {
+    std::string out;
+    TSNode name = ts_node_child_by_field_name(node, "name", 4);
+    if (!ts_node_is_null(name)) {
+        out = node_text(name, src);
+    } else {
+        TSNode decl = ts_node_child_by_field_name(node, "declarator", 10);
+        for (int guard = 0; !ts_node_is_null(decl) && guard < 8; ++guard) {
+            const char* t = ts_node_type(decl);
+            if (is_name_type(t) || std::strcmp(t, "qualified_identifier") == 0) {
+                out = node_text(decl, src);
+                break;
+            }
+            decl = ts_node_child_by_field_name(decl, "declarator", 10);
+        }
+    }
+    if (const size_t p = out.rfind("::"); p != std::string::npos) {
+        out = out.substr(p + 2);
+    }
+    // Reject anything that isn't a clean single identifier (defensive: keeps the
+    // symbol table free of signatures/operators that slipped through).
+    if (out.find_first_of(" \t\n(){}<>*&:.") != std::string::npos) {
+        return {};
+    }
+    return out;
+}
+
 }  // namespace
 
 std::vector<CodeScope>
@@ -136,8 +188,9 @@ scope_outline(std::string_view source, Language lang) {
             if (e.row > s.row) {  // definitions span multiple lines; skips type annotations
                 std::string label = header_label(source, ts_node_start_byte(node));
                 if (!label.empty()) {
+                    std::string name = definition_name(node, source);
                     out.push_back({static_cast<int64_t>(s.row), static_cast<int64_t>(e.row),
-                                   std::move(label)});
+                                   std::move(label), std::move(name)});
                 }
             }
         }
@@ -210,6 +263,32 @@ hunk_context(const std::vector<CodeScope>& a_outline,
         ctx = enclosing_scope(a_outline, a_start_line);
     }
     return ctx;
+}
+
+std::optional<CodeScope>
+resolve_definition(const std::vector<CodeScope>& outline, std::string_view name, int64_t near_line) {
+    if (name.empty()) {
+        return std::nullopt;
+    }
+    const CodeScope* best = nullptr;
+    int64_t best_dist = 0;
+    for (const auto& s : outline) {
+        if (s.name != name) {
+            continue;
+        }
+        const int64_t dist =
+            near_line < 0 ? 0
+                          : (s.start_line > near_line ? s.start_line - near_line
+                                                      : near_line - s.start_line);
+        if (!best || dist < best_dist) {
+            best = &s;
+            best_dist = dist;
+        }
+    }
+    if (best) {
+        return *best;
+    }
+    return std::nullopt;
 }
 
 }  // namespace diffy

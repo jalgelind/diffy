@@ -83,3 +83,63 @@ TEST_CASE("scope label for Python ends at the def/class colon") {
     CHECK(outline.empty());
 #endif
 }
+
+TEST_CASE("scope_outline captures C++ definition names (jump-to-definition)") {
+    const std::string src =
+        "int add(int a, int b) {\n"        // 0  free function
+        "    return a + b;\n"              // 1
+        "}\n"                              // 2
+        "\n"                               // 3
+        "class Widget {\n"                 // 4  class
+        "    void draw() {\n"              // 5  in-class method (field_identifier)
+        "        return;\n"                // 6
+        "    }\n"                          // 7
+        "};\n"                             // 8
+        "\n"                               // 9
+        "void Widget::resize(int w) {\n"   // 10 out-of-line method (qualified)
+        "    (void)w;\n"                   // 11
+        "}\n";                             // 12
+
+    auto outline = scope_outline(src, language_for_path("x.cpp"));
+#ifdef DIFFY_ENABLE_HIGHLIGHT
+    REQUIRE_FALSE(outline.empty());
+    REQUIRE(resolve_definition(outline, "add").has_value());
+    CHECK(resolve_definition(outline, "add")->start_line == 0);
+    CHECK(resolve_definition(outline, "Widget").has_value());
+    CHECK(resolve_definition(outline, "draw").has_value());
+    // Out-of-line method resolves by its unqualified name (Widget::resize -> resize).
+    REQUIRE(resolve_definition(outline, "resize").has_value());
+    CHECK(resolve_definition(outline, "resize")->start_line == 10);
+    // Unknown identifier / empty -> no match.
+    CHECK_FALSE(resolve_definition(outline, "nope").has_value());
+    CHECK_FALSE(resolve_definition(outline, "").has_value());
+#else
+    CHECK(outline.empty());
+#endif
+}
+
+TEST_CASE("scope_outline captures Python definition names") {
+    const std::string src =
+        "class Foo:\n"          // 0
+        "    def bar(self):\n"  // 1
+        "        return 1\n";   // 2
+    auto outline = scope_outline(src, language_for_path("x.py"));
+#ifdef DIFFY_ENABLE_HIGHLIGHT
+    REQUIRE_FALSE(outline.empty());
+    CHECK(resolve_definition(outline, "Foo").has_value());
+    REQUIRE(resolve_definition(outline, "bar").has_value());
+    CHECK(resolve_definition(outline, "bar")->start_line == 1);
+#else
+    CHECK(outline.empty());
+#endif
+}
+
+TEST_CASE("resolve_definition picks the nearest same-named def (no scoping)") {
+    const std::vector<CodeScope> outline = {
+        {2, 5, "first", "foo"},
+        {20, 25, "second", "foo"},
+    };
+    CHECK(resolve_definition(outline, "foo", 22)->start_line == 20);
+    CHECK(resolve_definition(outline, "foo", 3)->start_line == 2);
+    CHECK(resolve_definition(outline, "foo")->start_line == 2);  // near=-1 -> first match
+}
