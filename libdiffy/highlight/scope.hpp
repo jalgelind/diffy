@@ -38,6 +38,29 @@ scope_outline(std::string_view source, Language lang);
 std::optional<CodeScope>
 resolve_definition(const std::vector<CodeScope>& outline, std::string_view name, int64_t near_line = -1);
 
+// A local (in-function) binding — a parameter or variable declaration — carrying
+// the lexical scope it is visible in, so a use can be resolved shadowing-correctly
+// (innermost enclosing scope wins). Heuristic: no per-grammar `locals.scm`, just a
+// declaration-node walk. Tuned for C/C++ where declarations are syntactically
+// explicit; other languages get best-effort capture.
+struct LocalDef {
+    int64_t line;         // 0-based declaration line (the jump target)
+    int64_t scope_start;  // enclosing lexical scope, inclusive (for shadowing)
+    int64_t scope_end;
+    std::string label;    // declaration text, trimmed (the hover signature)
+    std::string name;     // the bound identifier (unqualified)
+};
+
+// Every local binding in `source`, in document order.
+std::vector<LocalDef>
+local_defs(std::string_view source, Language lang);
+
+// The binding named `name` visible at `use_line`: only bindings whose scope
+// encloses the use are eligible; the innermost enclosing scope wins (shadowing),
+// with the nearest declaration as a tiebreak. Nullopt when none is visible.
+std::optional<LocalDef>
+resolve_local(const std::vector<LocalDef>& defs, std::string_view name, int64_t use_line);
+
 // Label of the innermost scope containing `line` (0-based), or "" if none.
 std::string
 enclosing_scope(const std::vector<CodeScope>& outline, int64_t line);

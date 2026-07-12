@@ -33,6 +33,57 @@ TEST_CASE("scope_outline finds enclosing functions") {
 #endif
 }
 
+TEST_CASE("local_defs captures params and locals with visibility scopes") {
+    const std::string src =
+        "int add(int a, int b) {\n"   // 0  params a, b
+        "    int s = a + b;\n"        // 1  outer local s
+        "    {\n"                     // 2
+        "        int s = 99;\n"       // 3  inner local s (shadows)
+        "        return s;\n"         // 4  use -> inner s
+        "    }\n"                     // 5
+        "    return s + a;\n"         // 6  use -> outer s, param a
+        "}\n";                        // 7
+
+    auto defs = local_defs(src, language_for_path("x.cpp"));
+
+#ifdef DIFFY_ENABLE_HIGHLIGHT
+    REQUIRE_FALSE(defs.empty());
+    // Shadowing: the use on line 4 sees the inner s (declared line 3), not the outer.
+    auto inner = resolve_local(defs, "s", 4);
+    REQUIRE(inner.has_value());
+    CHECK(inner->line == 3);
+    // The use on line 6 is outside the inner block, so it sees the outer s (line 1).
+    auto outer = resolve_local(defs, "s", 6);
+    REQUIRE(outer.has_value());
+    CHECK(outer->line == 1);
+    // A parameter resolves from anywhere in the function body.
+    auto param = resolve_local(defs, "a", 6);
+    REQUIRE(param.has_value());
+    CHECK(param->line == 0);
+    // Initializer identifiers are uses, not bindings: `b` is a param (line 0), never
+    // captured from `a + b`.
+    CHECK_FALSE(resolve_local(defs, "nope", 4).has_value());
+#else
+    CHECK(defs.empty());  // highlighting disabled at build time
+#endif
+}
+
+TEST_CASE("resolve_local: innermost scope wins, tiebreak nearest declaration") {
+    // Pure (no parse): {line, scope_start, scope_end, label, name}.
+    const std::vector<LocalDef> defs = {
+        {1, 0, 9, "int x", "x"},   // outer x, whole function
+        {4, 3, 6, "int x", "x"},   // inner x, block 3..6 (shadows within)
+        {2, 0, 9, "int y", "y"},   // y at line 2
+        {7, 0, 9, "int y", "y"},   // y redeclared at line 7 (same scope)
+    };
+    CHECK(resolve_local(defs, "x", 5)->line == 4);  // inside inner block -> inner
+    CHECK(resolve_local(defs, "x", 8)->line == 1);  // outside inner block -> outer
+    CHECK(resolve_local(defs, "y", 3)->line == 2);  // nearest at/above the use
+    CHECK(resolve_local(defs, "y", 8)->line == 7);  // nearest at/above the use
+    CHECK_FALSE(resolve_local(defs, "z", 5).has_value());
+    CHECK_FALSE(resolve_local(defs, "", 5).has_value());
+}
+
 TEST_CASE("hunk_context prefers the new side, then old, then nothing") {
     const std::vector<CodeScope> a_outline = {{2, 5, "old_fn"}};
     const std::vector<CodeScope> b_outline = {{2, 5, "new_fn"}};

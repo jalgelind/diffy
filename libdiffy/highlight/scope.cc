@@ -149,6 +149,56 @@ definition_name(TSNode node, std::string_view src) {
     return out;
 }
 
+// A node that opens a lexical scope: a brace block ({...}) or any definition. Its
+// row range is where a binding declared inside it is visible, so it's the unit for
+// shadowing-correct local resolution (innermost wins).
+bool
+is_scope_boundary(const char* type) {
+    return std::strcmp(type, "compound_statement") == 0 ||  // C/C++/JS/… block
+           std::strcmp(type, "block") == 0 ||               // python/ruby/rust block
+           is_scope_type(type);                             // function/class/lambda/…
+}
+
+// Collect the identifiers *bound* by a declaration node, descending only through
+// `declarator` fields so initializers/values (which hold uses, not bindings) are
+// never captured — `int x = y;` yields x, not y. Structured bindings (`auto [a,b]`)
+// expose their names as plain children, so those are gathered directly.
+void
+collect_bound_idents(TSNode node, std::string_view src, std::vector<TSNode>& out) {
+    if (std::strcmp(ts_node_type(node), "structured_binding_declarator") == 0) {
+        const uint32_t n = ts_node_child_count(node);
+        for (uint32_t i = 0; i < n; ++i) {
+            TSNode c = ts_node_child(node, i);
+            if (is_name_type(ts_node_type(c))) {
+                out.push_back(c);
+            }
+        }
+        return;
+    }
+    const uint32_t n = ts_node_child_count(node);
+    for (uint32_t i = 0; i < n; ++i) {
+        const char* fn = ts_node_field_name_for_child(node, i);
+        if (!fn || std::strcmp(fn, "declarator") != 0) {
+            continue;  // only follow the declarator chain, never the value/type
+        }
+        TSNode c = ts_node_child(node, i);
+        if (is_name_type(ts_node_type(c))) {
+            out.push_back(c);
+        } else {
+            collect_bound_idents(c, src, out);  // pointer/reference/array/init_declarator
+        }
+    }
+}
+
+// Node types whose `declarator` field(s) introduce local bindings. C/C++-focused:
+// declarations, function parameters, range-for vars, and class members.
+bool
+is_binding_decl(const char* t) {
+    return std::strcmp(t, "declaration") == 0 || std::strcmp(t, "parameter_declaration") == 0 ||
+           std::strcmp(t, "optional_parameter_declaration") == 0 ||
+           std::strcmp(t, "for_range_loop") == 0 || std::strcmp(t, "field_declaration") == 0;
+}
+
 }  // namespace
 
 std::vector<CodeScope>
@@ -206,6 +256,68 @@ scope_outline(std::string_view source, Language lang) {
     return out;
 }
 
+std::vector<LocalDef>
+local_defs(std::string_view source, Language lang) {
+    std::vector<LocalDef> out;
+    if (source.empty() || source.size() > kHighlightSizeCap) {
+        return out;
+    }
+    if (source.find('\0') != std::string_view::npos) {
+        return out;
+    }
+    const TSLanguage* ts_lang = ts_language_for(lang);
+    if (!ts_lang) {
+        return out;
+    }
+    TSParser* parser = ts_parser_new();
+    if (!ts_parser_set_language(parser, ts_lang)) {
+        ts_parser_delete(parser);
+        return out;
+    }
+    TSTree* tree = ts_parser_parse_string(parser, nullptr, source.data(),
+                                          static_cast<uint32_t>(source.size()));
+    const int64_t last_row = static_cast<int64_t>(ts_node_end_point(ts_tree_root_node(tree)).row);
+
+    std::vector<TSNode> stack;
+    stack.push_back(ts_tree_root_node(tree));
+    while (!stack.empty()) {
+        TSNode node = stack.back();
+        stack.pop_back();
+
+        if (is_binding_decl(ts_node_type(node))) {
+            std::vector<TSNode> idents;
+            collect_bound_idents(node, source, idents);
+            for (TSNode id : idents) {
+                std::string name = node_text(id, source);
+                if (name.empty() ||
+                    name.find_first_of(" \t\n(){}<>*&:.") != std::string::npos) {
+                    continue;
+                }
+                // Visibility scope: the nearest enclosing block/definition.
+                int64_t ss = 0, se = last_row;
+                for (TSNode p = ts_node_parent(id); !ts_node_is_null(p); p = ts_node_parent(p)) {
+                    if (is_scope_boundary(ts_node_type(p))) {
+                        ss = static_cast<int64_t>(ts_node_start_point(p).row);
+                        se = static_cast<int64_t>(ts_node_end_point(p).row);
+                        break;
+                    }
+                }
+                out.push_back({static_cast<int64_t>(ts_node_start_point(id).row), ss, se,
+                               header_label(source, ts_node_start_byte(node)), std::move(name)});
+            }
+        }
+
+        const uint32_t n = ts_node_child_count(node);
+        for (uint32_t i = 0; i < n; ++i) {
+            stack.push_back(ts_node_child(node, i));
+        }
+    }
+
+    ts_tree_delete(tree);
+    ts_parser_delete(parser);
+    return out;
+}
+
 std::string
 enclosing_scope(const std::vector<CodeScope>& outline, int64_t line) {
     const CodeScope* best = nullptr;
@@ -227,6 +339,11 @@ enclosing_scope(const std::vector<CodeScope>& outline, int64_t line) {
 
 std::vector<CodeScope>
 scope_outline(std::string_view, Language) {
+    return {};
+}
+
+std::vector<LocalDef>
+local_defs(std::string_view, Language) {
     return {};
 }
 
@@ -283,6 +400,51 @@ resolve_definition(const std::vector<CodeScope>& outline, std::string_view name,
         if (!best || dist < best_dist) {
             best = &s;
             best_dist = dist;
+        }
+    }
+    if (best) {
+        return *best;
+    }
+    return std::nullopt;
+}
+
+std::optional<LocalDef>
+resolve_local(const std::vector<LocalDef>& defs, std::string_view name, int64_t use_line) {
+    if (name.empty()) {
+        return std::nullopt;
+    }
+    const LocalDef* best = nullptr;
+    for (const auto& d : defs) {
+        if (d.name != name) {
+            continue;
+        }
+        // Only bindings visible at the use site are eligible.
+        if (use_line >= 0 && (use_line < d.scope_start || use_line > d.scope_end)) {
+            continue;
+        }
+        if (!best) {
+            best = &d;
+            continue;
+        }
+        const int64_t d_span = d.scope_end - d.scope_start;
+        const int64_t b_span = best->scope_end - best->scope_start;
+        if (d_span != b_span) {
+            if (d_span < b_span) {  // innermost (smallest) scope wins — shadowing
+                best = &d;
+            }
+            continue;
+        }
+        // Same scope: prefer a declaration at/above the use, else the nearest one.
+        if (use_line >= 0) {
+            const bool d_before = d.line <= use_line, b_before = best->line <= use_line;
+            const auto dist = [use_line](int64_t l) { return l > use_line ? l - use_line : use_line - l; };
+            if (d_before != b_before) {
+                if (d_before) {
+                    best = &d;
+                }
+            } else if (dist(d.line) < dist(best->line)) {
+                best = &d;
+            }
         }
     }
     if (best) {
