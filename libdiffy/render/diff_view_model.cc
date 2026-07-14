@@ -124,8 +124,14 @@ build_side_by_side(const DiffInput<Line>& input, const AnnotatedHunk& hunk, std:
             row.new_lineno = static_cast<int64_t>(B[j].line_index) + 1;
             ++i;
             ++j;
-        } else if (has_a && has_b && at == EditType::Delete && bt == EditType::Insert) {
-            // A changed line: show the deletion and insertion as a pair.
+        } else if (has_a && has_b && at == EditType::Delete && bt == EditType::Insert &&
+                   A[i].move_id == 0 && B[j].move_id == 0) {
+            // A changed line: show the deletion and insertion as a pair. Only when
+            // NEITHER side is a moved line — a DiffRow carries a single move_id, so
+            // pairing a moved delete with a moved insert here would silently drop the
+            // move markers of one (or both). Moved lines instead fall through to the
+            // delete-only / insert-only branches below, which preserve move_id, so a
+            // relocated block renders whole on its own side (GAP-9).
             row.left = make_cell(input.A, A[i], a_hl);
             row.old_lineno = static_cast<int64_t>(A[i].line_index) + 1;
             row.right = make_cell(input.B, B[j], b_hl);

@@ -301,7 +301,15 @@ annotate_lines(const DiffInput<diffy::Line>& diff_input,
 // the file) or a reference. Runs as a cross-hunk pass over the whole file diff.
 void
 detect_moves(const DiffInput<diffy::Line>& in, std::vector<AnnotatedHunk>& hunks) {
-    constexpr int kMinMoveLines = 3;    // blocks shorter than this are usually noise
+    // A relocation is called a "move" when a run of >= kMinMoveLines lines matches, OR
+    // a shorter run (>= kMinShortMoveLines) that carries real content (at least
+    // kMinShortMoveChars non-whitespace characters). The short-run rule catches a small
+    // function whose closing brace is shared as context — so its pure-deleted run is one
+    // line short of the source — while NOT flagging coincidental trivial tails like
+    // "}" + a blank line, which two unrelated blocks often share (GAP-9).
+    constexpr int kMinMoveLines = 3;
+    constexpr int kMinShortMoveLines = 2;
+    constexpr size_t kMinShortMoveChars = 16;
     constexpr size_t kMoveBudget = 1u << 22;  // skip pathological dels*inss searches
 
     struct Ref {
@@ -353,7 +361,21 @@ detect_moves(const DiffInput<diffy::Line>& in, std::vector<AnnotatedHunk>& hunks
                 best_ii = ii;
             }
         }
-        if (best_len >= static_cast<size_t>(kMinMoveLines)) {
+        bool accept = best_len >= static_cast<size_t>(kMinMoveLines);
+        if (!accept && best_len >= static_cast<size_t>(kMinShortMoveLines)) {
+            // Short run: require enough real content so trivial "}"/blank tails don't
+            // register as moves. Count printable (> space) characters across the block.
+            size_t nonws = 0;
+            for (size_t k = 0; k < best_len; ++k) {
+                for (char c : *dels[di + k].text) {
+                    if (static_cast<unsigned char>(c) > ' ') {
+                        ++nonws;
+                    }
+                }
+            }
+            accept = nonws >= kMinShortMoveChars;
+        }
+        if (accept) {
             ++next_move_id;
             const int64_t ins_start = inss[best_ii].lineno;
             const int64_t del_start = dels[di].lineno;
