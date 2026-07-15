@@ -12,6 +12,7 @@
 #include "image/term_image.hpp"
 #include "output/column_view.hpp"
 #include "output/hex_column.hpp"
+#include "output/hex_common.hpp"
 #include "output/hex_unified.hpp"
 #include "output/unified.hpp"
 #include "processing/diff_hunk.hpp"
@@ -713,9 +714,7 @@ Side by side options:
                         change_bytes += seg.a_len + seg.b_len;
                     }
                 }
-                constexpr uint64_t kCoarseCap = 512ull * 1024;      // coarse + this big
-                constexpr uint64_t kHardCap = 8ull * 1024 * 1024;   // huge regardless
-                if ((truncated && change_bytes > kCoarseCap) || change_bytes > kHardCap) {
+                if (diffy::hex_should_summarise(change_bytes, truncated)) {
                     fmt::print("Binary files {} and {} differ ({} bytes differ; too dissimilar "
                                "to display a hex diff)\n",
                                opts.left_file_name, opts.right_file_name, change_bytes);

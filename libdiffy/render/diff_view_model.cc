@@ -208,6 +208,32 @@ build_unified(const DiffInput<Line>& input, const AnnotatedHunk& hunk, std::vect
     }
 }
 
+// Build a Content row for one common (unchanged) line revealed inside a context
+// gap. Mirrors the Common-line branch of build_side_by_side (:120) / build_unified
+// (:180): a synthesized EditLine carrying one whole-line Common segment feeds
+// make_cell, so a revealed line gets the same syntax highlighting as any other
+// row. `oi`/`ni` are 0-based A/B line indices (they advance 1:1 across a gap).
+DiffRow
+make_common_row(const DiffInput<Line>& input, int64_t oi, int64_t ni, ViewMode mode,
+                const LineHighlights* a_hl, const LineHighlights* b_hl) {
+    auto synth = [](int64_t idx, const gsl::span<Line>& src) {
+        EditLine el;
+        el.type = EditType::Common;
+        el.line_index = EditIndex(idx);
+        el.segments.push_back(LineSegment{0, src[static_cast<long>(idx)].line.size(), TokenFlagNone,
+                                          EditType::Common});
+        return el;
+    };
+    DiffRow row;
+    row.left = make_cell(input.A, synth(oi, input.A), a_hl);
+    row.old_lineno = oi + 1;
+    row.new_lineno = ni + 1;  // unified shows both numbers in a single cell
+    if (mode == ViewMode::SideBySide) {
+        row.right = make_cell(input.B, synth(ni, input.B), b_hl);  // new side alongside the old
+    }
+    return row;
+}
+
 }  // namespace
 
 DiffViewModel
@@ -215,7 +241,8 @@ build_diff_view(const DiffInput<Line>& input,
                 const std::vector<AnnotatedHunk>& hunks,
                 const DiffLayoutOptions& options,
                 const LineHighlights* a_highlights,
-                const LineHighlights* b_highlights) {
+                const LineHighlights* b_highlights,
+                const std::map<int, GapExpansion>* expansions) {
     DiffViewModel model;
     model.mode = options.mode;
 
@@ -225,13 +252,104 @@ build_diff_view(const DiffInput<Line>& input,
     auto fmt_change = [](int64_t start, int64_t count) {
         return count == 1 ? fmt::format("{}", start) : fmt::format("{},{}", start, count);
     };
-    for (const auto& hunk : hunks) {
+
+    // No hunks => no changes => nothing to give context to (matches the pre-gap
+    // behaviour: identical input yields an empty model).
+    if (hunks.empty()) {
+        return model;
+    }
+
+    const int64_t nA = static_cast<int64_t>(input.A.size());
+    const int64_t nB = static_cast<int64_t>(input.B.size());
+    // There are hunks.size()+1 runs of hidden common lines: gap g (0..N-1) precedes
+    // hunks[g]; gap N is the tail after the last hunk. Walk them in file order,
+    // emitting each gap's revealed/collapsed rows, then the hunk that follows it.
+    const int num_gaps = static_cast<int>(hunks.size()) + 1;
+    for (int g = 0; g < num_gaps; ++g) {
+        const bool is_tail = g == static_cast<int>(hunks.size());
+        // The hidden common range for this gap, as 1-based A/B line ranges of equal
+        // length H. Between two hunks it's [prev hunk end + 1 .. next hunk start - 1];
+        // the leading gap starts at line 1; the tail runs to end-of-file. Old line k
+        // and new line k advance together (the region is entirely common).
+        int64_t old_start, new_start, H;
+        if (!is_tail) {
+            const int64_t prev_old_end =
+                (g == 0) ? 0 : hunks[g - 1].from_start + hunks[g - 1].from_count - 1;
+            const int64_t prev_new_end =
+                (g == 0) ? 0 : hunks[g - 1].to_start + hunks[g - 1].to_count - 1;
+            old_start = prev_old_end + 1;
+            new_start = prev_new_end + 1;
+            H = hunks[g].from_start - old_start;  // == (from_start-1) - old_start + 1
+        } else {
+            const auto& last = hunks.back();
+            old_start = last.from_start + last.from_count;
+            new_start = last.to_start + last.to_count;
+            H = nA - old_start + 1;
+        }
+        // Defensive: old/new ranges are equal-length in a well-formed diff, but never
+        // read past either buffer if a stray count ever disagrees.
+        H = std::min(H, nB - new_start + 1);
+
+        // How many of this gap's common lines are still hidden after applying any
+        // expansion. Declared out here so the following @@ header — which now hosts
+        // gap g's expand/collapse controls — can carry the count. Stays 0 when the gap
+        // has no hidden lines (H == 0).
+        int64_t remaining = 0;
+        if (H > 0) {
+            GapExpansion exp;
+            if (expansions) {
+                auto it = expansions->find(g);
+                if (it != expansions->end()) {
+                    exp = it->second;
+                }
+            }
+            const int64_t top = std::min(exp.top, H);
+            const int64_t bot = std::min(exp.bot, H - top);
+            remaining = H - top - bot;
+            // (a) `top` lines revealed at the gap's start (adjacent to the prev hunk).
+            for (int64_t k = 0; k < top; ++k) {
+                model.rows.push_back(make_common_row(input, old_start - 1 + k, new_start - 1 + k,
+                                                     options.mode, a_highlights, b_highlights));
+            }
+            // (b) The tail gap has no following @@ header to host its controls, so it
+            // keeps a standalone ContextGap marker row: it carries the hidden count (for
+            // "expand" affordances) and, when partly revealed, doubles as the "collapse"
+            // seam between the top/bot blocks. Non-tail gaps fold their controls onto the
+            // next hunk's @@ header (below) instead, so they emit no marker.
+            if (is_tail && (remaining > 0 || top > 0 || bot > 0)) {
+                DiffRow marker;
+                marker.kind = RowKind::ContextGap;
+                marker.gap_id = g;
+                marker.gap_hidden = remaining;
+                marker.old_lineno = old_start + top;  // first still-hidden line (the seam)
+                marker.new_lineno = new_start + top;
+                model.rows.push_back(std::move(marker));
+            }
+            // (c) `bot` lines revealed at the gap's end (adjacent to the next hunk).
+            for (int64_t k = H - bot; k < H; ++k) {
+                model.rows.push_back(make_common_row(input, old_start - 1 + k, new_start - 1 + k,
+                                                     options.mode, a_highlights, b_highlights));
+            }
+        }
+
+        if (is_tail) {
+            break;  // no hunk follows the tail gap
+        }
+        const auto& hunk = hunks[g];
         DiffRow header;
         header.kind = RowKind::HunkHeader;
         header.header_text = fmt::format("@@ -{} +{} @@", fmt_change(hunk.from_start, hunk.from_count),
                                          fmt_change(hunk.to_start, hunk.to_count));
         if (!hunk.context.empty()) {
             header.header_text += " " + hunk.context;
+        }
+        // Gap g precedes this hunk, so its @@ header is the natural home for the gap's
+        // expand/collapse controls (the frontend renders them right-aligned on this row).
+        // Stamp the header with the gap's id + still-hidden count; gap_id keeps its -1
+        // default when H == 0, i.e. no run of common lines is hidden before this hunk.
+        if (H > 0) {
+            header.gap_id = g;
+            header.gap_hidden = remaining;
         }
         model.rows.push_back(std::move(header));
 

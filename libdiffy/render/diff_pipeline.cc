@@ -127,12 +127,13 @@ build_diff_view_from_text(const std::string& a_text,
                           const std::string& b_name,
                           const DiffPipelineOptions& pipeline_options,
                           const DiffLayoutOptions& layout_options,
-                          DiffComputation* out_computation) {
+                          DiffComputation* out_computation,
+                          const std::map<int, GapExpansion>* expansions) {
     DiffComputation c =
         compute_annotated_diff(a_text, b_text, a_name, b_name, pipeline_options);
     auto input = c.input();
-    DiffViewModel model =
-        build_diff_view(input, c.hunks, layout_options, &c.a_highlights, &c.b_highlights);
+    DiffViewModel model = build_diff_view(input, c.hunks, layout_options, &c.a_highlights,
+                                          &c.b_highlights, expansions);
     if (out_computation) {
         *out_computation = std::move(c);
     }

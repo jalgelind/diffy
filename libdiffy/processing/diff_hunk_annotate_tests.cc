@@ -188,6 +188,28 @@ TEST_CASE("annotate_hunks — detects a moved block (GAP-9)") {
     CHECK(ins_ptr > 0);                // insertion points back at where it came from
 }
 
+TEST_CASE("annotate_hunks — a bracket-only block is not flagged as a move (GAP-9)") {
+    // Same swap shape as the moved-block test, but the relocated run is pure closing
+    // brackets — a coincidental line-hash match that relocates nothing. It must NOT be
+    // tagged as a move, however long the run (the content gate has no substantive lines).
+    auto A = mk({"anchor line one", "anchor line two", "anchor line three",
+                 "anchor line four", "}", "})", "});"});
+    auto B = mk({"}", "})", "});", "anchor line one", "anchor line two",
+                 "anchor line three", "anchor line four"});
+    DiffInput<Line> in{gsl::span<Line>{A}, gsl::span<Line>{B}, "a", "b"};
+    auto r = Patience<Line>(in).compute();
+    auto hunks = compose_hunks(r.edit_sequence, 3);
+    auto annotated = annotate_hunks(in, hunks, EditGranularity::Token, false);
+    for (const auto& h : annotated) {
+        for (const auto& el : h.a_lines) {
+            CHECK(el.move_id == 0);
+        }
+        for (const auto& el : h.b_lines) {
+            CHECK(el.move_id == 0);
+        }
+    }
+}
+
 TEST_CASE("annotate_hunks — a plain edit is not a move") {
     auto A = mk({"ctx", "old value here", "ctx2"});
     auto B = mk({"ctx", "new value here", "ctx2"});

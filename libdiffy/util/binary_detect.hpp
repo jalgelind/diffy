@@ -18,4 +18,12 @@ looks_binary(std::string_view data, std::size_t sample = 8192);
 bool
 looks_binary(const std::vector<uint8_t>& data, std::size_t sample = 8192);
 
+// A quick, fetch-free guess that a path names a binary file, from its extension
+// (an allowlist of known-binary suffixes). Case-insensitive; a path with no
+// extension — dotfiles, extensionless names — is treated as text (false). Cheap
+// enough to call before reading any bytes; pairs with the content-sniff
+// looks_binary above for the "should we even try to diff this as text?" decision.
+bool
+looks_binary_path(std::string_view path);
+
 }  // namespace diffy

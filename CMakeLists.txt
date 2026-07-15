@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.21)
 # policy floor. Must be set before those subdirectories are added.
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Compat floor for old subprojects" FORCE)
 
-project(diffy LANGUAGES CXX VERSION 26.07.1)
+project(diffy LANGUAGES CXX VERSION 26.07.2)
 
 # Absolute path to this (the diffy) source root. Prefer this over CMAKE_SOURCE_DIR
 # for locating our own subprojects/: when diffy is embedded as a subdirectory

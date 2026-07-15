@@ -18,6 +18,41 @@ hex_offset_width(uint64_t max_offset) {
     return digits < 4 ? 4 : digits;
 }
 
+// Largest bytes-per-row whose full unified row fits `width_cols` columns, so the
+// ASCII column is never pushed off-screen. A row is prefix(1) + offset(off_w) +
+// "  "(2) + 3*bpr hex + "|" + bpr ascii + "|" = (off_w + 5) + 4*bpr, and
+// `width_cols` is the per-pane budget (a side-by-side view gets two of these).
+// Prefer a multiple of 8; fall back to whatever fits on a very narrow pane.
+// `width_cols <= 0` means the width is unknown (no tty / not laid out yet), so
+// return a sane default of 16.
+inline int
+hex_fit_bytes_per_row(int width_cols, int off_w) {
+    if (width_cols <= 0) {
+        return 16;  // width unknown (no tty / not laid out yet): sane default
+    }
+    const long fit = (static_cast<long>(width_cols) - (off_w + 5)) / 4;
+    if (fit >= 8) {
+        return static_cast<int>((fit / 8) * 8);
+    }
+    return fit >= 1 ? static_cast<int>(fit) : 1;
+}
+
+// Thresholds for collapsing a hopeless hex diff to a one-line "binary files
+// differ" summary instead of emitting hundreds of thousands of useless rows.
+// Shared by the CLI and GUI so their cutoffs can't drift.
+inline constexpr uint64_t kHexCoarseSummariseCap = 512ull * 1024;      // coarse + this big
+inline constexpr uint64_t kHexHardSummariseCap = 8ull * 1024 * 1024;   // huge regardless
+
+// True when a hex diff of `change_bytes` changed bytes should be summarised
+// rather than rendered row-by-row: either the alignment was `truncated` (a
+// region exceeded the byte-refine budget) and the change exceeds the coarse cap,
+// or the change is huge regardless of truncation.
+inline bool
+hex_should_summarise(uint64_t change_bytes, bool truncated) {
+    return (truncated && change_bytes > kHexCoarseSummariseCap) ||
+           change_bytes > kHexHardSummariseCap;
+}
+
 namespace hex_detail {
 // 256 two-char lowercase hex pairs packed into one string ("000102…ff"), built
 // once. Formatting a byte is then a 2-char copy — no fmt machinery or heap

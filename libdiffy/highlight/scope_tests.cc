@@ -221,3 +221,122 @@ TEST_CASE("resolve_definition picks the nearest same-named def (no scoping)") {
     CHECK(resolve_definition(outline, "foo", 3)->start_line == 2);
     CHECK(resolve_definition(outline, "foo")->start_line == 2);  // near=-1 -> first match
 }
+
+TEST_CASE("enclosing_scope prefers the innermost *named* scope over a nameless one") {
+    // A nameless innermost scope (an arrow function's junk label) must not shadow a
+    // meaningful enclosing name — pure test, no parse.
+    const std::vector<CodeScope> outline = {
+        {0, 20, "function outer()", "outer"},  // named, larger
+        {2, 18, "() =>", ""},                  // nameless, smaller (would win on size)
+    };
+    CHECK(enclosing_scope(outline, 10) == "function outer()");
+    // With no named scope containing the line, the smallest overall still wins.
+    const std::vector<CodeScope> only_nameless = {{2, 18, "() =>", ""}};
+    CHECK(enclosing_scope(only_nameless, 10) == "() =>");
+}
+
+TEST_CASE("scope_outline resolves JS arrow-function edits to the variable name") {
+    const std::string src =
+        "const handler = (evt) => {\n"  // 0
+        "    doThing(evt);\n"           // 1
+        "    return evt.type;\n"        // 2
+        "};\n"                          // 3
+        "\n"                            // 4
+        "const plain = 1;\n";           // 5  top-level, not a scope
+
+    auto outline = scope_outline(src, language_for_path("x.js"));
+#ifdef DIFFY_ENABLE_HIGHLIGHT
+    REQUIRE_FALSE(outline.empty());
+    // A change inside the arrow body resolves to the declared name, not "() =>".
+    CHECK(enclosing_scope(outline, 1) == "handler = (evt) =>");
+    // Jump-to-definition finds the arrow by its variable name.
+    REQUIRE(resolve_definition(outline, "handler").has_value());
+    CHECK(resolve_definition(outline, "handler")->start_line == 0);
+    // A top-level (non-def) change has no function context.
+    CHECK(enclosing_scope(outline, 5).empty());
+#else
+    CHECK(outline.empty());
+#endif
+}
+
+TEST_CASE("scope_outline resolves Go struct edits to the type name") {
+    const std::string src =
+        "package main\n"         // 0
+        "\n"                     // 1
+        "type Point struct {\n"  // 2
+        "\tX int\n"              // 3
+        "\tY int\n"              // 4
+        "}\n";                   // 5
+
+    auto outline = scope_outline(src, language_for_path("x.go"));
+#ifdef DIFFY_ENABLE_HIGHLIGHT
+    REQUIRE_FALSE(outline.empty());
+    // The name lives on the parent type_spec, not on the bare "struct" node.
+    CHECK(enclosing_scope(outline, 3) == "Point struct");
+    REQUIRE(resolve_definition(outline, "Point").has_value());
+    CHECK(resolve_definition(outline, "Point")->start_line == 2);
+    // `package main` is single-line, so it never becomes a scope.
+    CHECK(enclosing_scope(outline, 0).empty());
+#else
+    CHECK(outline.empty());
+#endif
+}
+
+TEST_CASE("scope_outline extends a def over its doc-comment and decorators") {
+    // Python decorator directly above the def.
+    const std::string py =
+        "@app.route('/')\n"   // 0  decorator
+        "def index():\n"      // 1
+        "    return page\n";  // 2
+    auto po = scope_outline(py, language_for_path("x.py"));
+#ifdef DIFFY_ENABLE_HIGHLIGHT
+    REQUIRE_FALSE(po.empty());
+    // An edit on the decorator line resolves to the function below it.
+    CHECK(enclosing_scope(po, 0) == "def index()");
+    CHECK(enclosing_scope(po, 1) == "def index()");
+#endif
+
+    // C block doc-comment directly above the def.
+    const std::string c =
+        "/**\n"                      // 0
+        " * Adds two numbers.\n"     // 1
+        " */\n"                      // 2
+        "int add(int a, int b) {\n"  // 3
+        "    return a + b;\n"        // 4
+        "}\n";                       // 5
+    auto co = scope_outline(c, language_for_path("x.c"));
+#ifdef DIFFY_ENABLE_HIGHLIGHT
+    REQUIRE_FALSE(co.empty());
+    // Edits anywhere in the doc-comment resolve to the function.
+    CHECK(enclosing_scope(co, 0) == "int add(int a, int b)");
+    CHECK(enclosing_scope(co, 1) == "int add(int a, int b)");
+    CHECK(enclosing_scope(co, 2) == "int add(int a, int b)");
+#endif
+}
+
+TEST_CASE("scope_outline captures unions and records") {
+    const std::string c =
+        "union Value {\n"  // 0
+        "    int i;\n"     // 1
+        "    float f;\n"   // 2
+        "};\n";            // 3
+    auto co = scope_outline(c, language_for_path("x.c"));
+#ifdef DIFFY_ENABLE_HIGHLIGHT
+    REQUIRE_FALSE(co.empty());
+    CHECK(enclosing_scope(co, 1) == "union Value");
+    REQUIRE(resolve_definition(co, "Value").has_value());
+    CHECK(resolve_definition(co, "Value")->start_line == 0);
+#endif
+
+    const std::string java =
+        "record Point(int x, int y) {\n"   // 0
+        "    static final int DIM = 2;\n"  // 1
+        "}\n";                             // 2
+    auto jo = scope_outline(java, language_for_path("x.java"));
+#ifdef DIFFY_ENABLE_HIGHLIGHT
+    REQUIRE_FALSE(jo.empty());
+    CHECK(enclosing_scope(jo, 1) == "record Point(int x, int y)");
+    REQUIRE(resolve_definition(jo, "Point").has_value());
+    CHECK(resolve_definition(jo, "Point")->start_line == 0);
+#endif
+}

@@ -117,8 +117,9 @@ struct DisplayLine {
     int move_id = 0;  // non-zero => a relocated (moved) line; tint its number (GAP-9)
 };
 
-// Foreground SGR that flags a moved line's number (violet #a371f7). Layered after
-// the number's own style so it keeps the background but recolours the digits.
+// Fallback foreground SGR that flags a moved line's number (violet #a371f7),
+// used when a theme leaves `style.moved_line` unset. Layered after the number's
+// own style so it keeps the background but recolours the digits.
 constexpr const char* kMovedNumberFg = "\033[38;2;163;113;247m";
 
 using DisplayColumns = std::vector<std::vector<DisplayLine>>;
@@ -663,7 +664,9 @@ render_display_line_pair(const DisplayLine& left, const DisplayLine& right, cons
             }
         }
         if (left.move_id != 0) {
-            style += kMovedNumberFg;  // recolour a moved line's number (GAP-9)
+            // Theme-driven moved accent (style.moved_line); fall back to the
+            // built-in violet when the theme leaves it unset. (GAP-9)
+            style += config.style.moved_line.empty() ? kMovedNumberFg : config.style.moved_line;
         }
         display_commands.push_back(DisplayCommand::with_style(
             style, format_line_number(left.line_number, config.line_number_digits_count,
@@ -713,7 +716,9 @@ render_display_line_pair(const DisplayLine& left, const DisplayLine& right, cons
             }
         }
         if (right.move_id != 0) {
-            style += kMovedNumberFg;  // recolour a moved line's number (GAP-9)
+            // Theme-driven moved accent (style.moved_line); fall back to the
+            // built-in violet when the theme leaves it unset. (GAP-9)
+            style += config.style.moved_line.empty() ? kMovedNumberFg : config.style.moved_line;
         }
         display_commands.push_back(DisplayCommand::with_style(
             style, format_line_number(right.line_number, config.line_number_digits_count,

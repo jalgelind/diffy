@@ -185,6 +185,70 @@ TEST_CASE("render model: pure insertion has only insert/common") {
     CHECK(count_content_rows(m) >= 3);  // 2 context + 1 inserted (alignment may pad)
 }
 
+TEST_CASE("render model: context gap between distant hunks reveals incrementally") {
+    // 40 lines with two far-apart changes: the two hunks (each with 3 lines of
+    // context) leave a wide run of hidden common lines between them. That gap precedes
+    // the second hunk, so its expander metadata rides the second hunk's @@ HunkHeader
+    // (only the tail gap keeps a standalone ContextGap marker); expanding it reveals
+    // context on demand.
+    std::string a, b;
+    for (int i = 1; i <= 40; ++i) {
+        const std::string n = std::to_string(i);
+        a += "line " + n + "\n";
+        if (i == 5) {
+            b += "LINE 5\n";
+        } else if (i == 35) {
+            b += "LINE 35\n";
+        } else {
+            b += "line " + n + "\n";
+        }
+    }
+
+    DiffPipelineOptions p = default_pipeline();
+    p.syntax_highlight = false;
+    DiffLayoutOptions layout;
+    layout.mode = ViewMode::SideBySide;
+
+    DiffComputation c = compute_annotated_diff(a, b, "a", "b", p);
+    REQUIRE(c.hunks.size() == 2);  // two separated changes -> two hunks
+
+    auto input = c.input();
+    auto base = build_diff_view(input, c.hunks, layout, &c.a_highlights, &c.b_highlights);
+
+    // The wide common region between the two hunks is carried as gap metadata on the
+    // second hunk's @@ header (non-tail gaps ride their following HunkHeader); the tail
+    // gap would be a ContextGap marker. Either kind can host a gap, so scan both.
+    int gap_id = -1;
+    int64_t hidden = 0;
+    for (const auto& r : base.rows) {
+        if ((r.kind == RowKind::HunkHeader || r.kind == RowKind::ContextGap) &&
+            r.gap_id >= 0 && r.gap_hidden > hidden) {
+            hidden = r.gap_hidden;
+            gap_id = r.gap_id;
+        }
+    }
+    REQUIRE(gap_id >= 0);
+    CHECK(hidden > 10);  // plenty of lines hidden between the hunks
+
+    const int base_content = count_content_rows(base);
+
+    // Reveal 10 lines at the top of that gap: 10 more Content rows appear and the
+    // marker's hidden count drops by 10.
+    std::map<int, GapExpansion> exp;
+    exp[gap_id].top = 10;
+    auto grown = build_diff_view(input, c.hunks, layout, &c.a_highlights, &c.b_highlights, &exp);
+
+    CHECK(count_content_rows(grown) == base_content + 10);
+    int64_t hidden_after = -1;
+    for (const auto& r : grown.rows) {
+        if ((r.kind == RowKind::HunkHeader || r.kind == RowKind::ContextGap) &&
+            r.gap_id == gap_id) {
+            hidden_after = r.gap_hidden;
+        }
+    }
+    CHECK(hidden_after == hidden - 10);
+}
+
 TEST_CASE("pipeline: force_language overrides filename-based detection") {
     if (!highlighting_available()) {
         return;  // built without tree-sitter: nothing to force

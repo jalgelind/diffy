@@ -225,7 +225,9 @@ TEST_CASE("inverted theme: changed line is tinted whole, token highlight layered
 
 TEST_CASE("bundled themes parse and render with no default-background gaps") {
     auto themes = config_bundled_themes();
-    CHECK(themes.size() == 4);  // dracula, nord, solarized_dark, github_light
+    // paper, ink, studio_dark, studio_light, ember_dark, ember_light,
+    // catppuccin_mocha, catppuccin_latte, tokyo_night, tokyo_night_day
+    CHECK(themes.size() == 10);
 
     for (const auto& [name, conf] : themes) {
         CAPTURE(name);

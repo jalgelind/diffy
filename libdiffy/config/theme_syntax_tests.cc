@@ -70,19 +70,19 @@ TEST_CASE("theme [syntax] overrides apply, take precedence, and clear without bl
     clear_syntax_overrides();
     const HlRgb builtin = syntax_color(HighlightGroup::Keyword, /*light=*/false);
 
-    std::string dracula;
+    std::string studio;
     for (const auto& [name, conf] : config_bundled_themes())
-        if (name == "theme_dracula")
-            dracula = conf;
-    REQUIRE(!dracula.empty());
+        if (name == "theme_studio_dark")
+            studio = conf;
+    REQUIRE(!studio.empty());
 
-    CHECK(apply_theme_syntax(dracula) > 0);
+    CHECK(apply_theme_syntax(studio) > 0);
 
-    // Dracula's keyword is #ff79c6; the theme override replaces the built-in.
+    // Studio Dark's keyword is #f7768e; the theme override replaces the built-in.
     HlRgb kw = syntax_color(HighlightGroup::Keyword, false);
-    CHECK(kw.r == 0xff);
-    CHECK(kw.g == 0x79);
-    CHECK(kw.b == 0xc6);
+    CHECK(kw.r == 0xf7);
+    CHECK(kw.g == 0x76);
+    CHECK(kw.b == 0x8e);
 
     // A later (user) override wins over the theme.
     set_syntax_color_override(HighlightGroup::Keyword, HlRgb{1, 2, 3});
@@ -116,7 +116,7 @@ TEST_CASE("an on-disk theme without [syntax] falls back to the bundled palette")
     // existing install whose bundled .conf was written before palettes shipped.
     // config_apply_theme won't clobber it, so it must fall back to the matching
     // bundled theme's [syntax] by name (the migration this locks in).
-    const std::string on_disk = "[settings]\ntheme = 'theme_dracula'\n";
+    const std::string on_disk = "[settings]\ntheme = 'theme_studio_dark'\n";
     Value tree;
     ParseResult pr;
     REQUIRE(cfg_parse_value_tree(on_disk, pr, tree));
@@ -126,16 +126,51 @@ TEST_CASE("an on-disk theme without [syntax] falls back to the bundled palette")
     // Locate the bundled theme by name — the same lookup config_apply_theme does.
     std::string bundled;
     for (const auto& [name, conf] : config_bundled_themes())
-        if (name == "theme_dracula")
+        if (name == "theme_studio_dark")
             bundled = conf;
     REQUIRE(!bundled.empty());
     CHECK(apply_theme_syntax(bundled) > 0);
 
-    // Dracula's keyword palette is live even though the on-disk file lacked it.
+    // Studio Dark's keyword palette is live even though the on-disk file lacked it.
     HlRgb kw = syntax_color(HighlightGroup::Keyword, /*light=*/false);
-    CHECK(kw.r == 0xff);
-    CHECK(kw.g == 0x79);
-    CHECK(kw.b == 0xc6);
+    CHECK(kw.r == 0xf7);
+    CHECK(kw.g == 0x76);
+    CHECK(kw.b == 0x8e);
 
     clear_syntax_overrides();
+}
+
+TEST_CASE("every bundled theme declares a parseable [meta] name") {
+    for (const auto& [name, conf] : config_bundled_themes()) {
+        CAPTURE(name);
+        auto label = config_theme_display_name(conf);
+        REQUIRE(label.has_value());
+        CHECK(!label->empty());
+    }
+}
+
+TEST_CASE("every bundled theme sets a moved_line accent colour") {
+    for (const auto& [name, conf] : config_bundled_themes()) {
+        CAPTURE(name);
+        Value tree;
+        ParseResult pr;
+        REQUIRE(cfg_parse_value_tree(conf, pr, tree));
+        REQUIRE(pr.is_ok());
+        auto style = tree.lookup_value_by_path("style");
+        REQUIRE(style.has_value());
+        REQUIRE(style->get().is_table());
+
+        bool found_moved = false;
+        style->get().as_table().for_each([&](const std::string& key, Value& v) {
+            if (key != "moved_line")
+                return;
+            found_moved = true;
+            REQUIRE(v.is_table());
+            v.as_table().for_each([&](const std::string& k2, Value& v2) {
+                if (k2 == "fg" && v2.is_string())
+                    CHECK(TermColor::parse_string(v2.as_string()).has_value());
+            });
+        });
+        CHECK(found_moved);
+    }
 }

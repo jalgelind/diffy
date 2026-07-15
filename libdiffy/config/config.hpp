@@ -5,6 +5,7 @@
 
 #include <string>
 #include <filesystem>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -161,6 +162,16 @@ struct ColumnViewTextStyle {
         TermColor::kNone,
         TermStyle::Attribute::None
     };
+
+    // Moved-block accent (GAP-9): a relocated line's number is recoloured to this
+    // foreground. Left as kNone so a theme that omits `moved_line` produces an
+    // empty escape code and the frontend falls back to the built-in violet
+    // (#a371f7); a theme sets it to make the moved accent match its palette.
+    TermStyle moved_line = TermStyle {
+        TermColor::kNone,
+        TermColor::kNone,
+        TermStyle::Attribute::None
+    };
     // clang-format on
 };
 
@@ -177,6 +188,7 @@ struct ColumnViewTextStyleEscapeCodes {
     std::string common_line_number;
     std::string frame;
     std::string empty_cell;
+    std::string moved_line;
 };
 
 struct ColumnViewCharacters {
@@ -205,10 +217,17 @@ std::string
 config_get_directory();
 
 // The bundled, self-contained example themes seeded on first-run setup, as
-// {file-stem, .conf-content} pairs (e.g. {"theme_dracula", "..."}). Exposed so
+// {file-stem, .conf-content} pairs (e.g. {"theme_paper", "..."}). Exposed so
 // tests can validate the shipped theme content.
 std::vector<std::pair<std::string, std::string>>
 config_bundled_themes();
+
+// The human-facing display name a theme declares via `[meta] name = '...'`.
+// Returns nullopt when the text doesn't parse or has no meta.name (callers then
+// fall back to a prettified file stem). Works on any theme .conf text — bundled
+// or a user file read from disk.
+std::optional<std::string>
+config_theme_display_name(const std::string& conf_text);
 
 void
 config_apply_options(diffy::ProgramOptions& program_options);

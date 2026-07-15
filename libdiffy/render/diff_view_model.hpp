@@ -19,6 +19,7 @@
 #include "processing/diff_hunk_annotate.hpp"
 #include "util/readlines.hpp"
 
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -56,6 +57,7 @@ struct DiffCell {
 enum class RowKind {
     HunkHeader,  // the "@@ ... @@" separator between hunks
     Content,     // a real line of diff
+    ContextGap,  // the tail gap's expander band (non-tail gaps ride their @@ header)
 };
 
 struct DiffRow {
@@ -72,6 +74,14 @@ struct DiffRow {
     int move_id = 0;
     int64_t move_line = 0;
     std::string move_file;
+    // Context-gap expander metadata. gap_id identifies which run of hidden common
+    // lines this row's expand/collapse controls act on (0..hunks.size(); gap g precedes
+    // hunk g, gap N is the tail — see build_diff_view); gap_hidden is how many common
+    // lines are still hidden behind it. Carried by the HunkHeader row that FOLLOWS a
+    // non-tail gap (its @@ line hosts the controls) and by the lone ContextGap marker
+    // row emitted for the tail gap. Left at -1/0 on all other rows.
+    int gap_id = -1;
+    int64_t gap_hidden = 0;
 };
 
 // Options that change the diff itself: flipping one must re-run compute+annotate.
@@ -98,16 +108,32 @@ struct DiffViewModel {
     std::vector<DiffRow> rows;
 };
 
+// How much of one context gap the frontend has expanded (GitHub-style "expand
+// context"). `top` = common lines revealed at the gap's start, adjacent to the
+// PREVIOUS hunk; `bot` = lines revealed at the gap's end, adjacent to the NEXT
+// hunk. Both are clamped to the gap's real hidden size inside build_diff_view.
+struct GapExpansion {
+    int64_t top = 0;
+    int64_t bot = 0;
+};
+
 // Pure: lays out already-annotated hunks into the chosen view. No I/O.
 // When per-line syntax highlights are supplied (a_highlights for the A/old
 // side, b_highlights for the B/new side), spans are additionally split at
 // syntax boundaries and tagged with their HighlightGroup.
+// Between the hunks (and above the first / below the last) sit runs of hidden
+// common lines. A non-tail gap folds its expander metadata (gap_id/gap_hidden) onto
+// the HunkHeader row that follows it, so the @@ line can host the controls; the tail
+// gap (after the last hunk) has no following header, so it emits a lone ContextGap
+// marker row. `expansions` (keyed by gap_id) reveals `top`/`bot` of a gap's lines so
+// the user can widen the context incrementally. Null => all gaps collapsed.
 DiffViewModel
 build_diff_view(const DiffInput<Line>& input,
                 const std::vector<AnnotatedHunk>& hunks,
                 const DiffLayoutOptions& options,
                 const LineHighlights* a_highlights = nullptr,
-                const LineHighlights* b_highlights = nullptr);
+                const LineHighlights* b_highlights = nullptr,
+                const std::map<int, GapExpansion>* expansions = nullptr);
 
 // One file's built diff, for cross-file move detection.
 struct CrossFileDiff {

@@ -301,15 +301,21 @@ annotate_lines(const DiffInput<diffy::Line>& diff_input,
 // the file) or a reference. Runs as a cross-hunk pass over the whole file diff.
 void
 detect_moves(const DiffInput<diffy::Line>& in, std::vector<AnnotatedHunk>& hunks) {
-    // A relocation is called a "move" when a run of >= kMinMoveLines lines matches, OR
-    // a shorter run (>= kMinShortMoveLines) that carries real content (at least
-    // kMinShortMoveChars non-whitespace characters). The short-run rule catches a small
-    // function whose closing brace is shared as context — so its pure-deleted run is one
-    // line short of the source — while NOT flagging coincidental trivial tails like
-    // "}" + a blank line, which two unrelated blocks often share (GAP-9).
+    // A line-hash match alone does NOT make a move: a run of bare "}" / "});" / blank
+    // lines matches all over a file yet relocates nothing. So every candidate run must
+    // (a) be long enough and (b) carry real content — measured as the number of lines
+    // holding at least one "content" character (an identifier/literal char: alphanumeric,
+    // '_', or any non-ASCII/UTF-8 byte). A run of pure brackets/blank lines has zero
+    // such lines and is rejected however long it is — this kills the "useless" moves
+    // (a lone closing bracket, or several of them) that a plain hash match would flag.
+    // A 2-line run is the most coincidence-prone, so it additionally needs
+    // kMinShortMoveChars of non-whitespace; this still catches a small function whose
+    // closing brace is shared as context (its pure-deleted run is one line short of the
+    // source) while rejecting the trivial "}" + blank tail two blocks often share (GAP-9).
     constexpr int kMinMoveLines = 3;
     constexpr int kMinShortMoveLines = 2;
     constexpr size_t kMinShortMoveChars = 16;
+    constexpr size_t kMinSubstantiveMoveLines = 2;  // lines that must carry real content
     constexpr size_t kMoveBudget = 1u << 22;  // skip pathological dels*inss searches
 
     struct Ref {
@@ -361,20 +367,35 @@ detect_moves(const DiffInput<diffy::Line>& in, std::vector<AnnotatedHunk>& hunks
                 best_ii = ii;
             }
         }
-        bool accept = best_len >= static_cast<size_t>(kMinMoveLines);
-        if (!accept && best_len >= static_cast<size_t>(kMinShortMoveLines)) {
-            // Short run: require enough real content so trivial "}"/blank tails don't
-            // register as moves. Count printable (> space) characters across the block.
-            size_t nonws = 0;
-            for (size_t k = 0; k < best_len; ++k) {
-                for (char c : *dels[di + k].text) {
-                    if (static_cast<unsigned char>(c) > ' ') {
-                        ++nonws;
-                    }
+        // Quality gate (GAP-9): a hash match is not enough. Count, across the matched
+        // block, the lines that carry real content and the total non-whitespace chars.
+        // A "content" line has >= 1 identifier/literal char (alphanumeric, '_', or a
+        // non-ASCII byte, which in UTF-8 is part of a word/string); pure bracket/blank
+        // lines have none.
+        auto is_content = [](unsigned char c) {
+            return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+                   (c >= 'a' && c <= 'z') || c == '_' || c > 0x7F;
+        };
+        size_t substantive = 0, nonws = 0;
+        for (size_t k = 0; k < best_len; ++k) {
+            bool has_content = false;
+            for (unsigned char c : *dels[di + k].text) {
+                if (c > ' ') {
+                    ++nonws;
                 }
+                has_content = has_content || is_content(c);
             }
-            accept = nonws >= kMinShortMoveChars;
+            if (has_content) {
+                ++substantive;
+            }
         }
+        // Accept only a run that is long enough, has enough content lines (so a bracket-
+        // only run of ANY length is dropped), and — for the coincidence-prone 2-line
+        // case — enough non-whitespace overall.
+        bool accept = best_len >= static_cast<size_t>(kMinShortMoveLines) &&
+                      substantive >= kMinSubstantiveMoveLines &&
+                      (best_len >= static_cast<size_t>(kMinMoveLines) ||
+                       nonws >= kMinShortMoveChars);
         if (accept) {
             ++next_move_id;
             const int64_t ins_start = inss[best_ii].lineno;

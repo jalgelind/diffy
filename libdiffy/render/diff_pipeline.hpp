@@ -44,6 +44,8 @@ compute_annotated_diff(const std::string& a_text,
 
 // Convenience: pipeline + build_diff_view in one call. The returned model owns
 // its own text, so it outlives the (optionally returned) DiffComputation.
+// `expansions` is forwarded to build_diff_view to reveal hidden context around
+// each inter-hunk gap (null => all gaps collapsed).
 DiffViewModel
 build_diff_view_from_text(const std::string& a_text,
                           const std::string& b_text,
@@ -51,6 +53,7 @@ build_diff_view_from_text(const std::string& a_text,
                           const std::string& b_name,
                           const DiffPipelineOptions& pipeline_options,
                           const DiffLayoutOptions& layout_options,
-                          DiffComputation* out_computation = nullptr);
+                          DiffComputation* out_computation = nullptr,
+                          const std::map<int, GapExpansion>* expansions = nullptr);
 
 }  // namespace diffy

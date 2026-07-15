@@ -1,7 +1,7 @@
 #include "unified.hpp"
 
 #include "highlight/highlight_palette.hpp"  // syntax_color
-#include "util/utf8decode.hpp"              // utf8_len
+#include "util/display_text.hpp"            // display_width
 
 #include <sys/stat.h>
 
@@ -104,21 +104,12 @@ colour_runs(const std::string& body,
 // Terminal columns occupied by `s` (which carries no ANSI escapes): UTF-8
 // codepoints count as one column each, tabs advance to the next multiple of 8
 // (the standard terminal tab stop), matching how the row is actually rendered so
-// the background fill lands at the right edge.
+// the background fill lands at the right edge. Thin wrapper over the shared
+// display_width (tab_width = 8, the terminal tab stop) so this width logic lives
+// in one place alongside expand_for_display's column accounting.
 std::size_t
 display_cols(const std::string& s) {
-    std::size_t cols = 0;
-    std::size_t seg = 0;
-    for (std::size_t i = 0; i <= s.size(); i++) {
-        if (i == s.size() || s[i] == '\t') {
-            cols += utf8_len(s.substr(seg, i - seg));
-            if (i < s.size()) {  // the tab itself
-                cols += 8 - (cols % 8);
-            }
-            seg = i + 1;
-        }
-    }
-    return cols;
+    return static_cast<std::size_t>(diffy::display_width(s, 8));
 }
 
 }  // namespace

@@ -32,10 +32,19 @@ is_scope_type(const char* type) {
     if (std::strstr(type, "declarator") != nullptr) {
         return false;
     }
+    // A macro *invocation* (Rust `macro_invocation`, a `foo!(...)` call) is a use,
+    // not a definition; reject it before the "macro" keyword below would match.
+    if (std::strstr(type, "macro_invocation") != nullptr) {
+        return false;
+    }
     static const char* const kw[] = {
         "function", "method",  "constructor", "class",     "struct", "impl",
         "namespace", "module", "interface",   "trait",     "enum",   "package",
         "subroutine", "procedure",
+        // Further definition kinds the substrings above miss: C/C++/Rust unions,
+        // Java/C# records, C# properties, Rust/CMake macros, and Rust modules
+        // (the grammar type is "mod_item", which "module" does not cover).
+        "union", "record", "property", "macro", "mod_item",
     };
     for (const char* k : kw) {
         if (std::strstr(type, k) != nullptr) {
@@ -199,6 +208,90 @@ is_binding_decl(const char* t) {
            std::strcmp(t, "for_range_loop") == 0 || std::strcmp(t, "field_declaration") == 0;
 }
 
+// An anonymous function/type node carries no usable name or header on itself — the
+// identifier and the readable signature live on the immediate enclosing node. A
+// JS/TS `const f = () => …` / `f = () => …` / `{ f: () => … }` keeps them on the
+// variable_declarator / assignment_expression / pair; a Go `type T struct{…}` keeps
+// them on the type_spec (the struct_type/interface_type is only its `type` field).
+// Return that enclosing node so the label and name come from the definition rather
+// than from a bare "() =>" / "struct". Any other node is returned unchanged.
+TSNode
+naming_node(TSNode node) {
+    const char* t = ts_node_type(node);
+    const bool js_anon = std::strcmp(t, "arrow_function") == 0 ||
+                         std::strcmp(t, "function_expression") == 0 ||
+                         std::strcmp(t, "generator_function") == 0;
+    const bool go_anon = std::strcmp(t, "struct_type") == 0 ||
+                         std::strcmp(t, "interface_type") == 0;
+    if (!js_anon && !go_anon) {
+        return node;
+    }
+    TSNode p = ts_node_parent(node);
+    if (ts_node_is_null(p)) {
+        return node;
+    }
+    const char* pt = ts_node_type(p);
+    if (js_anon && (std::strcmp(pt, "variable_declarator") == 0 ||
+                    std::strcmp(pt, "assignment_expression") == 0 ||
+                    std::strcmp(pt, "pair") == 0)) {
+        return p;
+    }
+    if (go_anon && std::strcmp(pt, "type_spec") == 0) {
+        return p;
+    }
+    return node;
+}
+
+// True when `trimmed` (leading whitespace already removed) reads as a doc-comment,
+// decorator, attribute, or annotation — the lines that conventionally sit directly
+// above a definition. Deliberately broad and language-agnostic; the caller consults
+// it only for lines immediately preceding a captured definition and stops at the
+// first blank/other line, so at worst one attached-looking line folds into the def
+// below it.
+bool
+is_attached_prefix_line(std::string_view trimmed) {
+    static const char* const prefixes[] = {
+        "//",  // C/C++/JS/Go/Rust/Java line comment (also /// and //!)
+        "/*", "*",  // C-style block comment open / body / close (* … */)
+        "#",   // shell/python/ruby comment; also Rust attribute #[…]
+        "@",   // decorator / annotation (python, java, ts, …)
+        "[",   // C# attribute [Attr]
+        "--",  // lua / sql comment
+    };
+    for (const char* p : prefixes) {
+        if (trimmed.substr(0, std::strlen(p)) == p) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Extend a definition's start row upward over the run of comment/decorator/
+// attribute lines directly above it, so an edit on a `///` doc line or a
+// `@decorator` resolves to the definition below it instead of to nothing. Stops at
+// the first blank or unrelated line, leaving unattached comments higher up alone.
+int64_t
+extend_start_over_prefix(std::string_view source, const std::vector<size_t>& line_start,
+                         int64_t start_row) {
+    int64_t r = start_row;
+    while (r > 0) {
+        const size_t a = line_start[r - 1];
+        const size_t b = line_start[r];
+        std::string_view line = source.substr(a, b - a);
+        size_t k = 0;
+        while (k < line.size() &&
+               (line[k] == ' ' || line[k] == '\t' || line[k] == '\r' || line[k] == '\n')) {
+            ++k;
+        }
+        const std::string_view trimmed = line.substr(k);
+        if (trimmed.empty() || !is_attached_prefix_line(trimmed)) {
+            break;
+        }
+        --r;
+    }
+    return r;
+}
+
 }  // namespace
 
 std::vector<CodeScope>
@@ -225,6 +318,16 @@ scope_outline(std::string_view source, Language lang) {
     TSTree* tree = ts_parser_parse_string(parser, nullptr, source.data(),
                                           static_cast<uint32_t>(source.size()));
 
+    // Byte offset of each line's first char, so a definition's start can be walked
+    // upward over preceding doc-comment/decorator lines (extend_start_over_prefix).
+    std::vector<size_t> line_start;
+    line_start.push_back(0);
+    for (size_t i = 0; i < source.size(); ++i) {
+        if (source[i] == '\n') {
+            line_start.push_back(i + 1);
+        }
+    }
+
     // Iterative pre-order walk over every node.
     std::vector<TSNode> stack;
     stack.push_back(ts_tree_root_node(tree));
@@ -236,11 +339,16 @@ scope_outline(std::string_view source, Language lang) {
             const TSPoint s = ts_node_start_point(node);
             const TSPoint e = ts_node_end_point(node);
             if (e.row > s.row) {  // definitions span multiple lines; skips type annotations
-                std::string label = header_label(source, ts_node_start_byte(node));
+                // For anonymous function/type nodes the header and identifier live on
+                // the enclosing declaration (e.g. `const f = () =>`, `type T struct`).
+                const TSNode nn = naming_node(node);
+                std::string label = header_label(source, ts_node_start_byte(nn));
                 if (!label.empty()) {
-                    std::string name = definition_name(node, source);
-                    out.push_back({static_cast<int64_t>(s.row), static_cast<int64_t>(e.row),
-                                   std::move(label), std::move(name)});
+                    std::string name = definition_name(nn, source);
+                    const int64_t start =
+                        extend_start_over_prefix(source, line_start, static_cast<int64_t>(s.row));
+                    out.push_back({start, static_cast<int64_t>(e.row), std::move(label),
+                                   std::move(name)});
                 }
             }
         }
@@ -320,17 +428,27 @@ local_defs(std::string_view source, Language lang) {
 
 std::string
 enclosing_scope(const std::vector<CodeScope>& outline, int64_t line) {
-    const CodeScope* best = nullptr;
+    const CodeScope* best = nullptr;        // smallest containing range, any name
+    const CodeScope* best_named = nullptr;  // smallest containing range with a real name
     for (const auto& s : outline) {
         if (line < s.start_line || line > s.end_line) {
             continue;
         }
         // Innermost == smallest containing range.
-        if (!best || (s.end_line - s.start_line) < (best->end_line - best->start_line)) {
+        const int64_t span = s.end_line - s.start_line;
+        if (!best || span < (best->end_line - best->start_line)) {
             best = &s;
         }
+        // Prefer the innermost scope that actually names a definition: the smallest
+        // span often belongs to a nameless node (a JS `() =>`, an anonymous
+        // namespace/struct) whose label is junk, while a named enclosing def gives a
+        // meaningful "@@ … @@ funcname" header.
+        if (!s.name.empty() && (!best_named || span < (best_named->end_line - best_named->start_line))) {
+            best_named = &s;
+        }
     }
-    return best ? best->label : std::string();
+    const CodeScope* pick = best_named ? best_named : best;
+    return pick ? pick->label : std::string();
 }
 
 }  // namespace diffy
@@ -373,11 +491,14 @@ hunk_context(const std::vector<CodeScope>& a_outline,
     if (ctx.empty() && a_change_line >= 0) {
         ctx = enclosing_scope(a_outline, a_change_line);
     }
-    if (ctx.empty()) {
-        ctx = enclosing_scope(b_outline, b_start_line);
+    // Last-ditch fallback: the hunk's leading line (a context line, not a changed
+    // one). from_start/to_start are 1-based line numbers but the outline is 0-based,
+    // so convert before looking up; guard against a 0/negative start.
+    if (ctx.empty() && b_start_line > 0) {
+        ctx = enclosing_scope(b_outline, b_start_line - 1);
     }
-    if (ctx.empty()) {
-        ctx = enclosing_scope(a_outline, a_start_line);
+    if (ctx.empty() && a_start_line > 0) {
+        ctx = enclosing_scope(a_outline, a_start_line - 1);
     }
     return ctx;
 }

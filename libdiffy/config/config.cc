@@ -60,8 +60,9 @@ static std::string config_doc_general = R"foo(# General configuration for ´diff
 #   theme = 'custom_theme'  # load custom_theme.conf
 #
 # Bundled themes (created in the config directory on first run):
-#   theme_default, theme_dracula, theme_nord, theme_solarized_dark,
-#   theme_github_light
+#   theme_default, theme_paper, theme_ink, theme_studio_dark, theme_studio_light,
+#   theme_ember_dark, theme_ember_light, theme_catppuccin_mocha,
+#   theme_catppuccin_latte, theme_tokyo_night, theme_tokyo_night_day
 #
 # Syntax highlighting grammars are loaded from 'grammars/' next to the diffy
 # executable, or dropped into '<this directory>/grammars/' (a tree-sitter
@@ -79,9 +80,19 @@ static std::string config_doc_general = R"foo(# General configuration for ´diff
 // Stored as raw .conf text because hex colors cannot round-trip through
 // TermStyle::to_value() (which only knows palette names); the load path parses
 // hex fine.
-static std::string theme_dracula_conf = R"foo(# Dracula — popular dark theme (https://draculatheme.com).
-# Self-contained: every element sets fg + bg, so it looks the same on any
-# terminal regardless of your default colors.
+// Each bundled theme declares a human-facing label via `[meta] name`, resolved by
+// config_theme_display_name(). The moved-block accent is theme-driven via
+// `style.moved_line` (GAP-9): its fg recolours a relocated line's number, kept
+// clearly distinct from that theme's keyword and its add-green / delete-red.
+
+static std::string theme_paper_conf =
+    R"foo([meta]
+name = 'Paper'
+
+# Paper — a crisp, high-contrast light theme (the classic light-editor look).
+# Self-contained: every element sets fg + bg, so it renders identically on any
+# terminal. On a light theme, changed tokens are highlighted with a stronger
+# *background* (the foreground stays dark) to avoid muddy foreground blends.
 
 [settings]
 word_wrap = true
@@ -90,160 +101,6 @@ context_colored_line_numbers = true
 line_number_align_right = false
 
 [style]
-background          = { fg = '#f8f8f2', bg = '#282a36', attr = [] }
-header              = { fg = '#f8f8f2', bg = '#44475a', attr = ['bold', 'underline'] }
-delete_line         = { fg = '#f8f8f2', bg = '#5a2e3c', attr = [] }
-delete_token        = { fg = '#ff5555', bg = '#7d3346', attr = ['bold'] }
-delete_line_number  = { fg = '#ff5555', bg = '#5a2e3c', attr = [] }
-insert_line         = { fg = '#f8f8f2', bg = '#2e4a38', attr = [] }
-insert_token        = { fg = '#50fa7b', bg = '#326b47', attr = ['bold'] }
-insert_line_number  = { fg = '#50fa7b', bg = '#2e4a38', attr = [] }
-common_line         = { fg = '#f8f8f2', bg = '#282a36', attr = [] }
-common_line_number  = { fg = '#6272a4', bg = '#282a36', attr = [] }
-frame               = { fg = '#6272a4', bg = '#282a36', attr = [] }
-empty_cell          = { fg = '#6272a4', bg = '#282a36', attr = [] }
-
-# Syntax palette (tree-sitter groups). Omitted groups fall back to the built-in
-# default for the theme's light/dark.
-[syntax]
-comment          = '#6272a4'
-keyword          = '#ff79c6'
-operator         = '#ff79c6'
-punctuation      = '#f8f8f2'
-string           = '#f1fa8c'
-escape           = '#ff79c6'
-number           = '#bd93f9'
-boolean          = '#bd93f9'
-constant         = '#bd93f9'
-constant_builtin = '#bd93f9'
-function         = '#50fa7b'
-method           = '#50fa7b'
-constructor      = '#8be9fd'
-type             = '#8be9fd'
-type_builtin     = '#8be9fd'
-variable         = '#f8f8f2'
-parameter        = '#ffb86c'
-property         = '#f8f8f2'
-namespace        = '#8be9fd'
-tag              = '#ff79c6'
-attribute        = '#50fa7b'
-)foo";
-
-static std::string theme_nord_conf = R"foo(# Nord — popular arctic dark theme (https://www.nordtheme.com).
-# Self-contained: every element sets fg + bg.
-
-[settings]
-word_wrap = true
-show_line_numbers = true
-context_colored_line_numbers = true
-line_number_align_right = false
-
-[style]
-background          = { fg = '#d8dee9', bg = '#2e3440', attr = [] }
-header              = { fg = '#eceff4', bg = '#434c5e', attr = ['bold', 'underline'] }
-delete_line         = { fg = '#d8dee9', bg = '#4f343f', attr = [] }
-delete_token        = { fg = '#bf616a', bg = '#6e404f', attr = ['bold'] }
-delete_line_number  = { fg = '#bf616a', bg = '#4f343f', attr = [] }
-insert_line         = { fg = '#d8dee9', bg = '#3a4d39', attr = [] }
-insert_token        = { fg = '#a3be8c', bg = '#4a6b48', attr = ['bold'] }
-insert_line_number  = { fg = '#a3be8c', bg = '#3a4d39', attr = [] }
-common_line         = { fg = '#d8dee9', bg = '#2e3440', attr = [] }
-common_line_number  = { fg = '#4c566a', bg = '#2e3440', attr = [] }
-frame               = { fg = '#434c5e', bg = '#2e3440', attr = [] }
-empty_cell          = { fg = '#4c566a', bg = '#2e3440', attr = [] }
-
-# Syntax palette (tree-sitter groups). Omitted groups fall back to the built-in
-# default for the theme's light/dark.
-[syntax]
-comment          = '#616e88'
-keyword          = '#81a1c1'
-operator         = '#81a1c1'
-punctuation      = '#eceff4'
-string           = '#a3be8c'
-escape           = '#ebcb8b'
-number           = '#b48ead'
-boolean          = '#81a1c1'
-constant         = '#b48ead'
-constant_builtin = '#81a1c1'
-function         = '#88c0d0'
-method           = '#88c0d0'
-constructor      = '#8fbcbb'
-type             = '#8fbcbb'
-type_builtin     = '#8fbcbb'
-variable         = '#d8dee9'
-parameter        = '#d8dee9'
-property         = '#d8dee9'
-namespace        = '#8fbcbb'
-tag              = '#81a1c1'
-attribute        = '#8fbcbb'
-)foo";
-
-static std::string theme_solarized_dark_conf =
-    R"foo(# Solarized Dark — popular low-contrast theme (Ethan Schoonover).
-# Self-contained: every element sets fg + bg.
-
-[settings]
-word_wrap = true
-show_line_numbers = true
-context_colored_line_numbers = true
-line_number_align_right = false
-
-[style]
-background          = { fg = '#839496', bg = '#002b36', attr = [] }
-header              = { fg = '#93a1a1', bg = '#073642', attr = ['bold', 'underline'] }
-delete_line         = { fg = '#839496', bg = '#46282c', attr = [] }
-delete_token        = { fg = '#dc322f', bg = '#6b333a', attr = ['bold'] }
-delete_line_number  = { fg = '#dc322f', bg = '#46282c', attr = [] }
-insert_line         = { fg = '#839496', bg = '#25462e', attr = [] }
-insert_token        = { fg = '#859900', bg = '#33663f', attr = ['bold'] }
-insert_line_number  = { fg = '#859900', bg = '#25462e', attr = [] }
-common_line         = { fg = '#839496', bg = '#002b36', attr = [] }
-common_line_number  = { fg = '#586e75', bg = '#002b36', attr = [] }
-frame               = { fg = '#586e75', bg = '#002b36', attr = [] }
-empty_cell          = { fg = '#586e75', bg = '#002b36', attr = [] }
-
-# Syntax palette (tree-sitter groups). Omitted groups fall back to the built-in
-# default for the theme's light/dark.
-[syntax]
-comment          = '#586e75'
-keyword          = '#859900'
-operator         = '#859900'
-punctuation      = '#839496'
-string           = '#2aa198'
-escape           = '#dc322f'
-number           = '#d33682'
-boolean          = '#b58900'
-constant         = '#d33682'
-constant_builtin = '#cb4b16'
-function         = '#268bd2'
-method           = '#268bd2'
-constructor      = '#b58900'
-type             = '#b58900'
-type_builtin     = '#b58900'
-variable         = '#268bd2'
-parameter        = '#268bd2'
-property         = '#268bd2'
-namespace        = '#b58900'
-tag              = '#268bd2'
-attribute        = '#93a1a1'
-)foo";
-
-static std::string theme_github_light_conf =
-    R"foo(# GitHub Light — popular light theme. A light background makes this a good
-# example of a theme that is unaffected by (typically dark) terminal defaults.
-# Self-contained: every element sets fg + bg.
-
-[settings]
-word_wrap = true
-show_line_numbers = true
-context_colored_line_numbers = true
-line_number_align_right = false
-
-[style]
-# On a light theme, recoloring the changed-token *foreground* clashes with the
-# dark context text (you get a black/green mix). GitHub instead keeps all text
-# dark and highlights changed words with a stronger *background*, so the tokens
-# below set a bg and keep the dark foreground.
 background          = { fg = '#1f2328', bg = '#ffffff', attr = [] }
 header              = { fg = '#0969da', bg = '#ddf4ff', attr = ['bold', 'underline'] }
 delete_line         = { fg = '#1f2328', bg = '#ffebe9', attr = [] }
@@ -256,6 +113,7 @@ common_line         = { fg = '#1f2328', bg = '#ffffff', attr = [] }
 common_line_number  = { fg = '#6e7781', bg = '#ffffff', attr = [] }
 frame               = { fg = '#d0d7de', bg = '#ffffff', attr = [] }
 empty_cell          = { fg = '#6e7781', bg = '#ffffff', attr = [] }
+moved_line          = { fg = '#7c3aed', bg = 'none', attr = [] }
 
 # Syntax palette (tree-sitter groups). Omitted groups fall back to the built-in
 # default for the theme's light/dark.
@@ -283,6 +141,480 @@ tag              = '#116329'
 attribute        = '#0550ae'
 )foo";
 
+static std::string theme_ink_conf =
+    R"foo([meta]
+name = 'Ink'
+
+# Ink — a cool, high-contrast dark theme (deep blue-black, blue accent).
+# Self-contained: every element sets fg + bg.
+
+[settings]
+word_wrap = true
+show_line_numbers = true
+context_colored_line_numbers = true
+line_number_align_right = false
+
+[style]
+background          = { fg = '#e6edf3', bg = '#0d1117', attr = [] }
+header              = { fg = '#58a6ff', bg = '#161b22', attr = ['bold', 'underline'] }
+delete_line         = { fg = '#e6edf3', bg = '#341a1f', attr = [] }
+delete_token        = { fg = '#f85149', bg = '#6a2b30', attr = ['bold'] }
+delete_line_number  = { fg = '#f85149', bg = '#47232a', attr = [] }
+insert_line         = { fg = '#e6edf3', bg = '#12261e', attr = [] }
+insert_token        = { fg = '#3fb950', bg = '#1f5c37', attr = ['bold'] }
+insert_line_number  = { fg = '#3fb950', bg = '#16351f', attr = [] }
+common_line         = { fg = '#e6edf3', bg = '#0d1117', attr = [] }
+common_line_number  = { fg = '#6e7681', bg = '#0d1117', attr = [] }
+frame               = { fg = '#30363d', bg = '#0d1117', attr = [] }
+empty_cell          = { fg = '#6e7681', bg = '#0d1117', attr = [] }
+moved_line          = { fg = '#a371f7', bg = 'none', attr = [] }
+
+[syntax]
+comment          = '#8b949e'
+keyword          = '#ff7b72'
+operator         = '#ff7b72'
+punctuation      = '#c9d1d9'
+string           = '#a5d6ff'
+escape           = '#a5d6ff'
+number           = '#79c0ff'
+boolean          = '#79c0ff'
+constant         = '#79c0ff'
+constant_builtin = '#79c0ff'
+function         = '#d2a8ff'
+method           = '#d2a8ff'
+constructor      = '#d2a8ff'
+type             = '#ffa657'
+type_builtin     = '#79c0ff'
+variable         = '#ffa657'
+parameter        = '#c9d1d9'
+property         = '#79c0ff'
+namespace        = '#ffa657'
+tag              = '#7ee787'
+attribute        = '#79c0ff'
+)foo";
+
+static std::string theme_studio_dark_conf =
+    R"foo([meta]
+name = 'Studio Dark'
+
+# Studio Dark — cool blue-black surfaces with a warm-orange accent (the hero
+# dark). Self-contained: every element sets fg + bg. Syntax deliberately avoids
+# the violet band so the moved accent stays unambiguous.
+
+[settings]
+word_wrap = true
+show_line_numbers = true
+context_colored_line_numbers = true
+line_number_align_right = false
+
+[style]
+background          = { fg = '#f2f4f9', bg = '#121418', attr = [] }
+header              = { fg = '#ff8b3d', bg = '#1f2531', attr = ['bold', 'underline'] }
+delete_line         = { fg = '#f2f4f9', bg = '#3a1d22', attr = [] }
+delete_token        = { fg = '#ff6b6b', bg = '#5a2830', attr = ['bold'] }
+delete_line_number  = { fg = '#ff6b6b', bg = '#3a1d22', attr = [] }
+insert_line         = { fg = '#f2f4f9', bg = '#14321f', attr = [] }
+insert_token        = { fg = '#4ade80', bg = '#1e5638', attr = ['bold'] }
+insert_line_number  = { fg = '#4ade80', bg = '#14321f', attr = [] }
+common_line         = { fg = '#f2f4f9', bg = '#121418', attr = [] }
+common_line_number  = { fg = '#768090', bg = '#121418', attr = [] }
+frame               = { fg = '#272f3d', bg = '#121418', attr = [] }
+empty_cell          = { fg = '#768090', bg = '#121418', attr = [] }
+moved_line          = { fg = '#a371f7', bg = 'none', attr = [] }
+
+[syntax]
+comment          = '#737e92'
+keyword          = '#f7768e'
+operator         = '#89ddff'
+punctuation      = '#a9b1d6'
+string           = '#9ece6a'
+escape           = '#e0af68'
+number           = '#ff9e64'
+boolean          = '#ff9e64'
+constant         = '#ff9e64'
+constant_builtin = '#ff9e64'
+function         = '#7aa2f7'
+method           = '#7aa2f7'
+constructor      = '#7aa2f7'
+type             = '#2ac3de'
+type_builtin     = '#2ac3de'
+variable         = '#c0caf5'
+parameter        = '#e0af68'
+property         = '#7dcfff'
+namespace        = '#2ac3de'
+tag              = '#f7768e'
+attribute        = '#7dcfff'
+)foo";
+
+static std::string theme_studio_light_conf =
+    R"foo([meta]
+name = 'Studio Light'
+
+# Studio Light — a warm off-white light theme with a burnt-orange accent.
+# Self-contained: every element sets fg + bg. Changed tokens recolour the
+# background (foreground stays dark), like Paper.
+
+[settings]
+word_wrap = true
+show_line_numbers = true
+context_colored_line_numbers = true
+line_number_align_right = false
+
+[style]
+background          = { fg = '#1a1814', bg = '#f8f6f3', attr = [] }
+header              = { fg = '#b04e18', bg = '#f0ede8', attr = ['bold', 'underline'] }
+delete_line         = { fg = '#1a1814', bg = '#fce4e0', attr = [] }
+delete_token        = { fg = '#c0362c', bg = '#f8c4be', attr = ['bold'] }
+delete_line_number  = { fg = '#c0362c', bg = '#f6d4cf', attr = [] }
+insert_line         = { fg = '#1a1814', bg = '#e6f6e9', attr = [] }
+insert_token        = { fg = '#1f7a3d', bg = '#b6e6be', attr = ['bold'] }
+insert_line_number  = { fg = '#1f7a3d', bg = '#cdeecf', attr = [] }
+common_line         = { fg = '#1a1814', bg = '#f8f6f3', attr = [] }
+common_line_number  = { fg = '#8a8480', bg = '#f8f6f3', attr = [] }
+frame               = { fg = '#ddd8d2', bg = '#f8f6f3', attr = [] }
+empty_cell          = { fg = '#8a8480', bg = '#f8f6f3', attr = [] }
+moved_line          = { fg = '#7c3aed', bg = 'none', attr = [] }
+
+[syntax]
+comment          = '#6b6460'
+keyword          = '#a5341f'
+operator         = '#0a4fa8'
+punctuation      = '#1a1814'
+string           = '#0a3a6b'
+escape           = '#0a3a6b'
+number           = '#0a4fa8'
+boolean          = '#0a4fa8'
+constant         = '#0a4fa8'
+constant_builtin = '#0a4fa8'
+function         = '#7e3fc4'
+method           = '#7e3fc4'
+constructor      = '#7e3fc4'
+type             = '#7e3fc4'
+type_builtin     = '#a5341f'
+variable         = '#8a3d00'
+parameter        = '#1a1814'
+property         = '#8a3d00'
+namespace        = '#7e3fc4'
+tag              = '#116329'
+attribute        = '#0a4fa8'
+)foo";
+
+static std::string theme_ember_dark_conf =
+    R"foo([meta]
+name = 'Ember Dark'
+
+# Ember Dark — a warm retro dark theme (inspired by the Gruvbox palette).
+# Self-contained: every element sets fg + bg.
+
+[settings]
+word_wrap = true
+show_line_numbers = true
+context_colored_line_numbers = true
+line_number_align_right = false
+
+[style]
+background          = { fg = '#ebdbb2', bg = '#282828', attr = [] }
+header              = { fg = '#fabd2f', bg = '#3c3836', attr = ['bold', 'underline'] }
+delete_line         = { fg = '#ebdbb2', bg = '#452a2a', attr = [] }
+delete_token        = { fg = '#fb4934', bg = '#3a2020', attr = ['bold'] }
+delete_line_number  = { fg = '#fb4934', bg = '#452a2a', attr = [] }
+insert_line         = { fg = '#ebdbb2', bg = '#2f331f', attr = [] }
+insert_token        = { fg = '#b8bb26', bg = '#26301a', attr = ['bold'] }
+insert_line_number  = { fg = '#b8bb26', bg = '#2f331f', attr = [] }
+common_line         = { fg = '#ebdbb2', bg = '#282828', attr = [] }
+common_line_number  = { fg = '#928374', bg = '#282828', attr = [] }
+frame               = { fg = '#504945', bg = '#282828', attr = [] }
+empty_cell          = { fg = '#928374', bg = '#282828', attr = [] }
+moved_line          = { fg = '#a371f7', bg = 'none', attr = [] }
+
+[syntax]
+comment          = '#928374'
+keyword          = '#fb4934'
+operator         = '#fe8019'
+punctuation      = '#ebdbb2'
+string           = '#b8bb26'
+escape           = '#fe8019'
+number           = '#d3869b'
+boolean          = '#d3869b'
+constant         = '#d3869b'
+constant_builtin = '#d3869b'
+function         = '#8ec07c'
+method           = '#8ec07c'
+constructor      = '#8ec07c'
+type             = '#fabd2f'
+type_builtin     = '#fabd2f'
+variable         = '#ebdbb2'
+parameter        = '#ebdbb2'
+property         = '#83a598'
+namespace        = '#fabd2f'
+tag              = '#8ec07c'
+attribute        = '#b8bb26'
+)foo";
+
+static std::string theme_ember_light_conf =
+    R"foo([meta]
+name = 'Ember Light'
+
+# Ember Light — a warm retro light theme (inspired by the Gruvbox palette).
+# Self-contained: every element sets fg + bg.
+
+[settings]
+word_wrap = true
+show_line_numbers = true
+context_colored_line_numbers = true
+line_number_align_right = false
+
+[style]
+background          = { fg = '#3c3836', bg = '#fbf1c7', attr = [] }
+header              = { fg = '#af3a03', bg = '#ebdbb2', attr = ['bold', 'underline'] }
+delete_line         = { fg = '#3c3836', bg = '#f7dcd2', attr = [] }
+delete_token        = { fg = '#9d0006', bg = '#f2c9be', attr = ['bold'] }
+delete_line_number  = { fg = '#9d0006', bg = '#f2c9be', attr = [] }
+insert_line         = { fg = '#3c3836', bg = '#e4e8bf', attr = [] }
+insert_token        = { fg = '#79740e', bg = '#d5e0a8', attr = ['bold'] }
+insert_line_number  = { fg = '#79740e', bg = '#d5e0a8', attr = [] }
+common_line         = { fg = '#3c3836', bg = '#fbf1c7', attr = [] }
+common_line_number  = { fg = '#7c6f64', bg = '#fbf1c7', attr = [] }
+frame               = { fg = '#d5c4a1', bg = '#fbf1c7', attr = [] }
+empty_cell          = { fg = '#7c6f64', bg = '#fbf1c7', attr = [] }
+moved_line          = { fg = '#7c3aed', bg = 'none', attr = [] }
+
+[syntax]
+comment          = '#7c6f64'
+keyword          = '#9d0006'
+operator         = '#af3a03'
+punctuation      = '#3c3836'
+string           = '#79740e'
+escape           = '#af3a03'
+number           = '#8f3f71'
+boolean          = '#8f3f71'
+constant         = '#8f3f71'
+constant_builtin = '#8f3f71'
+function         = '#427b58'
+method           = '#427b58'
+constructor      = '#427b58'
+type             = '#8f5502'
+type_builtin     = '#8f5502'
+variable         = '#3c3836'
+parameter        = '#3c3836'
+property         = '#076678'
+namespace        = '#8f5502'
+tag              = '#79740e'
+attribute        = '#427b58'
+)foo";
+
+static std::string theme_catppuccin_mocha_conf =
+    R"foo([meta]
+name = 'Catppuccin Mocha'
+
+# Catppuccin Mocha — the community-favourite pastel dark theme. Its keyword is
+# mauve (violet), so the moved accent is peach — clearly distinct from the
+# keyword and from add-green / delete-red. Self-contained: every element sets fg + bg.
+
+[settings]
+word_wrap = true
+show_line_numbers = true
+context_colored_line_numbers = true
+line_number_align_right = false
+
+[style]
+background          = { fg = '#cdd6f4', bg = '#1e1e2e', attr = [] }
+header              = { fg = '#cba6f7', bg = '#313244', attr = ['bold', 'underline'] }
+delete_line         = { fg = '#cdd6f4', bg = '#3a2531', attr = [] }
+delete_token        = { fg = '#f38ba8', bg = '#562c3a', attr = ['bold'] }
+delete_line_number  = { fg = '#f38ba8', bg = '#3a2531', attr = [] }
+insert_line         = { fg = '#cdd6f4', bg = '#26352c', attr = [] }
+insert_token        = { fg = '#a6e3a1', bg = '#2f4d3a', attr = ['bold'] }
+insert_line_number  = { fg = '#a6e3a1', bg = '#26352c', attr = [] }
+common_line         = { fg = '#cdd6f4', bg = '#1e1e2e', attr = [] }
+common_line_number  = { fg = '#7f849c', bg = '#1e1e2e', attr = [] }
+frame               = { fg = '#45475a', bg = '#1e1e2e', attr = [] }
+empty_cell          = { fg = '#7f849c', bg = '#1e1e2e', attr = [] }
+moved_line          = { fg = '#fab387', bg = 'none', attr = [] }
+
+[syntax]
+comment          = '#7f849c'
+keyword          = '#cba6f7'
+operator         = '#89dceb'
+punctuation      = '#cdd6f4'
+string           = '#a6e3a1'
+escape           = '#89b4fa'
+number           = '#fab387'
+boolean          = '#fab387'
+constant         = '#fab387'
+constant_builtin = '#fab387'
+function         = '#89b4fa'
+method           = '#89b4fa'
+constructor      = '#89b4fa'
+type             = '#f9e2af'
+type_builtin     = '#f9e2af'
+variable         = '#cdd6f4'
+parameter        = '#eba0ac'
+property         = '#89b4fa'
+namespace        = '#f9e2af'
+tag              = '#cba6f7'
+attribute        = '#f9e2af'
+)foo";
+
+static std::string theme_catppuccin_latte_conf =
+    R"foo([meta]
+name = 'Catppuccin Latte'
+
+# Catppuccin Latte — the community-favourite pastel light theme. A soft palette
+# by design (some syntax roles sit below strict AA). Keyword is mauve (violet),
+# so the moved accent is teal — distinct from keyword and add-green / delete-red.
+
+[settings]
+word_wrap = true
+show_line_numbers = true
+context_colored_line_numbers = true
+line_number_align_right = false
+
+[style]
+background          = { fg = '#4c4f69', bg = '#eff1f5', attr = [] }
+header              = { fg = '#8839ef', bg = '#ccd0da', attr = ['bold', 'underline'] }
+delete_line         = { fg = '#4c4f69', bg = '#f6d9de', attr = [] }
+delete_token        = { fg = '#d20f39', bg = '#f4ccd4', attr = ['bold'] }
+delete_line_number  = { fg = '#d20f39', bg = '#f4ccd4', attr = [] }
+insert_line         = { fg = '#4c4f69', bg = '#dcecd4', attr = [] }
+insert_token        = { fg = '#40a02b', bg = '#cfe6c8', attr = ['bold'] }
+insert_line_number  = { fg = '#40a02b', bg = '#cfe6c8', attr = [] }
+common_line         = { fg = '#4c4f69', bg = '#eff1f5', attr = [] }
+common_line_number  = { fg = '#7c7f93', bg = '#eff1f5', attr = [] }
+frame               = { fg = '#bcc0cc', bg = '#eff1f5', attr = [] }
+empty_cell          = { fg = '#7c7f93', bg = '#eff1f5', attr = [] }
+moved_line          = { fg = '#179299', bg = 'none', attr = [] }
+
+[syntax]
+comment          = '#7c7f93'
+keyword          = '#8839ef'
+operator         = '#04a5e5'
+punctuation      = '#4c4f69'
+string           = '#40a02b'
+escape           = '#1e66f5'
+number           = '#fe640b'
+boolean          = '#fe640b'
+constant         = '#fe640b'
+constant_builtin = '#fe640b'
+function         = '#1e66f5'
+method           = '#1e66f5'
+constructor      = '#1e66f5'
+type             = '#df8e1d'
+type_builtin     = '#df8e1d'
+variable         = '#4c4f69'
+parameter        = '#e64553'
+property         = '#1e66f5'
+namespace        = '#df8e1d'
+tag              = '#8839ef'
+attribute        = '#df8e1d'
+)foo";
+
+static std::string theme_tokyo_night_conf =
+    R"foo([meta]
+name = 'Tokyo Night'
+
+# Tokyo Night — the community-favourite modern dark theme. Its keyword is purple,
+# so the moved accent is orange — distinct from keyword and add-green / delete-red.
+# Self-contained: every element sets fg + bg.
+
+[settings]
+word_wrap = true
+show_line_numbers = true
+context_colored_line_numbers = true
+line_number_align_right = false
+
+[style]
+background          = { fg = '#c0caf5', bg = '#1a1b26', attr = [] }
+header              = { fg = '#7aa2f7', bg = '#292e42', attr = ['bold', 'underline'] }
+delete_line         = { fg = '#c0caf5', bg = '#351f2b', attr = [] }
+delete_token        = { fg = '#f7768e', bg = '#54293a', attr = ['bold'] }
+delete_line_number  = { fg = '#f7768e', bg = '#351f2b', attr = [] }
+insert_line         = { fg = '#c0caf5', bg = '#1f3324', attr = [] }
+insert_token        = { fg = '#9ece6a', bg = '#2c4b38', attr = ['bold'] }
+insert_line_number  = { fg = '#9ece6a', bg = '#1f3324', attr = [] }
+common_line         = { fg = '#c0caf5', bg = '#1a1b26', attr = [] }
+common_line_number  = { fg = '#7982b3', bg = '#1a1b26', attr = [] }
+frame               = { fg = '#3b4261', bg = '#1a1b26', attr = [] }
+empty_cell          = { fg = '#7982b3', bg = '#1a1b26', attr = [] }
+moved_line          = { fg = '#ff9e64', bg = 'none', attr = [] }
+
+[syntax]
+comment          = '#7982b3'
+keyword          = '#bb9af7'
+operator         = '#89ddff'
+punctuation      = '#c0caf5'
+string           = '#9ece6a'
+escape           = '#89ddff'
+number           = '#ff9e64'
+boolean          = '#ff9e64'
+constant         = '#ff9e64'
+constant_builtin = '#ff9e64'
+function         = '#7aa2f7'
+method           = '#7aa2f7'
+constructor      = '#7aa2f7'
+type             = '#2ac3de'
+type_builtin     = '#2ac3de'
+variable         = '#c0caf5'
+parameter        = '#e0af68'
+property         = '#7dcfff'
+namespace        = '#2ac3de'
+tag              = '#f7768e'
+attribute        = '#bb9af7'
+)foo";
+
+static std::string theme_tokyo_night_day_conf =
+    R"foo([meta]
+name = 'Tokyo Night Day'
+
+# Tokyo Night Day — the light companion to Tokyo Night (a soft light palette;
+# some roles sit below strict AA). Keyword is purple, so the moved accent is
+# cyan — distinct from keyword and add-green / delete-red.
+
+[settings]
+word_wrap = true
+show_line_numbers = true
+context_colored_line_numbers = true
+line_number_align_right = false
+
+[style]
+background          = { fg = '#3760bf', bg = '#e1e2e7', attr = [] }
+header              = { fg = '#2e7de9', bg = '#d5d9e8', attr = ['bold', 'underline'] }
+delete_line         = { fg = '#3760bf', bg = '#f2d5de', attr = [] }
+delete_token        = { fg = '#f52a65', bg = '#f2c6d2', attr = ['bold'] }
+delete_line_number  = { fg = '#f52a65', bg = '#f2c6d2', attr = [] }
+insert_line         = { fg = '#3760bf', bg = '#dbe8cf', attr = [] }
+insert_token        = { fg = '#587539', bg = '#cfe0bf', attr = ['bold'] }
+insert_line_number  = { fg = '#587539', bg = '#cfe0bf', attr = [] }
+common_line         = { fg = '#3760bf', bg = '#e1e2e7', attr = [] }
+common_line_number  = { fg = '#656b95', bg = '#e1e2e7', attr = [] }
+frame               = { fg = '#a8aecb', bg = '#e1e2e7', attr = [] }
+empty_cell          = { fg = '#656b95', bg = '#e1e2e7', attr = [] }
+moved_line          = { fg = '#007197', bg = 'none', attr = [] }
+
+[syntax]
+comment          = '#656b95'
+keyword          = '#9854f1'
+operator         = '#007197'
+punctuation      = '#3760bf'
+string           = '#587539'
+escape           = '#007197'
+number           = '#b15c00'
+boolean          = '#b15c00'
+constant         = '#b15c00'
+constant_builtin = '#b15c00'
+function         = '#2e7de9'
+method           = '#2e7de9'
+constructor      = '#2e7de9'
+type             = '#8c6c3e'
+type_builtin     = '#8c6c3e'
+variable         = '#3760bf'
+parameter        = '#8c6c3e'
+property         = '#007197'
+namespace        = '#8c6c3e'
+tag              = '#f52a65'
+attribute        = '#9854f1'
+)foo";
+
 enum class ConfigVariableType {
     Bool,
     Int,
@@ -298,11 +630,28 @@ diffy::config_get_directory() {
 std::vector<std::pair<std::string, std::string>>
 diffy::config_bundled_themes() {
     return {
-        {"theme_dracula", theme_dracula_conf},
-        {"theme_nord", theme_nord_conf},
-        {"theme_solarized_dark", theme_solarized_dark_conf},
-        {"theme_github_light", theme_github_light_conf},
+        {"theme_paper", theme_paper_conf},
+        {"theme_ink", theme_ink_conf},
+        {"theme_studio_dark", theme_studio_dark_conf},
+        {"theme_studio_light", theme_studio_light_conf},
+        {"theme_ember_dark", theme_ember_dark_conf},
+        {"theme_ember_light", theme_ember_light_conf},
+        {"theme_catppuccin_mocha", theme_catppuccin_mocha_conf},
+        {"theme_catppuccin_latte", theme_catppuccin_latte_conf},
+        {"theme_tokyo_night", theme_tokyo_night_conf},
+        {"theme_tokyo_night_day", theme_tokyo_night_day_conf},
     };
+}
+
+std::optional<std::string>
+diffy::config_theme_display_name(const std::string& conf_text) {
+    Value tree;
+    ParseResult parse_result;
+    if (!cfg_parse_value_tree(conf_text, parse_result, tree) || !parse_result.is_ok())
+        return std::nullopt;
+    if (auto v = tree.lookup_value_by_path("meta.name"); v && v->get().is_string())
+        return v->get().as_string();
+    return std::nullopt;
 }
 
 // Print a single "Creating initial configuration" header before the first
@@ -681,6 +1030,7 @@ diffy::config_apply_theme(const std::string& theme,
         { "style.empty_cell",               ConfigVariableType::Color,  &cv_style_opts.empty_cell },
         { "style.common_line_number",       ConfigVariableType::Color,  &cv_style_opts.common_line_number },
         { "style.frame",                    ConfigVariableType::Color,  &cv_style_opts.frame },
+        { "style.moved_line",               ConfigVariableType::Color,  &cv_style_opts.moved_line },
     };
     // clang-format on
 
@@ -700,6 +1050,7 @@ diffy::config_apply_theme(const std::string& theme,
         {&cv_style_opts.common_line_number, &cv_style_escape_codes.common_line_number},
         {&cv_style_opts.frame, &cv_style_escape_codes.frame},
         {&cv_style_opts.empty_cell, &cv_style_escape_codes.empty_cell},
+        {&cv_style_opts.moved_line, &cv_style_escape_codes.moved_line},
     };
 
     for (const auto& [source_value, dest_string] : colors) {

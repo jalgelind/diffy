@@ -26,6 +26,7 @@ add_library(diffy_core STATIC
   highlight/scope.cc
   config/config.cc
   util/color.cc
+  util/display_text.cc
   util/readlines.cc
   util/read_bytes.cc
   util/mapped_file.cc
